@@ -224,7 +224,7 @@ async function showFolderPicker(){$('onedrivePanel').classList.remove('hidden');
 async function showFolderContents(){try{$('pickerPath').textContent=[...folderView.trail.map(x=>x.name),folderView.name].join(' / ');$('pickerEntries').textContent='Loading folders…';const folders=(await children(folderView.id)).filter(x=>x.folder).sort((a,b)=>a.name.localeCompare(b.name));$('pickerEntries').replaceChildren();if(!folders.length)$('pickerEntries').textContent='No subfolders. You can select this folder.';for(const f of folders){const btn=document.createElement('button');btn.className='folder-entry';btn.textContent='📁 '+f.name;btn.onclick=async()=>{folderView={id:f.id,name:f.name,trail:[...folderView.trail,{id:folderView.id,name:folderView.name}]};await showFolderContents()};$('pickerEntries').append(btn)}}catch(e){$('pickerEntries').textContent='Could not list folders: '+e.message}}
 function weekMonday(d){const x=new Date(d);x.setUTCHours(12,0,0,0);x.setUTCDate(x.getUTCDate()-((x.getUTCDay()+6)%7));return x.toISOString().slice(0,10)}
 function parseDate(s){const m=/^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/.exec((s||'').trim());if(!m)return null;const mi=['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'].indexOf(m[2].toLowerCase());if(mi<0)return null;const d=new Date(Date.UTC(Number(m[3]),mi,Number(m[1])));return d.getUTCMonth()===mi&&d.getUTCDate()===Number(m[1])?d:null}
-function aggregateCSV(csv,aggregated){const parsed=Papa.parse(csv,{header:true,skipEmptyLines:'greedy'});const fields=parsed.meta.fields||[];for(const required of ['Appointment Date','Appointment Time','Booked Time to Slot Time','Slot Type','Availability'])if(!fields.includes(required))throw Error('Missing column: '+required);let day='',time='',valid=0,skipped=0;for(const r of parsed.data){if(r['Appointment Date']?.trim())day=r['Appointment Date'].trim();if(r['Appointment Time']?.trim())time=r['Appointment Time'].trim();if((r['Availability']||'').trim().toLowerCase()!=='booked')continue;const lead=Number((r['Booked Time to Slot Time']||'').replace(/,/g,''));const dt=parseDate(day);const tm=/^(\d{1,2}):(\d{2})/.exec(time);if(!dt||!tm||!Number.isFinite(lead)||!(r['Booked Time to Slot Time']||'').trim()){skipped++;continue}dt.setUTCHours(Number(tm[1]),Number(tm[2]),0,0);const booked=new Date(dt.getTime()-lead*60000);if(!Number.isFinite(booked.getTime())){skipped++;continue}const w=weekMonday(booked),slot=(r['Slot Type']||'').trim()||'Unknown';if(w<'2025-07-07')continue;const key=JSON.stringify([w,slot]);aggregated.set(key,(aggregated.get(key)||0)+1);valid++}return {valid,skipped}}
+function aggregateCSV(csv,aggregated){const parsed=Papa.parse(csv,{header:true,skipEmptyLines:'greedy'});const fields=parsed.meta.fields||[];for(const required of ['Appointment Date','Appointment Time','Booked Time to Slot Time','Slot Type','Availability'])if(!fields.includes(required))throw Error('Missing column: '+required);let day='',time='',valid=0,skipped=0;for(const r of parsed.data){if(r['Appointment Date']?.trim())day=r['Appointment Date'].trim();if(r['Appointment Time']?.trim())time=r['Appointment Time'].trim();if((r['Availability']||'').trim().toLowerCase()!=='booked')continue;const lead=Number((r['Booked Time to Slot Time']||'').replace(/,/g,''));const dt=parseDate(day);const tm=/^(\d{1,2}):(\d{2})/.exec(time);if(!dt||!tm||!Number.isFinite(lead)||!(r['Booked Time to Slot Time']||'').trim()){skipped++;continue}dt.setUTCHours(Number(tm[1]),Number(tm[2]),0,0);const booked=new Date(dt.getTime()-lead*60000);if(!Number.isFinite(booked.getTime())){skipped++;continue}const w=weekMonday(booked),slot=(r['Slot Type']||'').trim()||'Unknown';if(w<'2025-07-07')continue;const bookedDay=booked.toISOString().slice(0,10);const key=JSON.stringify([bookedDay,slot]);aggregated.set(key,(aggregated.get(key)||0)+1);valid++}return {valid,skipped}}
 // Drag-and-drop category editor. Existing OneDrive JSON schema remains unchanged.
 let pickedSlot=null;
 function renderDropEditor(dimension){
@@ -318,7 +318,7 @@ async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;
  const items=(await children(selectedFolder.id)).filter(f=>f.file&&/\.csv$/i.test(f.name)).sort((a,b)=>a.name.localeCompare(b.name));if(!items.length)throw Error('No CSV files found directly inside this folder.');
  const fingerprint=JSON.stringify(items.map(f=>[f.id,f.lastModifiedDateTime,f.size]));if(!force&&fingerprint===lastFingerprint){showRefreshFeedback('Already up to date');setSync(`No changes detected · ${items.length} CSV files · Checked ${new Date().toLocaleTimeString('en-GB')}`);return}
  const aggregate=new Map();let valid=0,skipped=0;for(let i=0;i<items.length;i++){const f=items[i];showRefreshFeedback(`Loading file ${i+1} of ${items.length}…`,true);setSync(`Loading ${i+1} of ${items.length}: ${f.name}`);const detail=await graph(`/me/drive/items/${encodeURIComponent(f.id)}`);const url=detail['@microsoft.graph.downloadUrl'];if(!url)throw Error('OneDrive did not provide a download URL for '+f.name);const response=await fetch(url,{cache:'no-store'});if(!response.ok)throw Error(`Could not download ${f.name}: HTTP ${response.status}`);const stats=aggregateCSV(await response.text(),aggregate);valid+=stats.valid;skipped+=stats.skipped}
- records=[...aggregate].map(([key,count])=>{const [bookedWeek,slot]=JSON.parse(key);return {week:bookedWeek,bookedWeek,slot,status:'Booked',count}});weeks=[...new Set(records.map(r=>r.bookedWeek))].sort();types=[...new Set(records.map(r=>r.slot))].sort();statuses=['Booked'];
+ records=[...aggregate].map(([key,count])=>{const [bookedDay,slot]=JSON.parse(key);const bookedWeek=mondayOf(bookedDay);return {week:bookedWeek,bookedWeek,bookedDay,slot,status:'Booked',count}});weeks=[...new Set(records.map(r=>r.bookedWeek))].sort();types=[...new Set(records.map(r=>r.slot))].sort();statuses=['Booked'];
  // Assign obvious names on first encounter; retain any existing manual choices.
  // Do not guess assignments: unknown slot types stay Uncategorised until manually assigned.
 
@@ -367,7 +367,23 @@ const bankHolidayWeeks=new Set(holidayDates.map(mondayOf));let excludeBankHolida
 document.getElementById('excludeBH').onchange=e=>{excludeBankHolidays=!e.target.checked;refresh()};
 function isoWeek(weekStart){const d=new Date(weekStart+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+3);const year=d.getUTCFullYear();const jan4=new Date(Date.UTC(year,0,4,12));jan4.setUTCDate(jan4.getUTCDate()-((jan4.getUTCDay()+6)%7));const week=1+Math.round((d-jan4)/604800000);return {year,week}}
 const colours=['#1475b8','#e57a28','#159a78','#9053b4','#c64c69','#65748b'];
-let current=[];let continuousMode=false;let showCurrentWeek=true;const thisWeek=mondayOf((()=>{const parts=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/London',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());const v=Object.fromEntries(parts.map(p=>[p.type,p.value]));return `${v.year}-${v.month}-${v.day}`})());document.getElementById('currentWeekToggle').onchange=e=>{showCurrentWeek=e.target.checked;refresh()};document.getElementById('displayMode').onchange=e=>{continuousMode=e.target.checked;document.getElementById('timelineValue').textContent=continuousMode?'Continuous':'Superimposed';refresh()};function refresh(){updateClinicianChartFilter();const basis='bookedWeek';const activeWeeks=[...new Set(records.map(r=>r[basis]))].sort();const selectedWeeks=activeWeeks.filter(w=>w>='2025-07-07'&&(showCurrentWeek||w!==thisWeek)&&(!excludeBankHolidays||!bankHolidayWeeks.has(w)));const sums=new Map(selectedWeeks.map(w=>[w,0]));for(const r of records){if(!sums.has(r[basis]))continue;if(r.status!=='Booked'||!clinicianMatches(r.slot))continue;sums.set(r[basis],sums.get(r[basis])+r.count)}current=[...sums].map(([week,count])=>({week,count,...isoWeek(week)}));const total=current.reduce((a,r)=>a+r.count,0);
+let current=[];let continuousMode=false;let showCurrentWeek=true;let monthlyMode=false;
+const todayLondon=(()=>{const parts=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/London',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());const v=Object.fromEntries(parts.map(p=>[p.type,p.value]));return `${v.year}-${v.month}-${v.day}`})();
+const thisWeek=mondayOf(todayLondon),thisMonth=todayLondon.slice(0,7);
+document.getElementById('periodMode').onchange=e=>{monthlyMode=e.target.checked;document.getElementById('periodModeValue').textContent=monthlyMode?'Monthly':'Weekly';document.getElementById('currentPeriodLabel').textContent=monthlyMode?'Show current month':'Show current week';refresh()};
+document.getElementById('currentWeekToggle').onchange=e=>{showCurrentWeek=e.target.checked;refresh()};
+document.getElementById('displayMode').onchange=e=>{continuousMode=e.target.checked;document.getElementById('timelineValue').textContent=continuousMode?'Continuous':'Superimposed';refresh()};
+function periodKey(r){return monthlyMode?r.bookedDay?.slice(0,7):r.bookedWeek}
+function includedRecord(r){return r.status==='Booked'&&clinicianMatches(r.slot)&&(!excludeBankHolidays||!bankHolidayWeeks.has(r.bookedWeek))}
+function monthOfPeriod(p){return monthlyMode?p+'-01':p}
+function periodIsCurrent(p){return p===(monthlyMode?thisMonth:thisWeek)}
+function refresh(){updateClinicianChartFilter();
+const activeWeeks=[...new Set(records.filter(includedRecord).map(periodKey).filter(Boolean))].sort();
+const selectedWeeks=activeWeeks.filter(w=>w>=(monthlyMode?'2025-07':'2025-07-07')&&(showCurrentWeek||!periodIsCurrent(w)));
+const sums=new Map(selectedWeeks.map(w=>[w,0]));
+for(const r of records){const key=periodKey(r);if(!sums.has(key)||!includedRecord(r))continue;sums.set(key,sums.get(key)+r.count)}
+current=[...sums].map(([week,count])=>({week,count,...isoWeek(monthOfPeriod(week))}));
+const total=current.reduce((a,r)=>a+r.count,0);
 const yearColours={urgent:['#8b111e','#d43846','#f08088','#6f0712'],routine:['#075d34','#199c5a','#79c99c','#a1d9b4'],followup:['#124b9b','#2675d2','#79acee','#a9cdf6']};
 function monthPosition(date){const d=new Date(date+'T12:00:00Z');const month=d.getUTCMonth();const days=new Date(Date.UTC(d.getUTCFullYear(),month+1,0)).getUTCDate();return month+(d.getUTCDate()-1)/days}
 const axis={type:'linear',range:[0,12],title:'Month of year',tickmode:'array',tickvals:Array.from({length:12},(_,i)=>i+0.5),ticktext:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],gridcolor:'#edf1f5'};
@@ -375,12 +391,12 @@ function drawCategoryChart(target,category,palette,sharedMax){
  const enabled=true;
  const totals=new Map(selectedWeeks.map(w=>[w,0]));
  if(enabled)for(const r of records){
-  if(!totals.has(r[basis]))continue;
-  if(r.status!=='Booked'||!clinicianMatches(r.slot))continue;
+  const key=periodKey(r);if(!totals.has(key))continue;
+  if(!includedRecord(r))continue;
   if((assignments[r.slot]||'Uncategorised').trim().toLowerCase().replace(/[\s-]+/g,'')!==category)continue;
-  totals.set(r[basis],totals.get(r[basis])+r.count);
+  totals.set(key,totals.get(key)+r.count);
  }
- const points=[...totals].map(([date,count])=>({date,count,year:Number(date.slice(0,4)),week:isoWeek(date).week}));
+ const points=[...totals].map(([date,count])=>({date,count,year:Number(date.slice(0,4)),week:monthlyMode?Number(date.slice(5,7)):isoWeek(date).week}));
  const years=[...new Set(points.map(p=>p.year))].sort();
  const latestYear=years.length?Math.max(...years):2026;
  const values=points.map(p=>p.count);
@@ -390,13 +406,13 @@ function drawCategoryChart(target,category,palette,sharedMax){
  for(const [i,year] of years.entries()){
   const data=points.filter(p=>p.year===year).sort((a,b)=>a.date.localeCompare(b.date));
   const last=data[data.length-1];
-  const partial=showCurrentWeek&&last?.date===thisWeek;
+  const partial=showCurrentWeek&&periodIsCurrent(last?.date);
   // Never draw a solid segment into an incomplete current week.
   const complete=partial?data.slice(0,-1):data;
   const colour=palette[i%palette.length];
   const width=year===latestYear?4.5:2;
   const opacity=year===latestYear?1:0.34;
-  const x=p=>continuousMode?p.date:monthPosition(p.date);
+  const x=p=>continuousMode?monthOfPeriod(p.date):(monthlyMode?Number(p.date.slice(5,7))-.5:monthPosition(p.date));
   traces.push({name:String(year),x:complete.map(x),y:complete.map(p=>p.count),customdata:complete.map(p=>p.date),type:'scatter',mode:'lines+markers',connectgaps:true,opacity,line:{color:colour,width,shape:'spline',smoothing:0.65},marker:{size:year===latestYear?5:3},hovertemplate:'%{customdata}<br><b>%{y:,} appointments</b><extra>'+year+'</extra>'});
   if(partial){
    const previous=complete[complete.length-1];
@@ -406,7 +422,7 @@ function drawCategoryChart(target,category,palette,sharedMax){
    // positions while keeping the actual recorded endpoint unchanged.
    const segment=[];
    if(previous){
-    const toNumber=p=>continuousMode?Date.parse(p.date):x(p);
+    const toNumber=p=>continuousMode?Date.parse(monthOfPeriod(p.date)):x(p);
     const x0=toNumber(previous),x1=toNumber(last);
     const span=x1-x0;
     const slope=beforePrevious&&x0!==toNumber(beforePrevious)
@@ -420,15 +436,15 @@ function drawCategoryChart(target,category,palette,sharedMax){
      segment.push({x:continuousMode?new Date(xpos).toISOString():xpos,y, date:k===24?last.date:previous.date});
     }
    }else segment.push({x:x(last),y:last.count,date:last.date});
-   traces.push({name:String(year)+' — partial week',x:segment.map(p=>p.x),y:segment.map(p=>p.y),customdata:segment.map(p=>p.date),type:'scatter',mode:'lines',showlegend:false,opacity,line:{color:colour,width,dash:'dot',shape:'linear'},hoverinfo:'skip'});
-   traces.push({name:String(year)+' — current week (incomplete)',x:[x(last)],y:[last.count],customdata:[last.date],type:'scatter',mode:'markers',showlegend:false,opacity,marker:{size:11,symbol:'circle-open',color:colour,line:{color:colour,width:2.5}},hovertemplate:'%{customdata}<br><b>%{y:,} appointments</b><br>Current week (incomplete)<extra>'+year+'</extra>'});
+   traces.push({name:String(year)+' — partial '+(monthlyMode?'month':'week'),x:segment.map(p=>p.x),y:segment.map(p=>p.y),customdata:segment.map(p=>p.date),type:'scatter',mode:'lines',showlegend:false,opacity,line:{color:colour,width,dash:'dot',shape:'linear'},hoverinfo:'skip'});
+   traces.push({name:String(year)+' — current '+(monthlyMode?'month':'week')+' (incomplete)',x:[x(last)],y:[last.count],customdata:[last.date],type:'scatter',mode:'markers',showlegend:false,opacity,marker:{size:11,symbol:'circle-open',color:colour,line:{color:colour,width:2.5}},hovertemplate:'%{customdata}<br><b>%{y:,} appointments</b><br>Current '+(monthlyMode?'month':'week')+' (incomplete)<extra>'+year+'</extra>'});
   }
  }
  // One flat average, calculated from every displayed week across every year.
- traces.push({name:'All-years weekly average ('+Math.round(average).toLocaleString('en-GB')+')',x:continuousMode?[selectedWeeks[0]||'2025-07-07',selectedWeeks[selectedWeeks.length-1]||'2025-07-14']:[0,12],y:[average,average],type:'scatter',mode:'lines',hoverinfo:'skip',opacity:0.58,line:{color:category==='urgent'?'#9c2633':category==='followup'?'#286cb8':'#23885b',width:2,dash:'dash'},showlegend:true});
+ traces.push({name:'All-years '+(monthlyMode?'monthly':'weekly')+' average ('+Math.round(average).toLocaleString('en-GB')+')',x:continuousMode?[monthOfPeriod(selectedWeeks[0]||'2025-07-07'),monthOfPeriod(selectedWeeks[selectedWeeks.length-1]||'2025-07-14')]:[0,12],y:[average,average],type:'scatter',mode:'lines',hoverinfo:'skip',opacity:0.58,line:{color:category==='urgent'?'#9c2633':category==='followup'?'#286cb8':'#23885b',width:2,dash:'dash'},showlegend:true});
  const chartEl=$(target);
  const chartWidth=Math.max(280,Math.floor(chartEl.parentElement.getBoundingClientRect().width)-2);
- Plotly.react(target,traces,{autosize:true,width:chartWidth,margin:{l:58,r:12,t:32,b:65},paper_bgcolor:'white',plot_bgcolor:'white',legend:{orientation:'h',y:1.17,x:0},xaxis:continuousMode?{type:'date',title:'Booking date',tickformat:'%b %Y',gridcolor:'#edf1f5'}:axis,yaxis:{title:'Appointments',range:[0,sharedMax],dtick:sharedMax/5,gridcolor:'#edf1f5'},hovermode:'closest',annotations:!hasAppointments&&category==='followup'?[{text:'No follow-up appointments found. In Manage Categories, assign slot types to Follow up and click Save.',xref:'paper',yref:'paper',x:.5,y:.55,showarrow:false,align:'center',font:{size:13,color:'#286cb8'}}]:[]},{responsive:true,displaylogo:false}).then(scheduleChartResize);
+ Plotly.react(target,traces,{autosize:true,width:chartWidth,margin:{l:58,r:12,t:32,b:65},paper_bgcolor:'white',plot_bgcolor:'white',legend:{orientation:'h',y:1.17,x:0},xaxis:continuousMode?{type:'date',title:monthlyMode?'Booking month':'Booking date',tickformat:'%b %Y',gridcolor:'#edf1f5'}:axis,yaxis:{title:'Appointments',range:[0,sharedMax],dtick:sharedMax/5,gridcolor:'#edf1f5'},hovermode:'closest',annotations:!hasAppointments&&category==='followup'?[{text:'No follow-up appointments found. In Manage Categories, assign slot types to Follow up and click Save.',xref:'paper',yref:'paper',x:.5,y:.55,showarrow:false,align:'center',font:{size:13,color:'#286cb8'}}]:[]},{responsive:true,displaylogo:false}).then(scheduleChartResize);
 }
 let maximum=0;
 let followupMaximum=0;
@@ -437,10 +453,10 @@ for(const category of ['urgent','routine','followup']){
 
  const totals=new Map(selectedWeeks.map(w=>[w,0]));
  for(const r of records){
-  if(!totals.has(r[basis]))continue;
-  if(r.status!=='Booked'||!clinicianMatches(r.slot))continue;
+  const key=periodKey(r);if(!totals.has(key))continue;
+  if(!includedRecord(r))continue;
   if((assignments[r.slot]||'Uncategorised').trim().toLowerCase().replace(/[\s-]+/g,'')!==category)continue;
-  totals.set(r[basis],totals.get(r[basis])+r.count);
+  totals.set(key,totals.get(key)+r.count);
  }
  for(const count of totals.values()){maximum=Math.max(maximum,count);if(category==='followup')followupMaximum=Math.max(followupMaximum,count);}
 }

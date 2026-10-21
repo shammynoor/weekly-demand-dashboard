@@ -94,3 +94,7 @@ The incomplete current-week segment uses closely spaced dots and a sampled cubic
 
 ## Clinician type switches
 The chart page shows a separate Clinician type filter panel alongside the existing Filters panel. Every user-created clinician category has its own on/off switch, initially on. Switches filter all three charts. Uncategorised is not shown and its slots are excluded from these filtered charts. Switch state remains while navigating pages, and renaming a clinician type preserves its switch setting.
+
+
+## Weekly/monthly charts
+The Filters box has a Monthly data switch. Monthly totals use actual booking dates and the current-period label changes to Show current month. All three graphs update. Bank-holiday-week exclusions continue to apply.
