@@ -48,3 +48,9 @@ A third blue Follow-up appointments chart appears below Urgent. Assign slot type
 The blue chart now has its own Y-axis scale, so small follow-up volumes are visible. If no slot types are assigned to Follow up, the chart shows an explanation rather than an unexplained flat line. Assign the relevant slot types in Manage Categories and click Save.
 
 Current incomplete week: when Show current week is enabled, the last point is hollow and the connecting segment dashed on all three charts.
+
+## Clinician type categories
+Manage Categories now has two independent dimensions: Urgency (Urgent/Routine/Follow up) and Clinician type (user-created, e.g. GP/Nurse). Each CSV slot type can be assigned to one value in each dimension. Both dimensions save together to the same private OneDrive settings JSON when Save is clicked; old settings without clinician types remain compatible. Clinician types do not change existing charts yet.
+
+## Consult mode categories
+Manage Categories now includes a third independent user-defined classification: Consult mode. Add names such as Telephone or Face to face, assign slot types, then click Save. The settings are stored in the same OneDrive app settings JSON as urgency and clinician type. Existing graphs are unchanged.
