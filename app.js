@@ -1,7 +1,7 @@
 "use strict";
 const CLIENT_ID='ba2bc895-4213-447c-ba62-d7edec6e8173';
 const SCOPES=['Files.Read','Files.ReadWrite.AppFolder'];
-const REDIRECT_URI='https://shammynoor.github.io/weekly-demand-dashboard/';
+const REDIRECT_URI='https://shammynoor.github.io/weekly-demand-dashboard/index.html';
 const GRAPH='https://graph.microsoft.com/v1.0';
 const FOLDER_KEY='weekly-demand-onedrive-folder-v1';
 let records=[],weeks=[],types=[],statuses=[];
@@ -9,28 +9,40 @@ const slots={selectedOptions:[],replaceChildren(){},append(){},options:[]};
 const $=id=>document.getElementById(id);
 let auth,activeAccount=null,selectedFolder=null,folderView={id:'root',name:'OneDrive',trail:[]},busy=false,lastFingerprint='';
 let cloudReady=false, cloudSaveTimer=null, cloudVersion=null, cloudBusy=false;
+let cloudFolder=null;
 const CLOUD_SETTINGS_NAME='weekly-demand-categories.json';
 function cloudNotice(msg){const el=$('cloudCategoryStatus');if(el)el.textContent=msg}
 async function cloudFile(){const t=await token();const r=await fetch(GRAPH+'/me/drive/special/approot:/'+CLOUD_SETTINGS_NAME+':/content',{headers:{Authorization:'Bearer '+t}});if(r.status===404)return null;if(!r.ok)throw Error('Settings read failed (HTTP '+r.status+')');return r.json()}
-async function loadCloudCategories(){if(!activeAccount)return;cloudReady=false;cloudNotice('Loading categories from OneDrive…');try{const data=await cloudFile();if(data){if(!Array.isArray(data.categories)||!data.assignments||typeof data.assignments!=='object')throw Error('Saved category settings are invalid');categoryNames=['Urgent','Routine'];assignments={};for(const [t,c] of Object.entries(data.assignments)){if(typeof t==='string'&&['Urgent','Routine','Uncategorised'].includes(c))assignments[t]=c}cloudNotice('Categories loaded from OneDrive.');}else{cloudNotice('No cloud settings yet. Your existing browser categories will be saved when you make a change.')}cloudReady=true;saveCategories(false);renderEditor();refresh()}catch(e){cloudNotice('Could not load cloud categories: '+e.message+' (local settings retained)');cloudReady=false}}
+async function loadCloudCategories(){if(!activeAccount)return;cloudReady=false;cloudNotice('Loading categories from OneDrive…');try{const data=await cloudFile();if(data){cloudFolder=data.folder&&typeof data.folder.id==='string'?data.folder:null;if(!Array.isArray(data.categories)||!data.assignments||typeof data.assignments!=='object')throw Error('Saved category settings are invalid');categoryNames=['Urgent','Routine'];assignments={};for(const [t,c] of Object.entries(data.assignments)){if(typeof t==='string'&&['Urgent','Routine','Uncategorised'].includes(c))assignments[t]=c}cloudNotice('Categories loaded from OneDrive.');}else{cloudNotice('No cloud settings yet. Your existing browser categories will be saved when you make a change.')}cloudReady=true;saveCategories(false);renderEditor();refresh()}catch(e){cloudNotice('Could not load cloud categories: '+e.message+' (local settings retained)');cloudReady=false}}
 function scheduleCloudSave(){if(!cloudReady||!activeAccount)return;clearTimeout(cloudSaveTimer);cloudNotice('Saving category changes to OneDrive…');cloudSaveTimer=setTimeout(saveCloudCategories,900)}
-async function saveCloudCategories(){if(!cloudReady||cloudBusy)return;cloudBusy=true;try{const t=await token();const response=await fetch(GRAPH+'/me/drive/special/approot:/'+CLOUD_SETTINGS_NAME+':/content',{method:'PUT',headers:{Authorization:'Bearer '+t,'Content-Type':'application/json'},body:JSON.stringify({version:1,categories:['Urgent','Routine'],assignments,updatedAt:new Date().toISOString()})});if(!response.ok)throw Error('HTTP '+response.status);cloudNotice('Categories saved to OneDrive · '+new Date().toLocaleTimeString('en-GB'))}catch(e){cloudNotice('Category cloud save failed: '+e.message)}finally{cloudBusy=false}}
-function setStatus(s){$('connectionStatus').textContent=s}
+async function saveCloudCategories(){if(!cloudReady||cloudBusy)return;cloudBusy=true;try{const t=await token();const response=await fetch(GRAPH+'/me/drive/special/approot:/'+CLOUD_SETTINGS_NAME+':/content',{method:'PUT',headers:{Authorization:'Bearer '+t,'Content-Type':'application/json'},body:JSON.stringify({version:1,categories:['Urgent','Routine'],assignments,folder:selectedFolder||cloudFolder||null,updatedAt:new Date().toISOString()})});if(!response.ok)throw Error('HTTP '+response.status);cloudNotice('Categories saved to OneDrive · '+new Date().toLocaleTimeString('en-GB'))}catch(e){cloudNotice('Category cloud save failed: '+e.message)}finally{cloudBusy=false}}
+function setStatus(s){$('connectionStatus').textContent=s;$('loginStatus').textContent=s}
 function setSync(s){$('syncStatus').textContent=s}
-function setButtons(){const logged=!!activeAccount;$('signIn').disabled=logged;$('signOut').disabled=!logged;$('chooseFolder').disabled=!logged;$('refreshData').disabled=!logged||!selectedFolder||busy}
+function setButtons(){const logged=!!activeAccount;$('loginScreen').classList.toggle('hidden',logged);$('dashboardShell').classList.toggle('hidden',!logged);$('signIn').disabled=logged;$('signOut').disabled=!logged;$('chooseFolder').disabled=!logged;$('refreshData').disabled=!logged||!selectedFolder||busy}
 async function initAuth(){
  try{
   if(!window.msal||!window.Plotly||!window.Papa)throw Error('Required browser libraries did not load. Check internet access or browser blocking.');
   auth=new msal.PublicClientApplication({auth:{clientId:CLIENT_ID,authority:'https://login.microsoftonline.com/consumers',redirectUri:REDIRECT_URI,navigateToLoginRequestUrl:false},cache:{cacheLocation:'sessionStorage'}});
   await auth.initialize();const result=await auth.handleRedirectPromise();
   activeAccount=result?.account||auth.getAllAccounts()[0]||null;
-  if(activeAccount){auth.setActiveAccount(activeAccount);await loadCloudCategories();setStatus('Signed in: '+(activeAccount.username||'Microsoft account'));try{selectedFolder=JSON.parse(localStorage.getItem(FOLDER_KEY)||'null')}catch{}if(selectedFolder){$('folderStatus').textContent='Selected folder: '+selectedFolder.name;await loadFolder(false)}}else setStatus('Sign in with the Hotmail account that owns your OneDrive files.');
+  if(activeAccount){
+   auth.setActiveAccount(activeAccount);
+   try{selectedFolder=JSON.parse(localStorage.getItem(FOLDER_KEY)||'null')}catch{}
+   await loadCloudCategories();
+   // Existing browser migrates its chosen folder to OneDrive settings once.
+   if(cloudFolder){selectedFolder=cloudFolder;localStorage.setItem(FOLDER_KEY,JSON.stringify(selectedFolder))}
+   else if(selectedFolder&&cloudReady){cloudFolder=selectedFolder;await saveCloudCategories()}
+   setStatus('Signed in: '+(activeAccount.username||'Microsoft account'));
+   $('accountLabel').textContent=activeAccount.username||'Microsoft account';
+   if(selectedFolder){$('folderStatus').textContent='Source: '+selectedFolder.name;await loadFolder(false)}
+   else {setSync('No source folder saved yet. Use Manage categories → Source folder setup once on the computer where you previously selected it.');$('sourceSetup').classList.remove('hidden')}
+  }else setStatus('Sign in with the Hotmail account that owns your OneDrive files.');
  }catch(e){setStatus('Sign-in setup error: '+e.message)}finally{setButtons()}
 }
 async function token(){if(!activeAccount)throw Error('Please sign in first.');try{return (await auth.acquireTokenSilent({scopes:SCOPES,account:activeAccount})).accessToken}catch(e){if(e instanceof msal.InteractionRequiredAuthError){await auth.acquireTokenRedirect({scopes:SCOPES,account:activeAccount});throw Error('Microsoft sign-in required')}throw e}}
 async function graph(url){const bearer=await token();const response=await fetch(url.startsWith('https://')?url:GRAPH+url,{headers:{Authorization:'Bearer '+bearer}});if(!response.ok){let message='HTTP '+response.status;try{const body=await response.json();message=body.error?.message||message}catch{}throw Error(message)}return response.json()}
 async function children(id){let url=id==='root'?'/me/drive/root/children?$top=200&$select=id,name,folder,file,size,lastModifiedDateTime':`/me/drive/items/${encodeURIComponent(id)}/children?$top=200&$select=id,name,folder,file,size,lastModifiedDateTime`;const items=[];while(url){const r=await graph(url);items.push(...(r.value||[]));url=r['@odata.nextLink']||null}return items}
-async function showFolderPicker(){folderView={id:'root',name:'OneDrive',trail:[]};$('folderPicker').classList.remove('hidden');await showFolderContents()}
+async function showFolderPicker(){$('onedrivePanel').classList.remove('hidden');folderView={id:'root',name:'OneDrive',trail:[]};$('folderPicker').classList.remove('hidden');await showFolderContents()}
 async function showFolderContents(){try{$('pickerPath').textContent=[...folderView.trail.map(x=>x.name),folderView.name].join(' / ');$('pickerEntries').textContent='Loading folders…';const folders=(await children(folderView.id)).filter(x=>x.folder).sort((a,b)=>a.name.localeCompare(b.name));$('pickerEntries').replaceChildren();if(!folders.length)$('pickerEntries').textContent='No subfolders. You can select this folder.';for(const f of folders){const btn=document.createElement('button');btn.className='folder-entry';btn.textContent='📁 '+f.name;btn.onclick=async()=>{folderView={id:f.id,name:f.name,trail:[...folderView.trail,{id:folderView.id,name:folderView.name}]};await showFolderContents()};$('pickerEntries').append(btn)}}catch(e){$('pickerEntries').textContent='Could not list folders: '+e.message}}
 function weekMonday(d){const x=new Date(d);x.setUTCHours(12,0,0,0);x.setUTCDate(x.getUTCDate()-((x.getUTCDay()+6)%7));return x.toISOString().slice(0,10)}
 function parseDate(s){const m=/^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/.exec((s||'').trim());if(!m)return null;const mi=['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'].indexOf(m[2].toLowerCase());if(mi<0)return null;const d=new Date(Date.UTC(Number(m[3]),mi,Number(m[1])));return d.getUTCMonth()===mi&&d.getUTCDate()===Number(m[1])?d:null}
@@ -48,9 +60,10 @@ async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;
 $('signIn').onclick=async()=>{try{await auth.loginRedirect({scopes:SCOPES,prompt:'select_account'})}catch(e){setStatus('Sign-in failed: '+e.message)}};
 $('signOut').onclick=async()=>{if(!activeAccount)return;try{await auth.logoutRedirect({account:activeAccount,postLogoutRedirectUri:REDIRECT_URI})}catch(e){setStatus('Sign-out failed: '+e.message)}};
 $('chooseFolder').onclick=showFolderPicker;
+$('sourceSetup').onclick=showFolderPicker;
 $('cancelFolder').onclick=()=>$('folderPicker').classList.add('hidden');
 $('pickerUp').onclick=async()=>{if(!folderView.trail.length)return;const parent=folderView.trail.at(-1);folderView={...parent,trail:folderView.trail.slice(0,-1)};await showFolderContents()};
-$('selectFolder').onclick=async()=>{selectedFolder={id:folderView.id,name:[...folderView.trail.map(x=>x.name),folderView.name].join(' / ')};localStorage.setItem(FOLDER_KEY,JSON.stringify(selectedFolder));$('folderStatus').textContent='Selected folder: '+selectedFolder.name;$('folderPicker').classList.add('hidden');lastFingerprint='';await loadFolder(true)};
+$('selectFolder').onclick=async()=>{selectedFolder={id:folderView.id,name:[...folderView.trail.map(x=>x.name),folderView.name].join(' / ')};localStorage.setItem(FOLDER_KEY,JSON.stringify(selectedFolder));$('folderStatus').textContent='Selected folder: '+selectedFolder.name;$('folderPicker').classList.add('hidden');$('onedrivePanel').classList.add('hidden');$('sourceSetup').classList.add('hidden');cloudFolder=selectedFolder;await saveCloudCategories();lastFingerprint='';await loadFolder(true)};
 $('refreshData').onclick=()=>loadFolder(true);
 setInterval(()=>{if(activeAccount&&selectedFolder&&!busy)loadFolder(false)},5*60*1000);
 const holidayDates=['2025-01-01','2025-04-18','2025-04-21','2025-05-05','2025-05-26','2025-08-25','2025-12-25','2025-12-26','2026-01-01','2026-04-03','2026-04-06','2026-05-04','2026-05-25','2026-08-31','2026-12-25','2026-12-28'];

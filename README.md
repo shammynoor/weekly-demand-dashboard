@@ -1,46 +1,29 @@
 # Weekly Demand Dashboard — GitHub Pages
 
-## Deploy
+Upload `index.html` and `app.js` to the **root** of https://github.com/shammynoor/weekly-demand-dashboard. GitHub Pages should deploy from `main` / `(root)`.
 
-1. In `https://github.com/shammynoor/weekly-demand-dashboard`, select **Add file → Upload files**.
-2. Upload **index.html** and **app.js** from this package to the repository root. Commit changes.
-3. GitHub Settings → Pages → Deploy from branch → `main` / `(root)`.
-4. Visit `https://shammynoor.github.io/weekly-demand-dashboard/`.
-5. Sign in to the **personal Microsoft account** that owns the CSVs; select the folder using **Choose folder**.
+## Important: Microsoft redirect URI
 
-## Microsoft registration
+In Microsoft Entra → App registrations → Weekly Demand Dashboard → Authentication (Preview), add this **Single-page application** redirect URI:
 
-- Application (client) ID: `ba2bc895-4213-447c-ba62-d7edec6e8173`
-- Supported account types: Personal Microsoft accounts
-- Redirect URI (SPA): `https://shammynoor.github.io/weekly-demand-dashboard/`
-- Delegated Microsoft Graph permissions: `Files.Read` and `Files.ReadWrite.AppFolder`
-- No client secret. Browser authentication uses MSAL with PKCE.
+`https://shammynoor.github.io/weekly-demand-dashboard/index.html`
 
-## Data behaviour
+This is important because the root URL was displaying the README rather than the application. Keep the existing root redirect URI if desired, but add the `/index.html` URI before testing the update.
 
-- Reads all `.csv` files **directly in** the chosen OneDrive folder, not subfolders.
-- Refresh button forces reload; background check every 5 minutes **while the page remains open**.
-- Only CSV files and metadata are fetched; nothing is uploaded to GitHub.
-- Rows are aggregated in memory; the dashboard does not save raw CSV content to browser storage.
-- Category assignments are saved to the OneDrive app folder and restored after Microsoft sign-in on each computer. The selected CSV folder is remembered per browser. If settings sync fails, a status message appears on the Manage categories page.
-- CSV format: `Appointment Date`, `Appointment Time`, `Booked Time to Slot Time` (minutes), `Slot Type`, `Availability`. Blank appointment dates/times are forward-filled per file. Only `Booked` rows with valid lead times are included. Booking week is calculated from appointment date/time minus lead time.
-- Duplicate appointments appearing in multiple CSV exports **will be double-counted**. Use non-overlapping CSV exports or deduplicate them before adding to the folder.
-- `Urgent` and `Routine` default slot classification is inferred from slot names; review and correct under **Manage categories**. You can import existing category settings using JSON export from your old dashboard.
-- Bank holiday dates currently cover 2025 and 2026 England/Wales; update `holidayDates` in `app.js` for later years.
-- Public GitHub Pages means **website code is public**, not OneDrive files. Anyone with the URL can view the blank website, but Microsoft authentication is needed to read OneDrive.
-- External libraries are loaded from jsDelivr CDN.
+## Using the dashboard
 
-## Troubleshooting
+- Unauthenticated users see only a sign-in screen.
+- After sign-in, the dashboard loads directly without the OneDrive connection panel. A small Sign out button remains available.
+- The CSV source folder is saved in the private OneDrive app settings alongside category assignments.
+- **First use of this version:** open it on the **same computer and browser** where you previously selected the OneDrive folder. Sign in there once to migrate the remembered folder to OneDrive settings. After that, other computers load the same folder automatically.
+- If no folder has been saved anywhere, go to Manage categories → Configure source folder (one-time setup). This is a fallback only.
+- Refresh data manually with the top-right button or wait for the five-minute automatic refresh while the page is open.
+- Category assignments sync to the same Microsoft account's OneDrive app folder.
 
-- 404: Pages deployment may take several minutes; ensure both files are at repository root.
-- `redirect_uri_mismatch`: verify the Microsoft SPA redirect URI exactly matches the website URL (including trailing slash).
-- `Access denied`: check `Files.Read` delegated permission and sign in to the Hotmail account that owns the OneDrive folder.
-- Blank chart: review slot category assignments, source CSV column names, or duplicate report files.
+## Privacy
 
-## Category behaviour
+The public GitHub Pages site contains only HTML and JavaScript, not appointment CSV data. OneDrive CSVs are fetched in browser memory after authentication. The app requests delegated `Files.Read` and `Files.ReadWrite.AppFolder`. Never commit tokens, passwords, patient data or CSV files to GitHub.
 
-- Assign slot types on **Manage categories** to Urgent, Routine or Uncategorised.
-- No automatic keyword assignment is applied. Uncategorised is explicitly retained and excluded from both charts.
-- Category changes update charts immediately and are saved to the app-only OneDrive settings file `weekly-demand-categories.json`.
-- Existing local settings are retained if cloud settings do not yet exist. Change an assignment once to save them to OneDrive.
-- Export a JSON backup before replacing the old website files.
+## Known limitations
+
+The selected source folder is tied to the signed-in Microsoft account. Multiple simultaneous category edits on different devices may overwrite each other. Browser testing with Microsoft sign-in and live OneDrive is still required. Overlapping CSV exports may double-count appointments.
