@@ -31,3 +31,6 @@ The selected source folder is tied to the signed-in Microsoft account. Multiple 
 
 ## Login fix (October 2026)
 Uses the MSAL Browser 2.38.4 UMD script path instead of the previous 3.x CDN URL, and guards the sign-in button if authentication has not initialised. Upload both index.html and app.js. Clear the browser cache with Ctrl+F5.
+
+
+Green toggle update: switches are pill-shaped, green when enabled and grey when disabled.
