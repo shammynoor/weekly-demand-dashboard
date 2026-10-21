@@ -82,3 +82,7 @@ Category cards now have matching compact Rename and Delete buttons. Slot-count b
 
 ## Clinician type chart filter
 The main charts page now has a clinician type dropdown populated from the user-created Clinician type categories. Select All clinician types (default), any named type, or Uncategorised. All three charts and their axes/averages recalculate using only matching slot types. The selection is a local view filter, not saved to OneDrive; clinician category definitions and assignments remain synced as before.
+
+
+## Chart fit and refresh feedback
+Charts now size to the available panel width on initial render, window resizing, and switching back from Manage categories. Refresh data displays an animated progress indicator and file-by-file progress, then success or failure beside the button.
