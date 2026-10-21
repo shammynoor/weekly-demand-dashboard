@@ -86,3 +86,7 @@ The main charts page now has a clinician type dropdown populated from the user-c
 
 ## Chart fit and refresh feedback
 Charts now size to the available panel width on initial render, window resizing, and switching back from Manage categories. Refresh data displays an animated progress indicator and file-by-file progress, then success or failure beside the button.
+
+
+## Current week visual update
+The incomplete current-week segment uses closely spaced dots and a sampled cubic curve based on adjacent weekly values, retaining the hollow current-week endpoint. Applies to all three charts only when Show current week is enabled.

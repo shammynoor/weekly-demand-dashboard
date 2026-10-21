@@ -390,8 +390,28 @@ function drawCategoryChart(target,category,palette,sharedMax){
   traces.push({name:String(year),x:complete.map(x),y:complete.map(p=>p.count),customdata:complete.map(p=>p.date),type:'scatter',mode:'lines+markers',connectgaps:true,opacity,line:{color:colour,width,shape:'spline',smoothing:0.65},marker:{size:year===latestYear?5:3},hovertemplate:'%{customdata}<br><b>%{y:,} appointments</b><extra>'+year+'</extra>'});
   if(partial){
    const previous=complete[complete.length-1];
-   const partialPoints=previous?[previous,last]:[last];
-   traces.push({name:String(year)+' — partial week',x:partialPoints.map(x),y:partialPoints.map(p=>p.count),customdata:partialPoints.map(p=>p.date),type:'scatter',mode:'lines+markers',showlegend:false,opacity,line:{color:colour,width,dash:'dash'},marker:{size:partialPoints.map((_,idx)=>idx===partialPoints.length-1?10:0),symbol:partialPoints.map((_,idx)=>idx===partialPoints.length-1?'circle-open':'circle'),color:colour,line:{color:colour,width:2}},hovertemplate:'%{customdata}<br><b>%{y:,} appointments</b><br>Current week (incomplete)<extra>'+year+'</extra>'});
+   const beforePrevious=complete[complete.length-2];
+   // Sample a cubic Hermite curve for the final segment. Plotly's spline
+   // becomes a straight line with only two points, so supply interpolated
+   // positions while keeping the actual recorded endpoint unchanged.
+   const segment=[];
+   if(previous){
+    const toNumber=p=>continuousMode?Date.parse(p.date):x(p);
+    const x0=toNumber(previous),x1=toNumber(last);
+    const span=x1-x0;
+    const slope=beforePrevious&&x0!==toNumber(beforePrevious)
+     ?(last.count-beforePrevious.count)/(x1-toNumber(beforePrevious))*span
+     :(last.count-previous.count);
+    const endSlope=last.count-previous.count;
+    for(let k=0;k<=24;k++){
+     const t=k/24,t2=t*t,t3=t2*t;
+     const y=(2*t3-3*t2+1)*previous.count+(t3-2*t2+t)*slope+(-2*t3+3*t2)*last.count+(t3-t2)*endSlope;
+     const xpos=x0+span*t;
+     segment.push({x:continuousMode?new Date(xpos).toISOString():xpos,y, date:k===24?last.date:previous.date});
+    }
+   }else segment.push({x:x(last),y:last.count,date:last.date});
+   traces.push({name:String(year)+' — partial week',x:segment.map(p=>p.x),y:segment.map(p=>p.y),customdata:segment.map(p=>p.date),type:'scatter',mode:'lines',showlegend:false,opacity,line:{color:colour,width,dash:'dot',shape:'linear'},hoverinfo:'skip'});
+   traces.push({name:String(year)+' — current week (incomplete)',x:[x(last)],y:[last.count],customdata:[last.date],type:'scatter',mode:'markers',showlegend:false,opacity,marker:{size:11,symbol:'circle-open',color:colour,line:{color:colour,width:2.5}},hovertemplate:'%{customdata}<br><b>%{y:,} appointments</b><br>Current week (incomplete)<extra>'+year+'</extra>'});
   }
  }
  // One flat average, calculated from every displayed week across every year.
