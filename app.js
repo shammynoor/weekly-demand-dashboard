@@ -238,8 +238,7 @@ function renderDropEditor(dimension){
   zone.setAttribute('role','group');zone.setAttribute('aria-label','Drop slot types into '+name);
   const head=document.createElement('div');head.className='drop-zone-header';
   const title=document.createElement('strong');title.textContent=name;
-  const count=document.createElement('span');count.className='drop-count';count.textContent=types.filter(t=>current(t)===name).length+' slots';
-  head.append(title,count);
+  head.append(title);
   if(!isPool){
    const rename=document.createElement('button');rename.type='button';rename.className='drop-rename';rename.textContent='Rename';
    rename.setAttribute('aria-label','Rename '+name);

@@ -75,3 +75,6 @@ Manage categories now has Urgency, Clinician type and Consult mode tabs. Only on
 
 ## Rename categories
 Each named drag-and-drop category box now has a Rename button. Renaming preserves its slot assignments in all three classification types. Click Save to synchronise to OneDrive.
+
+
+Category cards now have matching compact Rename and Delete buttons. Slot-count badges have been removed.
