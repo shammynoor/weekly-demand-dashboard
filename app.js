@@ -241,6 +241,26 @@ function renderDropEditor(dimension){
   const count=document.createElement('span');count.className='drop-count';count.textContent=types.filter(t=>current(t)===name).length+' slots';
   head.append(title,count);
   if(!isPool){
+   const rename=document.createElement('button');rename.type='button';rename.className='drop-rename';rename.textContent='Rename';
+   rename.setAttribute('aria-label','Rename '+name);
+   rename.onclick=e=>{
+    e.stopPropagation();
+    const proposed=prompt('Rename category “'+name+'”:',name);
+    if(proposed===null)return;
+    const next=proposed.trim();
+    if(!next||next.toLowerCase()==='uncategorised'||cfg.names.some(c=>c!==name&&c.toLowerCase()===next.toLowerCase())){
+     alert('Enter a unique category name (Uncategorised is reserved).');return;
+    }
+    if(next===name)return;
+    // Update both the category and all existing assignments atomically.
+    const index=cfg.names.indexOf(name);if(index<0)return;
+    cfg.names[index]=next;
+    for(const slot of Object.keys(cfg.assign))if(cfg.assign[slot]===name)cfg.assign[slot]=next;
+    // Preserve the selected urgency filter when its category name changes.
+    if(dimension==='urgency')for(const option of slots.options)if(option.value===name)option.value=next;
+    saveCategories();if(dimension==='urgency')rebuildCategoryFilter();cfg.render();
+   };
+   head.append(rename);
    const del=document.createElement('button');del.type='button';del.className='drop-delete';del.textContent='Delete';
    del.setAttribute('aria-label','Delete '+name);
    del.onclick=e=>{e.stopPropagation();if(!confirm('Delete category “'+name+'”? Its slot types will become Uncategorised.'))return;

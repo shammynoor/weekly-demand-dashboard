@@ -71,3 +71,7 @@ Fixed a JavaScript scoping error: the category drag-and-drop renderer was incorr
 
 ## Category tabs
 Manage categories now has Urgency, Clinician type and Consult mode tabs. Only one drag-and-drop board is displayed at a time. Save remains available beneath the selected board.
+
+
+## Rename categories
+Each named drag-and-drop category box now has a Rename button. Renaming preserves its slot assignments in all three classification types. Click Save to synchronise to OneDrive.
