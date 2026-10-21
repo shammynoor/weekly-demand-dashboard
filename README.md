@@ -13,7 +13,7 @@
 - Application (client) ID: `ba2bc895-4213-447c-ba62-d7edec6e8173`
 - Supported account types: Personal Microsoft accounts
 - Redirect URI (SPA): `https://shammynoor.github.io/weekly-demand-dashboard/`
-- Delegated Microsoft Graph permission: `Files.Read`
+- Delegated Microsoft Graph permissions: `Files.Read` and `Files.ReadWrite.AppFolder`
 - No client secret. Browser authentication uses MSAL with PKCE.
 
 ## Data behaviour
@@ -22,7 +22,7 @@
 - Refresh button forces reload; background check every 5 minutes **while the page remains open**.
 - Only CSV files and metadata are fetched; nothing is uploaded to GitHub.
 - Rows are aggregated in memory; the dashboard does not save raw CSV content to browser storage.
-- The selected folder ID and category assignments are saved **per browser** in localStorage. You must sign in and may need to choose the folder on each new browser.
+- Category assignments are saved to the OneDrive app folder and restored after Microsoft sign-in on each computer. The selected CSV folder is remembered per browser. If settings sync fails, a status message appears on the Manage categories page.
 - CSV format: `Appointment Date`, `Appointment Time`, `Booked Time to Slot Time` (minutes), `Slot Type`, `Availability`. Blank appointment dates/times are forward-filled per file. Only `Booked` rows with valid lead times are included. Booking week is calculated from appointment date/time minus lead time.
 - Duplicate appointments appearing in multiple CSV exports **will be double-counted**. Use non-overlapping CSV exports or deduplicate them before adding to the folder.
 - `Urgent` and `Routine` default slot classification is inferred from slot names; review and correct under **Manage categories**. You can import existing category settings using JSON export from your old dashboard.
@@ -36,3 +36,11 @@
 - `redirect_uri_mismatch`: verify the Microsoft SPA redirect URI exactly matches the website URL (including trailing slash).
 - `Access denied`: check `Files.Read` delegated permission and sign in to the Hotmail account that owns the OneDrive folder.
 - Blank chart: review slot category assignments, source CSV column names, or duplicate report files.
+
+## Category behaviour
+
+- Assign slot types on **Manage categories** to Urgent, Routine or Uncategorised.
+- No automatic keyword assignment is applied. Uncategorised is explicitly retained and excluded from both charts.
+- Category changes update charts immediately and are saved to the app-only OneDrive settings file `weekly-demand-categories.json`.
+- Existing local settings are retained if cloud settings do not yet exist. Change an assignment once to save them to OneDrive.
+- Export a JSON backup before replacing the old website files.
