@@ -78,3 +78,7 @@ Each named drag-and-drop category box now has a Rename button. Renaming preserve
 
 
 Category cards now have matching compact Rename and Delete buttons. Slot-count badges have been removed.
+
+
+## Clinician type chart filter
+The main charts page now has a clinician type dropdown populated from the user-created Clinician type categories. Select All clinician types (default), any named type, or Uncategorised. All three charts and their axes/averages recalculate using only matching slot types. The selection is a local view filter, not saved to OneDrive; clinician category definitions and assignments remain synced as before.

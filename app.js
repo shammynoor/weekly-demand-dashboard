@@ -309,11 +309,30 @@ $('refreshData').onclick=()=>loadFolder(true);
 setInterval(()=>{if(activeAccount&&selectedFolder&&!busy)loadFolder(false)},5*60*1000);
 const holidayDates=['2025-01-01','2025-04-18','2025-04-21','2025-05-05','2025-05-26','2025-08-25','2025-12-25','2025-12-26','2026-01-01','2026-04-03','2026-04-06','2026-05-04','2026-05-25','2026-08-31','2026-12-25','2026-12-28'];
 function mondayOf(dateString){const d=new Date(dateString+'T12:00:00Z');const day=d.getUTCDay();d.setUTCDate(d.getUTCDate()-((day+6)%7));return d.toISOString().slice(0,10)}
+const CLINICIAN_ALL='__all__';
+let clinicianChartSelection=CLINICIAN_ALL;
+function updateClinicianChartFilter(){
+ const select=$('clinicianChartFilter');
+ if(!select)return;
+ const available=[...clinicianCategoryNames,'Uncategorised'];
+ if(clinicianChartSelection!==CLINICIAN_ALL&&!available.includes(clinicianChartSelection))clinicianChartSelection=CLINICIAN_ALL;
+ select.replaceChildren();
+ const all=document.createElement('option');all.value=CLINICIAN_ALL;all.textContent='All clinician types';select.append(all);
+ for(const name of available){const option=document.createElement('option');option.value=name;option.textContent=name;select.append(option)}
+ select.value=clinicianChartSelection;
+}
+function clinicianMatches(slot){
+ if(clinicianChartSelection===CLINICIAN_ALL)return true;
+ const name=clinicianAssignments[slot];
+ const assigned=clinicianCategoryNames.includes(name)?name:'Uncategorised';
+ return assigned===clinicianChartSelection;
+}
+$('clinicianChartFilter').addEventListener('change',event=>{clinicianChartSelection=event.target.value;refresh()});
 const bankHolidayWeeks=new Set(holidayDates.map(mondayOf));let excludeBankHolidays=true;
 document.getElementById('excludeBH').onchange=e=>{excludeBankHolidays=!e.target.checked;refresh()};
 function isoWeek(weekStart){const d=new Date(weekStart+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+3);const year=d.getUTCFullYear();const jan4=new Date(Date.UTC(year,0,4,12));jan4.setUTCDate(jan4.getUTCDate()-((jan4.getUTCDay()+6)%7));const week=1+Math.round((d-jan4)/604800000);return {year,week}}
 const colours=['#1475b8','#e57a28','#159a78','#9053b4','#c64c69','#65748b'];
-let current=[];let continuousMode=false;let showCurrentWeek=true;const thisWeek=mondayOf((()=>{const parts=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/London',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());const v=Object.fromEntries(parts.map(p=>[p.type,p.value]));return `${v.year}-${v.month}-${v.day}`})());document.getElementById('currentWeekToggle').onchange=e=>{showCurrentWeek=e.target.checked;refresh()};document.getElementById('displayMode').onchange=e=>{continuousMode=e.target.checked;document.getElementById('timelineValue').textContent=continuousMode?'Continuous':'Superimposed';refresh()};function refresh(){const basis='bookedWeek';const activeWeeks=[...new Set(records.map(r=>r[basis]))].sort();const selectedWeeks=activeWeeks.filter(w=>w>='2025-07-07'&&(showCurrentWeek||w!==thisWeek)&&(!excludeBankHolidays||!bankHolidayWeeks.has(w)));const sums=new Map(selectedWeeks.map(w=>[w,0]));for(const r of records){if(!sums.has(r[basis]))continue;if(r.status!=='Booked')continue;sums.set(r[basis],sums.get(r[basis])+r.count)}current=[...sums].map(([week,count])=>({week,count,...isoWeek(week)}));const total=current.reduce((a,r)=>a+r.count,0);
+let current=[];let continuousMode=false;let showCurrentWeek=true;const thisWeek=mondayOf((()=>{const parts=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/London',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());const v=Object.fromEntries(parts.map(p=>[p.type,p.value]));return `${v.year}-${v.month}-${v.day}`})());document.getElementById('currentWeekToggle').onchange=e=>{showCurrentWeek=e.target.checked;refresh()};document.getElementById('displayMode').onchange=e=>{continuousMode=e.target.checked;document.getElementById('timelineValue').textContent=continuousMode?'Continuous':'Superimposed';refresh()};function refresh(){updateClinicianChartFilter();const basis='bookedWeek';const activeWeeks=[...new Set(records.map(r=>r[basis]))].sort();const selectedWeeks=activeWeeks.filter(w=>w>='2025-07-07'&&(showCurrentWeek||w!==thisWeek)&&(!excludeBankHolidays||!bankHolidayWeeks.has(w)));const sums=new Map(selectedWeeks.map(w=>[w,0]));for(const r of records){if(!sums.has(r[basis]))continue;if(r.status!=='Booked'||!clinicianMatches(r.slot))continue;sums.set(r[basis],sums.get(r[basis])+r.count)}current=[...sums].map(([week,count])=>({week,count,...isoWeek(week)}));const total=current.reduce((a,r)=>a+r.count,0);
 const yearColours={urgent:['#8b111e','#d43846','#f08088','#6f0712'],routine:['#075d34','#199c5a','#79c99c','#a1d9b4'],followup:['#124b9b','#2675d2','#79acee','#a9cdf6']};
 function monthPosition(date){const d=new Date(date+'T12:00:00Z');const month=d.getUTCMonth();const days=new Date(Date.UTC(d.getUTCFullYear(),month+1,0)).getUTCDate();return month+(d.getUTCDate()-1)/days}
 const axis={type:'linear',range:[0,12],title:'Month of year',tickmode:'array',tickvals:Array.from({length:12},(_,i)=>i+0.5),ticktext:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],gridcolor:'#edf1f5'};
@@ -322,7 +341,7 @@ function drawCategoryChart(target,category,palette,sharedMax){
  const totals=new Map(selectedWeeks.map(w=>[w,0]));
  if(enabled)for(const r of records){
   if(!totals.has(r[basis]))continue;
-  if(r.status!=='Booked')continue;
+  if(r.status!=='Booked'||!clinicianMatches(r.slot))continue;
   if((assignments[r.slot]||'Uncategorised').trim().toLowerCase().replace(/[\s-]+/g,'')!==category)continue;
   totals.set(r[basis],totals.get(r[basis])+r.count);
  }
@@ -362,7 +381,7 @@ for(const category of ['urgent','routine','followup']){
  const totals=new Map(selectedWeeks.map(w=>[w,0]));
  for(const r of records){
   if(!totals.has(r[basis]))continue;
-  if(r.status!=='Booked')continue;
+  if(r.status!=='Booked'||!clinicianMatches(r.slot))continue;
   if((assignments[r.slot]||'Uncategorised').trim().toLowerCase().replace(/[\s-]+/g,'')!==category)continue;
   totals.set(r[basis],totals.get(r[basis])+r.count);
  }
@@ -379,7 +398,7 @@ const followupStep=([1,2,5,10].find(v=>v*followupMagnitude>=followupStepRaw)||10
 drawCategoryChart('followupChart','followup',yearColours.followup,5*followupStep);
 }
 const STORAGE_KEY='appointment-dashboard-categories-v1';let categoryNames=['Urgent','Routine','Follow up'],assignments={};try{const saved=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');categoryNames=Array.isArray(saved.categories)&&saved.categories.length?saved.categories.filter(x=>typeof x==='string'&&x.trim()&&x!=='Uncategorised'):['Urgent','Routine','Follow up'];assignments=saved.assignments&&typeof saved.assignments==='object'?saved.assignments:{};}catch(e){}let clinicianCategoryNames=[],clinicianAssignments={};try{const local=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');if(Array.isArray(local.clinicianCategories))clinicianCategoryNames=validCategoryNames(local.clinicianCategories);if(local.clinicianAssignments)clinicianAssignments=validAssignments(local.clinicianAssignments,clinicianCategoryNames)}catch(e){}let consultCategoryNames=[],consultAssignments={};try{const local=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');if(Array.isArray(local.consultCategories))consultCategoryNames=validCategoryNames(local.consultCategories);if(local.consultAssignments)consultAssignments=validAssignments(local.consultAssignments,consultCategoryNames)}catch(e){}function ensureFollowUpCategory(){if(!categoryNames.some(c=>c.toLowerCase().replace(/[\s-]+/g,'')==='followup'))categoryNames.push('Follow up')}ensureFollowUpCategory();function guessCategory(t){return /RED|YELLOW|AMBER|URGENT|SAME DAY|ACUTE/i.test(t)?'Urgent':/GREEN|FOLLOW UP|ROUTINE/i.test(t)?'Routine':null}function saveCategories(sync=true){try{localStorage.setItem(STORAGE_KEY,JSON.stringify({categories:categoryNames,assignments,clinicianCategories:clinicianCategoryNames,clinicianAssignments,consultCategories:consultCategoryNames,consultAssignments}));}catch(e){alert('Could not save settings in this browser. Please try again.')}if(sync)markCategoryDirty()}function allCategories(){return [...categoryNames,'Uncategorised']}function rebuildCategoryFilter(){const old=new Set([...slots.selectedOptions].map(o=>o.value));slots.replaceChildren();for(const c of allCategories()){const o=document.createElement('option');o.value=c;o.textContent=c;o.selected=old.has(c);slots.append(o)}refresh()}function renderEditor(){renderDropEditor('urgency')}document.getElementById('addCategory').onclick=()=>{const el=document.getElementById('newCategory');const c=el.value.trim();if(!c)return;if(c.toLowerCase()==='uncategorised'||categoryNames.some(x=>x.toLowerCase()===c.toLowerCase())){alert('This category name already exists or is reserved.');return}categoryNames.push(c);el.value='';saveCategories();rebuildCategoryFilter();renderEditor()};document.getElementById('newCategory').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('addCategory').click()});document.getElementById('slotSearch').addEventListener('input',renderEditor);function showPage(which){document.getElementById('chartPage').classList.toggle('hidden',which!=='chart');document.getElementById('categoryPage').classList.toggle('hidden',which!=='categories');document.getElementById('navChart').classList.toggle('active',which==='chart');document.getElementById('navCategories').classList.toggle('active',which==='categories');if(which==='chart')setTimeout(()=>{refresh();Plotly.Plots.resize('urgentChart');Plotly.Plots.resize('routineChart');Plotly.Plots.resize('followupChart')},0);else {renderEditor();renderClinicianEditor();renderConsultEditor()}}document.getElementById('navChart').onclick=()=>showPage('chart');document.getElementById('navCategories').onclick=()=>showPage('categories');document.getElementById('saveToOneDrive').onclick=()=>{void saveCloudCategories({manual:true})};
-function renderClinicianEditor(){renderDropEditor('clinician')}
+function renderClinicianEditor(){renderDropEditor('clinician');updateClinicianChartFilter();refresh()}
 $('addClinicianCategory').onclick=()=>{const el=$('newClinicianCategory');const c=el.value.trim();if(!c)return;if(c.toLowerCase()==='uncategorised'||clinicianCategoryNames.some(x=>x.toLowerCase()===c.toLowerCase())){alert('This clinician category name already exists or is reserved.');return}clinicianCategoryNames.push(c);el.value='';saveCategories();renderClinicianEditor()};
 $('newClinicianCategory').addEventListener('keydown',e=>{if(e.key==='Enter')$('addClinicianCategory').click()});
 $('clinicianSlotSearch').addEventListener('input',renderClinicianEditor);
