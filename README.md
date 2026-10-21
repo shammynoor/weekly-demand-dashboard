@@ -102,3 +102,7 @@ The Filters box has a Monthly data switch. Monthly totals use actual booking dat
 
 ### Month or week level data
 The toggle is labelled Month or week level data, with Week and Month indicators. In Month mode Include Bank Holiday Weeks is forced on and disabled. Returning to Week mode restores the user's previous bank-holiday toggle setting.
+
+
+## Seasonal backgrounds
+Very light grey bands show winter (Dec–Feb), spring (Mar–May), summer (Jun–Aug), and autumn (Sep–Nov) on all three charts, in both weekly/monthly and superimposed/continuous views.
