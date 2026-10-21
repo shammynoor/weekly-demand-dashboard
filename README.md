@@ -40,3 +40,6 @@ Default: Include Bank Holiday Weeks is Off; bank-holiday weeks are excluded unti
 
 ## Sign-in persistence fix
 Microsoft authentication now uses localStorage to remember the signed-in account between tabs and browser restarts. Background OneDrive token renewal failures no longer trigger an unexpected sign-in redirect; they display a status error instead. Login initialization is guarded against duplicate calls. Browsers that block site storage or clear it on exit may still require sign-in. No access tokens are included in the GitHub files.
+
+## Follow-up graph
+A third blue Follow-up appointments chart appears below Urgent. Assign slot types to the **Follow up** category in Manage Categories and click **Save** to share across devices. The chart uses the same week exclusions, comparison modes and shared Y-axis scale as the other charts.
