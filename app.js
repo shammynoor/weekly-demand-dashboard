@@ -21,9 +21,10 @@ function setSync(s){$('syncStatus').textContent=s}
 function setButtons(){const logged=!!activeAccount;$('loginScreen').classList.toggle('hidden',logged);$('dashboardShell').classList.toggle('hidden',!logged);$('signIn').disabled=logged;$('signOut').disabled=!logged;$('chooseFolder').disabled=!logged;$('refreshData').disabled=!logged||!selectedFolder||busy}
 async function initAuth(){
  try{
-  if(!window.msal||!window.Plotly||!window.Papa)throw Error('Required browser libraries did not load. Check internet access or browser blocking.');
+  if(!window.msal)throw Error('Microsoft sign-in library did not load. Please refresh with Ctrl+F5 or check browser content blocking.');
+  if(!window.Plotly||!window.Papa)throw Error('Chart or CSV library did not load. Please refresh with Ctrl+F5.');
   auth=new msal.PublicClientApplication({auth:{clientId:CLIENT_ID,authority:'https://login.microsoftonline.com/consumers',redirectUri:REDIRECT_URI,navigateToLoginRequestUrl:false},cache:{cacheLocation:'sessionStorage'}});
-  await auth.initialize();const result=await auth.handleRedirectPromise();
+  if(typeof auth.initialize==='function')await auth.initialize();const result=await auth.handleRedirectPromise();
   activeAccount=result?.account||auth.getAllAccounts()[0]||null;
   if(activeAccount){
    auth.setActiveAccount(activeAccount);
@@ -57,7 +58,7 @@ async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;
 
  saveCategories(false);lastFingerprint=fingerprint;rebuildCategoryFilter();renderEditor();refresh();setSync(`${items.length} CSV files · ${valid.toLocaleString('en-GB')} booked rows counted · ${skipped.toLocaleString('en-GB')} skipped · Updated ${new Date().toLocaleString('en-GB')}`)
  }catch(e){setSync('Refresh failed: '+e.message)}finally{busy=false;setButtons()}}
-$('signIn').onclick=async()=>{try{await auth.loginRedirect({scopes:SCOPES,prompt:'select_account'})}catch(e){setStatus('Sign-in failed: '+e.message)}};
+$('signIn').onclick=async()=>{try{if(!auth){await initAuth();if(!auth)throw Error('Microsoft sign-in is still unavailable. Refresh the page (Ctrl+F5).')}await auth.loginRedirect({scopes:SCOPES,prompt:'select_account'})}catch(e){setStatus('Sign-in failed: '+e.message)}};
 $('signOut').onclick=async()=>{if(!activeAccount)return;try{await auth.logoutRedirect({account:activeAccount,postLogoutRedirectUri:REDIRECT_URI})}catch(e){setStatus('Sign-out failed: '+e.message)}};
 $('chooseFolder').onclick=showFolderPicker;
 $('sourceSetup').onclick=showFolderPicker;

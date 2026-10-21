@@ -27,3 +27,7 @@ The public GitHub Pages site contains only HTML and JavaScript, not appointment 
 ## Known limitations
 
 The selected source folder is tied to the signed-in Microsoft account. Multiple simultaneous category edits on different devices may overwrite each other. Browser testing with Microsoft sign-in and live OneDrive is still required. Overlapping CSV exports may double-count appointments.
+
+
+## Login fix (October 2026)
+Uses the MSAL Browser 2.38.4 UMD script path instead of the previous 3.x CDN URL, and guards the sign-in button if authentication has not initialised. Upload both index.html and app.js. Clear the browser cache with Ctrl+F5.
