@@ -279,6 +279,7 @@ function renderDropEditor(dimension){
     // Update both the category and all existing assignments atomically.
     const index=cfg.names.indexOf(name);if(index<0)return;
     cfg.names[index]=next;
+    if(dimension==='clinician'){if(disabledClinicianTypes.delete(name))disabledClinicianTypes.add(next);lastClinicianFilterNames=[];}
     for(const slot of Object.keys(cfg.assign))if(cfg.assign[slot]===name)cfg.assign[slot]=next;
     // Preserve the selected urgency filter when its category name changes.
     if(dimension==='urgency')for(const option of slots.options)if(option.value===name)option.value=next;
@@ -291,6 +292,7 @@ function renderDropEditor(dimension){
     if(dimension==='urgency'){categoryNames=categoryNames.filter(c=>c!==name);for(const t of types)if(assignments[t]===name)assignments[t]='Uncategorised'}
     else if(dimension==='clinician'){clinicianCategoryNames=clinicianCategoryNames.filter(c=>c!==name);for(const t of types)if(clinicianAssignments[t]===name)clinicianAssignments[t]='Uncategorised'}
     else{consultCategoryNames=consultCategoryNames.filter(c=>c!==name);for(const t of types)if(consultAssignments[t]===name)consultAssignments[t]='Uncategorised'}
+    if(dimension==='clinician'){disabledClinicianTypes.delete(name);lastClinicianFilterNames=[];}
     saveCategories();if(dimension==='urgency')rebuildCategoryFilter();cfg.render();
    };head.append(del);
   }
@@ -334,25 +336,33 @@ $('refreshData').onclick=()=>loadFolder(true);
 setInterval(()=>{if(activeAccount&&selectedFolder&&!busy)loadFolder(false)},5*60*1000);
 const holidayDates=['2025-01-01','2025-04-18','2025-04-21','2025-05-05','2025-05-26','2025-08-25','2025-12-25','2025-12-26','2026-01-01','2026-04-03','2026-04-06','2026-05-04','2026-05-25','2026-08-31','2026-12-25','2026-12-28'];
 function mondayOf(dateString){const d=new Date(dateString+'T12:00:00Z');const day=d.getUTCDay();d.setUTCDate(d.getUTCDate()-((day+6)%7));return d.toISOString().slice(0,10)}
-const CLINICIAN_ALL='__all__';
-let clinicianChartSelection=CLINICIAN_ALL;
+// Individual clinician category switches; every named category starts enabled.
+const disabledClinicianTypes=new Set();
+let lastClinicianFilterNames=[];
 function updateClinicianChartFilter(){
- const select=$('clinicianChartFilter');
- if(!select)return;
- const available=[...clinicianCategoryNames,'Uncategorised'];
- if(clinicianChartSelection!==CLINICIAN_ALL&&!available.includes(clinicianChartSelection))clinicianChartSelection=CLINICIAN_ALL;
- select.replaceChildren();
- const all=document.createElement('option');all.value=CLINICIAN_ALL;all.textContent='All clinician types';select.append(all);
- for(const name of available){const option=document.createElement('option');option.value=name;option.textContent=name;select.append(option)}
- select.value=clinicianChartSelection;
+ const root=$('clinicianChartFilters');if(!root)return;
+ const names=[...clinicianCategoryNames];
+ // Do not recreate switches during each chart refresh; retain focus and scroll position.
+ if(names.length===lastClinicianFilterNames.length&&names.every((n,i)=>n===lastClinicianFilterNames[i]))return;
+ lastClinicianFilterNames=names;
+ root.replaceChildren();
+ if(!names.length){const note=document.createElement('span');note.className='hint';note.textContent='Create clinician types in Manage categories.';root.append(note);return;}
+ for(const name of names){
+  const row=document.createElement('label');row.className='filter-row';
+  const switchEl=document.createElement('span');switchEl.className='switch';
+  const input=document.createElement('input');input.type='checkbox';input.setAttribute('role','switch');input.checked=!disabledClinicianTypes.has(name);input.setAttribute('aria-label','Include '+name);
+  const track=document.createElement('span');track.className='switch-track';
+  switchEl.append(input,track);
+  const title=document.createElement('span');title.textContent=name;
+  row.append(switchEl,title);root.append(row);
+  input.addEventListener('change',()=>{if(input.checked)disabledClinicianTypes.delete(name);else disabledClinicianTypes.add(name);refresh()});
+ }
 }
 function clinicianMatches(slot){
- if(clinicianChartSelection===CLINICIAN_ALL)return true;
  const name=clinicianAssignments[slot];
- const assigned=clinicianCategoryNames.includes(name)?name:'Uncategorised';
- return assigned===clinicianChartSelection;
+ // Uncategorised slots are not displayed as a filter option and are excluded.
+ return clinicianCategoryNames.includes(name)&&!disabledClinicianTypes.has(name);
 }
-$('clinicianChartFilter').addEventListener('change',event=>{clinicianChartSelection=event.target.value;refresh()});
 const bankHolidayWeeks=new Set(holidayDates.map(mondayOf));let excludeBankHolidays=true;
 document.getElementById('excludeBH').onchange=e=>{excludeBankHolidays=!e.target.checked;refresh()};
 function isoWeek(weekStart){const d=new Date(weekStart+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+3);const year=d.getUTCFullYear();const jan4=new Date(Date.UTC(year,0,4,12));jan4.setUTCDate(jan4.getUTCDate()-((jan4.getUTCDay()+6)%7));const week=1+Math.round((d-jan4)/604800000);return {year,week}}

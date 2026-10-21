@@ -90,3 +90,7 @@ Charts now size to the available panel width on initial render, window resizing,
 
 ## Current week visual update
 The incomplete current-week segment uses closely spaced dots and a sampled cubic curve based on adjacent weekly values, retaining the hollow current-week endpoint. Applies to all three charts only when Show current week is enabled.
+
+
+## Clinician type switches
+The chart page shows a separate Clinician type filter panel alongside the existing Filters panel. Every user-created clinician category has its own on/off switch, initially on. Switches filter all three charts. Uncategorised is not shown and its slots are excluded from these filtered charts. Switch state remains while navigating pages, and renaming a clinician type preserves its switch setting.
