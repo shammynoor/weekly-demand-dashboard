@@ -98,3 +98,7 @@ The chart page shows a separate Clinician type filter panel alongside the existi
 
 ## Weekly/monthly charts
 The Filters box has a Monthly data switch. Monthly totals use actual booking dates and the current-period label changes to Show current month. All three graphs update. Bank-holiday-week exclusions continue to apply.
+
+
+### Month or week level data
+The toggle is labelled Month or week level data, with Week and Month indicators. In Month mode Include Bank Holiday Weeks is forced on and disabled. Returning to Week mode restores the user's previous bank-holiday toggle setting.

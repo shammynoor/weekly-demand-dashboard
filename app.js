@@ -370,11 +370,20 @@ const colours=['#1475b8','#e57a28','#159a78','#9053b4','#c64c69','#65748b'];
 let current=[];let continuousMode=false;let showCurrentWeek=true;let monthlyMode=false;
 const todayLondon=(()=>{const parts=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/London',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());const v=Object.fromEntries(parts.map(p=>[p.type,p.value]));return `${v.year}-${v.month}-${v.day}`})();
 const thisWeek=mondayOf(todayLondon),thisMonth=todayLondon.slice(0,7);
-document.getElementById('periodMode').onchange=e=>{monthlyMode=e.target.checked;document.getElementById('periodModeValue').textContent=monthlyMode?'Monthly':'Weekly';document.getElementById('currentPeriodLabel').textContent=monthlyMode?'Show current month':'Show current week';refresh()};
+let savedWeeklyIncludeBankHolidays=document.getElementById('excludeBH').checked;
+document.getElementById('periodMode').onchange=e=>{
+ monthlyMode=e.target.checked;
+ const bankToggle=document.getElementById('excludeBH');
+ if(monthlyMode){savedWeeklyIncludeBankHolidays=bankToggle.checked;bankToggle.checked=true;bankToggle.disabled=true;excludeBankHolidays=false;}
+ else{bankToggle.disabled=false;bankToggle.checked=savedWeeklyIncludeBankHolidays;excludeBankHolidays=!bankToggle.checked;}
+ document.getElementById('periodModeValue').textContent=monthlyMode?'Month':'Week';
+ document.getElementById('currentPeriodLabel').textContent=monthlyMode?'Show current month':'Show current week';
+ refresh();
+};
 document.getElementById('currentWeekToggle').onchange=e=>{showCurrentWeek=e.target.checked;refresh()};
 document.getElementById('displayMode').onchange=e=>{continuousMode=e.target.checked;document.getElementById('timelineValue').textContent=continuousMode?'Continuous':'Superimposed';refresh()};
 function periodKey(r){return monthlyMode?r.bookedDay?.slice(0,7):r.bookedWeek}
-function includedRecord(r){return r.status==='Booked'&&clinicianMatches(r.slot)&&(!excludeBankHolidays||!bankHolidayWeeks.has(r.bookedWeek))}
+function includedRecord(r){return r.status==='Booked'&&clinicianMatches(r.slot)&&(monthlyMode||!excludeBankHolidays||!bankHolidayWeeks.has(r.bookedWeek))}
 function monthOfPeriod(p){return monthlyMode?p+'-01':p}
 function periodIsCurrent(p){return p===(monthlyMode?thisMonth:thisWeek)}
 function refresh(){updateClinicianChartFilter();
