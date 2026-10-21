@@ -372,3 +372,29 @@ rebuildCategoryFilter();renderEditor();renderClinicianEditor();renderConsultEdit
 refresh();
 
 initAuth();
+
+// Show one category classification at a time; the Save button stays visible.
+(function setupCategoryTabs(){
+ const buttons=Array.from(document.querySelectorAll('[data-category-tab]'));
+ const panels=Array.from(document.querySelectorAll('.category-tab-panel'));
+ function activate(target){
+  for(const button of buttons){
+   const selected=button.dataset.categoryTab===target;
+   button.classList.toggle('active',selected);
+   button.setAttribute('aria-selected',String(selected));
+   button.tabIndex=selected?0:-1;
+  }
+  for(const panel of panels)panel.classList.toggle('hidden',panel.id!==target);
+ }
+ for(const button of buttons){
+  button.addEventListener('click',()=>activate(button.dataset.categoryTab));
+  button.addEventListener('keydown',event=>{
+   if(event.key!=='ArrowRight'&&event.key!=='ArrowLeft')return;
+   event.preventDefault();
+   const offset=event.key==='ArrowRight'?1:-1;
+   const next=buttons[(buttons.indexOf(button)+offset+buttons.length)%buttons.length];
+   activate(next.dataset.categoryTab);next.focus();
+  });
+ }
+ activate('tabUrgency');
+})();

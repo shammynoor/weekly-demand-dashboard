@@ -67,3 +67,7 @@ Keeps the dashboard visible during background OneDrive loading and restores the 
 
 ## Drag-and-drop repair
 Fixed a JavaScript scoping error: the category drag-and-drop renderer was incorrectly declared inside the CSV loading function, preventing the editor from rendering reliably. Authentication display is now latched once an account is established so a background render cannot replace graphs with the sign-in screen. 
+
+
+## Category tabs
+Manage categories now has Urgency, Clinician type and Consult mode tabs. Only one drag-and-drop board is displayed at a time. Save remains available beneath the selected board.
