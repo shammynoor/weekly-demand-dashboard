@@ -43,3 +43,6 @@ Microsoft authentication now uses localStorage to remember the signed-in account
 
 ## Follow-up graph
 A third blue Follow-up appointments chart appears below Urgent. Assign slot types to the **Follow up** category in Manage Categories and click **Save** to share across devices. The chart uses the same week exclusions, comparison modes and shared Y-axis scale as the other charts.
+
+### Follow-up chart visibility fix
+The blue chart now has its own Y-axis scale, so small follow-up volumes are visible. If no slot types are assigned to Follow up, the chart shows an explanation rather than an unexplained flat line. Assign the relevant slot types in Manage Categories and click Save.

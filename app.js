@@ -217,6 +217,7 @@ function drawCategoryChart(target,category,palette,sharedMax){
  const years=[...new Set(points.map(p=>p.year))].sort();
  const latestYear=years.length?Math.max(...years):2026;
  const values=points.map(p=>p.count);
+ const hasAppointments=values.some(v=>v>0);
  const average=values.length?values.reduce((sum,v)=>sum+v,0)/values.length:0;
  const traces=years.map((year,i)=>{
   const data=points.filter(p=>p.year===year).sort((a,b)=>a.date.localeCompare(b.date));
@@ -226,9 +227,10 @@ function drawCategoryChart(target,category,palette,sharedMax){
  });
  // One flat average, calculated from every displayed week across every year.
  traces.push({name:'All-years weekly average ('+Math.round(average).toLocaleString('en-GB')+')',x:continuousMode?[selectedWeeks[0]||'2025-07-07',selectedWeeks[selectedWeeks.length-1]||'2025-07-14']:[0,12],y:[average,average],type:'scatter',mode:'lines',hoverinfo:'skip',opacity:0.58,line:{color:category==='urgent'?'#9c2633':category==='followup'?'#286cb8':'#23885b',width:2,dash:'dash'},showlegend:true});
- Plotly.react(target,traces,{margin:{l:58,r:12,t:32,b:65},paper_bgcolor:'white',plot_bgcolor:'white',legend:{orientation:'h',y:1.17,x:0},xaxis:continuousMode?{type:'date',title:'Booking date',tickformat:'%b %Y',gridcolor:'#edf1f5'}:axis,yaxis:{title:'Appointments',range:[0,sharedMax],dtick:sharedMax/5,gridcolor:'#edf1f5'},hovermode:'closest',annotations:enabled?[]:[{text:'Category excluded by filter',xref:'paper',yref:'paper',x:.5,y:.5,showarrow:false}]},{responsive:true,displaylogo:false});
+ Plotly.react(target,traces,{margin:{l:58,r:12,t:32,b:65},paper_bgcolor:'white',plot_bgcolor:'white',legend:{orientation:'h',y:1.17,x:0},xaxis:continuousMode?{type:'date',title:'Booking date',tickformat:'%b %Y',gridcolor:'#edf1f5'}:axis,yaxis:{title:'Appointments',range:[0,sharedMax],dtick:sharedMax/5,gridcolor:'#edf1f5'},hovermode:'closest',annotations:!hasAppointments&&category==='followup'?[{text:'No follow-up appointments found. In Manage Categories, assign slot types to Follow up and click Save.',xref:'paper',yref:'paper',x:.5,y:.55,showarrow:false,align:'center',font:{size:13,color:'#286cb8'}}]:[]},{responsive:true,displaylogo:false});
 }
 let maximum=0;
+let followupMaximum=0;
 
 for(const category of ['urgent','routine','followup']){
 
@@ -239,14 +241,17 @@ for(const category of ['urgent','routine','followup']){
   if((assignments[r.slot]||'Uncategorised').trim().toLowerCase().replace(/[\s-]+/g,'')!==category)continue;
   totals.set(r[basis],totals.get(r[basis])+r.count);
  }
- for(const count of totals.values())maximum=Math.max(maximum,count);
+ for(const count of totals.values()){maximum=Math.max(maximum,count);if(category==='followup')followupMaximum=Math.max(followupMaximum,count);}
 }
 const rawStep=Math.max(1,maximum/5),magnitude=Math.pow(10,Math.floor(Math.log10(rawStep)));
 const tickStep=([1,2,5,10].find(v=>v*magnitude>=rawStep)||10)*magnitude;
 const sharedMax=5*tickStep;
 drawCategoryChart('urgentChart','urgent',yearColours.urgent,sharedMax);
 drawCategoryChart('routineChart','routine',yearColours.routine,sharedMax);
-drawCategoryChart('followupChart','followup',yearColours.followup,sharedMax);
+const followupStepRaw=Math.max(1,followupMaximum/5);
+const followupMagnitude=Math.pow(10,Math.floor(Math.log10(followupStepRaw)));
+const followupStep=([1,2,5,10].find(v=>v*followupMagnitude>=followupStepRaw)||10)*followupMagnitude;
+drawCategoryChart('followupChart','followup',yearColours.followup,5*followupStep);
 }
 const STORAGE_KEY='appointment-dashboard-categories-v1';let categoryNames=['Urgent','Routine','Follow up'],assignments={};try{const saved=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');categoryNames=Array.isArray(saved.categories)&&saved.categories.length?saved.categories.filter(x=>typeof x==='string'&&x.trim()&&x!=='Uncategorised'):['Urgent','Routine','Follow up'];assignments=saved.assignments&&typeof saved.assignments==='object'?saved.assignments:{};}catch(e){}function ensureFollowUpCategory(){if(!categoryNames.some(c=>c.toLowerCase().replace(/[\s-]+/g,'')==='followup'))categoryNames.push('Follow up')}ensureFollowUpCategory();function guessCategory(t){return /RED|YELLOW|AMBER|URGENT|SAME DAY|ACUTE/i.test(t)?'Urgent':/GREEN|FOLLOW UP|ROUTINE/i.test(t)?'Routine':null}function saveCategories(sync=true){try{localStorage.setItem(STORAGE_KEY,JSON.stringify({categories:categoryNames,assignments}));}catch(e){alert('Could not save settings in this browser. Please try again.')}if(sync)markCategoryDirty()}function allCategories(){return [...categoryNames,'Uncategorised']}function rebuildCategoryFilter(){const old=new Set([...slots.selectedOptions].map(o=>o.value));slots.replaceChildren();for(const c of allCategories()){const o=document.createElement('option');o.value=c;o.textContent=c;o.selected=old.has(c);slots.append(o)}refresh()}function renderEditor(){const names=document.getElementById('categoryNames');names.replaceChildren();for(const c of categoryNames){const div=document.createElement('div');div.className='catrow';const label=document.createElement('span');label.textContent=c+' ('+types.filter(t=>assignments[t]===c).length+')';const btn=document.createElement('button');btn.textContent='Delete';btn.style.width='auto';btn.onclick=()=>{if(!confirm('Delete category “'+c+'”? Its slot types will become Uncategorised.'))return;categoryNames=categoryNames.filter(x=>x!==c);for(const t of types)if(assignments[t]===c)assignments[t]='Uncategorised';saveCategories();rebuildCategoryFilter();renderEditor()};div.append(label,btn);names.append(div)}const list=document.getElementById('slotAssignments');list.replaceChildren();const q=document.getElementById('slotSearch').value.toLowerCase();for(const t of types.filter(t=>t.toLowerCase().includes(q))){const row=document.createElement('div');row.className='catrow';const name=document.createElement('span');name.textContent=t;const sel=document.createElement('select');for(const c of allCategories()){const opt=document.createElement('option');opt.value=c;opt.textContent=c;sel.append(opt)}sel.value=categoryNames.includes(assignments[t])?assignments[t]:'Uncategorised';sel.onchange=()=>{assignments[t]=sel.value;saveCategories();rebuildCategoryFilter();renderEditor()};row.append(name,sel);list.append(row)}document.getElementById('assignmentSummary').textContent=types.filter(t=>categoryNames.includes(assignments[t])).length+' of '+types.length+' slot types assigned to named categories.'}document.getElementById('addCategory').onclick=()=>{const el=document.getElementById('newCategory');const c=el.value.trim();if(!c)return;if(c.toLowerCase()==='uncategorised'||categoryNames.some(x=>x.toLowerCase()===c.toLowerCase())){alert('This category name already exists or is reserved.');return}categoryNames.push(c);el.value='';saveCategories();rebuildCategoryFilter();renderEditor()};document.getElementById('newCategory').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('addCategory').click()});document.getElementById('slotSearch').addEventListener('input',renderEditor);function showPage(which){document.getElementById('chartPage').classList.toggle('hidden',which!=='chart');document.getElementById('categoryPage').classList.toggle('hidden',which!=='categories');document.getElementById('navChart').classList.toggle('active',which==='chart');document.getElementById('navCategories').classList.toggle('active',which==='categories');if(which==='chart')setTimeout(()=>{refresh();Plotly.Plots.resize('urgentChart');Plotly.Plots.resize('routineChart');Plotly.Plots.resize('followupChart')},0);else renderEditor()}document.getElementById('navChart').onclick=()=>showPage('chart');document.getElementById('navCategories').onclick=()=>showPage('categories');document.getElementById('saveToOneDrive').onclick=()=>{void saveCloudCategories({manual:true})};rebuildCategoryFilter();renderEditor();
 refresh();
