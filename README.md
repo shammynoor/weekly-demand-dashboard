@@ -36,3 +36,7 @@ Uses the MSAL Browser 2.38.4 UMD script path instead of the previous 3.x CDN URL
 Green toggle update: switches are pill-shaped, green when enabled and grey when disabled.
 \n\n## Category synchronisation fix\nAll named categories (including Follow up) and their slot-type assignments are now stored in the OneDrive app settings file. On the original computer, old browser-only categories can be migrated from the previous version. Open that computer first after deploying.\n\n\n## Manual category saving\nChanges to category names and slot-type assignments are stored in the current browser immediately, but are **not automatically uploaded**. On Manage Categories, click **Save** and wait for the success message. Other computers pick up the latest saved settings on a full page refresh after sign-in. The existing one-time source-folder setup still saves its folder reference to OneDrive.\n
 Default: Include Bank Holiday Weeks is Off; bank-holiday weeks are excluded until switched On.
+
+
+## Sign-in persistence fix
+Microsoft authentication now uses localStorage to remember the signed-in account between tabs and browser restarts. Background OneDrive token renewal failures no longer trigger an unexpected sign-in redirect; they display a status error instead. Login initialization is guarded against duplicate calls. Browsers that block site storage or clear it on exit may still require sign-in. No access tokens are included in the GitHub files.

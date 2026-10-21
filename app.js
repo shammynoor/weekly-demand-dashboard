@@ -7,7 +7,7 @@ const FOLDER_KEY='weekly-demand-onedrive-folder-v1';
 let records=[],weeks=[],types=[],statuses=[];
 const slots={selectedOptions:[],replaceChildren(){},append(){},options:[]};
 const $=id=>document.getElementById(id);
-let auth,activeAccount=null,selectedFolder=null,folderView={id:'root',name:'OneDrive',trail:[]},busy=false,lastFingerprint='';
+let auth,authInitPromise=null,activeAccount=null,selectedFolder=null,folderView={id:'root',name:'OneDrive',trail:[]},busy=false,lastFingerprint='';
 let cloudReady=false, cloudSaveTimer=null, cloudVersion=null, cloudBusy=false;
 let cloudFolder=null;
 const CLOUD_SETTINGS_NAME='weekly-demand-categories.json';
@@ -130,14 +130,17 @@ function setStatus(s){$('connectionStatus').textContent=s;$('loginStatus').textC
 function setSync(s){$('syncStatus').textContent=s}
 function setButtons(){const logged=!!activeAccount;$('loginScreen').classList.toggle('hidden',logged);$('dashboardShell').classList.toggle('hidden',!logged);$('signIn').disabled=logged;$('signOut').disabled=!logged;$('chooseFolder').disabled=!logged;$('refreshData').disabled=!logged||!selectedFolder||busy}
 async function initAuth(){
+ if(authInitPromise)return authInitPromise;
+ authInitPromise=(async()=>{
  try{
   if(!window.msal)throw Error('Microsoft sign-in library did not load. Please refresh with Ctrl+F5 or check browser content blocking.');
   if(!window.Plotly||!window.Papa)throw Error('Chart or CSV library did not load. Please refresh with Ctrl+F5.');
-  auth=new msal.PublicClientApplication({auth:{clientId:CLIENT_ID,authority:'https://login.microsoftonline.com/consumers',redirectUri:REDIRECT_URI,navigateToLoginRequestUrl:false},cache:{cacheLocation:'sessionStorage'}});
+  auth=new msal.PublicClientApplication({auth:{clientId:CLIENT_ID,authority:'https://login.microsoftonline.com/consumers',redirectUri:REDIRECT_URI,navigateToLoginRequestUrl:false},cache:{cacheLocation:'localStorage',storeAuthStateInCookie:false}});
   if(typeof auth.initialize==='function')await auth.initialize();const result=await auth.handleRedirectPromise();
   activeAccount=result?.account||auth.getAllAccounts()[0]||null;
   if(activeAccount){
    auth.setActiveAccount(activeAccount);
+   setButtons(); // Keep the dashboard visible while OneDrive requests are running.
    try{selectedFolder=JSON.parse(localStorage.getItem(FOLDER_KEY)||'null')}catch{}
    await loadCloudCategories();
    // Existing browser migrates its chosen folder to OneDrive settings once.
@@ -149,8 +152,21 @@ async function initAuth(){
    else {setSync('No source folder saved yet. Use Manage categories → Source folder setup once on the computer where you previously selected it.');$('sourceSetup').classList.remove('hidden')}
   }else setStatus('Sign in with the Hotmail account that owns your OneDrive files.');
  }catch(e){setStatus('Sign-in setup error: '+e.message)}finally{setButtons()}
+ })();
+ return authInitPromise;
 }
-async function token(){if(!activeAccount)throw Error('Please sign in first.');try{return (await auth.acquireTokenSilent({scopes:SCOPES,account:activeAccount})).accessToken}catch(e){if(e instanceof msal.InteractionRequiredAuthError){await auth.acquireTokenRedirect({scopes:SCOPES,account:activeAccount});throw Error('Microsoft sign-in required')}throw e}}
+async function token(){
+ if(!activeAccount)throw Error('Please sign in first.');
+ try{return (await auth.acquireTokenSilent({scopes:SCOPES,account:activeAccount})).accessToken}
+ catch(e){
+  // Never automatically redirect from the dashboard on a background refresh.
+  // A transient consent/token problem should not look like an unexpected logout.
+  if(e instanceof msal.InteractionRequiredAuthError || /interaction_required|consent_required|login_required/i.test(String(e.errorCode||''))){
+   throw Error('Microsoft needs to renew access. Your dashboard is still signed in; please refresh the page or sign out and sign in again if the problem continues.');
+  }
+  throw e;
+ }
+}
 async function graph(url){const bearer=await token();const response=await fetch(url.startsWith('https://')?url:GRAPH+url,{headers:{Authorization:'Bearer '+bearer}});if(!response.ok){let message='HTTP '+response.status;try{const body=await response.json();message=body.error?.message||message}catch{}throw Error(message)}return response.json()}
 async function children(id){let url=id==='root'?'/me/drive/root/children?$top=200&$select=id,name,folder,file,size,lastModifiedDateTime':`/me/drive/items/${encodeURIComponent(id)}/children?$top=200&$select=id,name,folder,file,size,lastModifiedDateTime`;const items=[];while(url){const r=await graph(url);items.push(...(r.value||[]));url=r['@odata.nextLink']||null}return items}
 async function showFolderPicker(){$('onedrivePanel').classList.remove('hidden');folderView={id:'root',name:'OneDrive',trail:[]};$('folderPicker').classList.remove('hidden');await showFolderContents()}
@@ -168,7 +184,7 @@ async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;
 
  saveCategories(false);lastFingerprint=fingerprint;rebuildCategoryFilter();renderEditor();refresh();setSync(`${items.length} CSV files · ${valid.toLocaleString('en-GB')} booked rows counted · ${skipped.toLocaleString('en-GB')} skipped · Updated ${new Date().toLocaleString('en-GB')}`)
  }catch(e){setSync('Refresh failed: '+e.message)}finally{busy=false;setButtons()}}
-$('signIn').onclick=async()=>{try{if(!auth){await initAuth();if(!auth)throw Error('Microsoft sign-in is still unavailable. Refresh the page (Ctrl+F5).')}await auth.loginRedirect({scopes:SCOPES,prompt:'select_account'})}catch(e){setStatus('Sign-in failed: '+e.message)}};
+$('signIn').onclick=async()=>{try{if(!auth){await initAuth();if(!auth)throw Error('Microsoft sign-in is still unavailable. Refresh the page (Ctrl+F5).')}await auth.loginRedirect({scopes:SCOPES})}catch(e){setStatus('Sign-in failed: '+e.message)}};
 $('signOut').onclick=async()=>{if(!activeAccount)return;try{await auth.logoutRedirect({account:activeAccount,postLogoutRedirectUri:REDIRECT_URI})}catch(e){setStatus('Sign-out failed: '+e.message)}};
 $('chooseFolder').onclick=showFolderPicker;
 $('sourceSetup').onclick=showFolderPicker;
