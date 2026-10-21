@@ -7,7 +7,7 @@ const FOLDER_KEY='weekly-demand-onedrive-folder-v1';
 let records=[],weeks=[],types=[],statuses=[];
 const slots={selectedOptions:[],replaceChildren(){},append(){},options:[]};
 const $=id=>document.getElementById(id);
-let auth,authInitPromise=null,activeAccount=null,selectedFolder=null,folderView={id:'root',name:'OneDrive',trail:[]},busy=false,lastFingerprint='';
+let auth,authInitPromise=null,activeAccount=null,authenticatedOnce=false,selectedFolder=null,folderView={id:'root',name:'OneDrive',trail:[]},busy=false,lastFingerprint='';
 let cloudReady=false, cloudSaveTimer=null, cloudVersion=null, cloudBusy=false;
 let cloudFolder=null;
 const CLOUD_SETTINGS_NAME='weekly-demand-categories.json';
@@ -145,7 +145,8 @@ function setButtons(){
  if(!activeAccount&&auth){
   try{activeAccount=auth.getActiveAccount()||auth.getAllAccounts()[0]||null}catch(e){}
  }
- const logged=!!activeAccount;
+ if(activeAccount)authenticatedOnce=true;
+ const logged=!!activeAccount||authenticatedOnce;
  $('loginScreen').classList.toggle('hidden',logged);
  $('dashboardShell').classList.toggle('hidden',!logged);
  $('signIn').disabled=logged;
@@ -163,6 +164,7 @@ async function initAuth(){
   if(typeof auth.initialize==='function')await auth.initialize();const result=await auth.handleRedirectPromise();
   activeAccount=result?.account||auth.getActiveAccount()||auth.getAllAccounts()[0]||activeAccount||null;
   if(activeAccount){
+   authenticatedOnce=true;
    auth.setActiveAccount(activeAccount);
    setButtons(); // Keep the dashboard visible while OneDrive requests are running.
    try{selectedFolder=JSON.parse(localStorage.getItem(FOLDER_KEY)||'null')}catch{}
@@ -198,15 +200,7 @@ async function showFolderContents(){try{$('pickerPath').textContent=[...folderVi
 function weekMonday(d){const x=new Date(d);x.setUTCHours(12,0,0,0);x.setUTCDate(x.getUTCDate()-((x.getUTCDay()+6)%7));return x.toISOString().slice(0,10)}
 function parseDate(s){const m=/^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/.exec((s||'').trim());if(!m)return null;const mi=['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'].indexOf(m[2].toLowerCase());if(mi<0)return null;const d=new Date(Date.UTC(Number(m[3]),mi,Number(m[1])));return d.getUTCMonth()===mi&&d.getUTCDate()===Number(m[1])?d:null}
 function aggregateCSV(csv,aggregated){const parsed=Papa.parse(csv,{header:true,skipEmptyLines:'greedy'});const fields=parsed.meta.fields||[];for(const required of ['Appointment Date','Appointment Time','Booked Time to Slot Time','Slot Type','Availability'])if(!fields.includes(required))throw Error('Missing column: '+required);let day='',time='',valid=0,skipped=0;for(const r of parsed.data){if(r['Appointment Date']?.trim())day=r['Appointment Date'].trim();if(r['Appointment Time']?.trim())time=r['Appointment Time'].trim();if((r['Availability']||'').trim().toLowerCase()!=='booked')continue;const lead=Number((r['Booked Time to Slot Time']||'').replace(/,/g,''));const dt=parseDate(day);const tm=/^(\d{1,2}):(\d{2})/.exec(time);if(!dt||!tm||!Number.isFinite(lead)||!(r['Booked Time to Slot Time']||'').trim()){skipped++;continue}dt.setUTCHours(Number(tm[1]),Number(tm[2]),0,0);const booked=new Date(dt.getTime()-lead*60000);if(!Number.isFinite(booked.getTime())){skipped++;continue}const w=weekMonday(booked),slot=(r['Slot Type']||'').trim()||'Unknown';if(w<'2025-07-07')continue;const key=JSON.stringify([w,slot]);aggregated.set(key,(aggregated.get(key)||0)+1);valid++}return {valid,skipped}}
-async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;setButtons();setSync('Checking OneDrive CSV files…');try{
- const items=(await children(selectedFolder.id)).filter(f=>f.file&&/\.csv$/i.test(f.name)).sort((a,b)=>a.name.localeCompare(b.name));if(!items.length)throw Error('No CSV files found directly inside this folder.');
- const fingerprint=JSON.stringify(items.map(f=>[f.id,f.lastModifiedDateTime,f.size]));if(!force&&fingerprint===lastFingerprint){setSync(`No changes detected · ${items.length} CSV files · Checked ${new Date().toLocaleTimeString('en-GB')}`);return}
- const aggregate=new Map();let valid=0,skipped=0;for(let i=0;i<items.length;i++){const f=items[i];setSync(`Loading ${i+1} of ${items.length}: ${f.name}`);const detail=await graph(`/me/drive/items/${encodeURIComponent(f.id)}`);const url=detail['@microsoft.graph.downloadUrl'];if(!url)throw Error('OneDrive did not provide a download URL for '+f.name);const response=await fetch(url,{cache:'no-store'});if(!response.ok)throw Error(`Could not download ${f.name}: HTTP ${response.status}`);const stats=aggregateCSV(await response.text(),aggregate);valid+=stats.valid;skipped+=stats.skipped}
- records=[...aggregate].map(([key,count])=>{const [bookedWeek,slot]=JSON.parse(key);return {week:bookedWeek,bookedWeek,slot,status:'Booked',count}});weeks=[...new Set(records.map(r=>r.bookedWeek))].sort();types=[...new Set(records.map(r=>r.slot))].sort();statuses=['Booked'];
- // Assign obvious names on first encounter; retain any existing manual choices.
- // Do not guess assignments: unknown slot types stay Uncategorised until manually assigned.
-
- saveCategories(false);lastFingerprint=fingerprint;// Drag-and-drop category editor. Existing OneDrive JSON schema remains unchanged.
+// Drag-and-drop category editor. Existing OneDrive JSON schema remains unchanged.
 let pickedSlot=null;
 function renderDropEditor(dimension){
  const cfg={
@@ -274,6 +268,15 @@ function renderDropEditor(dimension){
  for(const c of cfg.names)boxes.append(makeZone(c));
  $(cfg.summary).textContent=types.filter(t=>cfg.names.includes(cfg.assign[t])).length+' of '+types.length+' slot types assigned. Drag a slot icon into a category box (or select it, then click a box).';
 }
+async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;setButtons();setSync('Checking OneDrive CSV files…');try{
+ const items=(await children(selectedFolder.id)).filter(f=>f.file&&/\.csv$/i.test(f.name)).sort((a,b)=>a.name.localeCompare(b.name));if(!items.length)throw Error('No CSV files found directly inside this folder.');
+ const fingerprint=JSON.stringify(items.map(f=>[f.id,f.lastModifiedDateTime,f.size]));if(!force&&fingerprint===lastFingerprint){setSync(`No changes detected · ${items.length} CSV files · Checked ${new Date().toLocaleTimeString('en-GB')}`);return}
+ const aggregate=new Map();let valid=0,skipped=0;for(let i=0;i<items.length;i++){const f=items[i];setSync(`Loading ${i+1} of ${items.length}: ${f.name}`);const detail=await graph(`/me/drive/items/${encodeURIComponent(f.id)}`);const url=detail['@microsoft.graph.downloadUrl'];if(!url)throw Error('OneDrive did not provide a download URL for '+f.name);const response=await fetch(url,{cache:'no-store'});if(!response.ok)throw Error(`Could not download ${f.name}: HTTP ${response.status}`);const stats=aggregateCSV(await response.text(),aggregate);valid+=stats.valid;skipped+=stats.skipped}
+ records=[...aggregate].map(([key,count])=>{const [bookedWeek,slot]=JSON.parse(key);return {week:bookedWeek,bookedWeek,slot,status:'Booked',count}});weeks=[...new Set(records.map(r=>r.bookedWeek))].sort();types=[...new Set(records.map(r=>r.slot))].sort();statuses=['Booked'];
+ // Assign obvious names on first encounter; retain any existing manual choices.
+ // Do not guess assignments: unknown slot types stay Uncategorised until manually assigned.
+
+ saveCategories(false);lastFingerprint=fingerprint;
 rebuildCategoryFilter();renderEditor();renderClinicianEditor();renderConsultEditor();refresh();setSync(`${items.length} CSV files · ${valid.toLocaleString('en-GB')} booked rows counted · ${skipped.toLocaleString('en-GB')} skipped · Updated ${new Date().toLocaleString('en-GB')}`)
  }catch(e){setSync('Refresh failed: '+e.message)}finally{busy=false;setButtons()}}
 $('signIn').onclick=async()=>{try{if(!auth){await initAuth();if(!auth)throw Error('Microsoft sign-in is still unavailable. Refresh the page (Ctrl+F5).')}await auth.loginRedirect({scopes:SCOPES})}catch(e){setStatus('Sign-in failed: '+e.message)}};

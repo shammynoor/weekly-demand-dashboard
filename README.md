@@ -63,3 +63,7 @@ Manage categories now shows draggable slot-type chips and a drop box for every c
 
 ## Sign-in stability update
 Keeps the dashboard visible during background OneDrive loading and restores the cached Microsoft account when a UI update runs. Versioned JavaScript URL avoids stale browser caches.
+
+
+## Drag-and-drop repair
+Fixed a JavaScript scoping error: the category drag-and-drop renderer was incorrectly declared inside the CSV loading function, preventing the editor from rendering reliably. Authentication display is now latched once an account is established so a background render cannot replace graphs with the sign-in screen. 
