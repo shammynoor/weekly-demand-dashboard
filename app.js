@@ -219,12 +219,24 @@ function drawCategoryChart(target,category,palette,sharedMax){
  const values=points.map(p=>p.count);
  const hasAppointments=values.some(v=>v>0);
  const average=values.length?values.reduce((sum,v)=>sum+v,0)/values.length:0;
- const traces=years.map((year,i)=>{
+ const traces=[];
+ for(const [i,year] of years.entries()){
   const data=points.filter(p=>p.year===year).sort((a,b)=>a.date.localeCompare(b.date));
-  // Keep adjacent retained weeks connected, including across excluded bank-holiday weeks.
-  const plotted=data;
-  return {name:String(year),x:plotted.map(p=>continuousMode?p.date:monthPosition(p.date)),y:plotted.map(p=>p.count),customdata:plotted.map(p=>p.date),type:'scatter',mode:'lines+markers',connectgaps:true,opacity:year===latestYear?1:0.34,line:{color:palette[i%palette.length],width:year===latestYear?4.5:2,shape:'spline',smoothing:0.65},marker:{size:year===latestYear?5:3},hovertemplate:'%{customdata}<br><b>%{y:,} appointments</b><extra>'+year+'</extra>'};
- });
+  const last=data[data.length-1];
+  const partial=showCurrentWeek&&last?.date===thisWeek;
+  // Never draw a solid segment into an incomplete current week.
+  const complete=partial?data.slice(0,-1):data;
+  const colour=palette[i%palette.length];
+  const width=year===latestYear?4.5:2;
+  const opacity=year===latestYear?1:0.34;
+  const x=p=>continuousMode?p.date:monthPosition(p.date);
+  traces.push({name:String(year),x:complete.map(x),y:complete.map(p=>p.count),customdata:complete.map(p=>p.date),type:'scatter',mode:'lines+markers',connectgaps:true,opacity,line:{color:colour,width,shape:'spline',smoothing:0.65},marker:{size:year===latestYear?5:3},hovertemplate:'%{customdata}<br><b>%{y:,} appointments</b><extra>'+year+'</extra>'});
+  if(partial){
+   const previous=complete[complete.length-1];
+   const partialPoints=previous?[previous,last]:[last];
+   traces.push({name:String(year)+' — partial week',x:partialPoints.map(x),y:partialPoints.map(p=>p.count),customdata:partialPoints.map(p=>p.date),type:'scatter',mode:'lines+markers',showlegend:false,opacity,line:{color:colour,width,dash:'dash'},marker:{size:partialPoints.map((_,idx)=>idx===partialPoints.length-1?10:0),symbol:partialPoints.map((_,idx)=>idx===partialPoints.length-1?'circle-open':'circle'),color:colour,line:{color:colour,width:2}},hovertemplate:'%{customdata}<br><b>%{y:,} appointments</b><br>Current week (incomplete)<extra>'+year+'</extra>'});
+  }
+ }
  // One flat average, calculated from every displayed week across every year.
  traces.push({name:'All-years weekly average ('+Math.round(average).toLocaleString('en-GB')+')',x:continuousMode?[selectedWeeks[0]||'2025-07-07',selectedWeeks[selectedWeeks.length-1]||'2025-07-14']:[0,12],y:[average,average],type:'scatter',mode:'lines',hoverinfo:'skip',opacity:0.58,line:{color:category==='urgent'?'#9c2633':category==='followup'?'#286cb8':'#23885b',width:2,dash:'dash'},showlegend:true});
  Plotly.react(target,traces,{margin:{l:58,r:12,t:32,b:65},paper_bgcolor:'white',plot_bgcolor:'white',legend:{orientation:'h',y:1.17,x:0},xaxis:continuousMode?{type:'date',title:'Booking date',tickformat:'%b %Y',gridcolor:'#edf1f5'}:axis,yaxis:{title:'Appointments',range:[0,sharedMax],dtick:sharedMax/5,gridcolor:'#edf1f5'},hovermode:'closest',annotations:!hasAppointments&&category==='followup'?[{text:'No follow-up appointments found. In Manage Categories, assign slot types to Follow up and click Save.',xref:'paper',yref:'paper',x:.5,y:.55,showarrow:false,align:'center',font:{size:13,color:'#286cb8'}}]:[]},{responsive:true,displaylogo:false});

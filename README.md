@@ -46,3 +46,5 @@ A third blue Follow-up appointments chart appears below Urgent. Assign slot type
 
 ### Follow-up chart visibility fix
 The blue chart now has its own Y-axis scale, so small follow-up volumes are visible. If no slot types are assigned to Follow up, the chart shows an explanation rather than an unexplained flat line. Assign the relevant slot types in Manage Categories and click Save.
+
+Current incomplete week: when Show current week is enabled, the last point is hollow and the connecting segment dashed on all three charts.
