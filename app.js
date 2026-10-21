@@ -193,7 +193,75 @@ async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;
  // Assign obvious names on first encounter; retain any existing manual choices.
  // Do not guess assignments: unknown slot types stay Uncategorised until manually assigned.
 
- saveCategories(false);lastFingerprint=fingerprint;rebuildCategoryFilter();renderEditor();renderClinicianEditor();renderConsultEditor();refresh();setSync(`${items.length} CSV files · ${valid.toLocaleString('en-GB')} booked rows counted · ${skipped.toLocaleString('en-GB')} skipped · Updated ${new Date().toLocaleString('en-GB')}`)
+ saveCategories(false);lastFingerprint=fingerprint;// Drag-and-drop category editor. Existing OneDrive JSON schema remains unchanged.
+let pickedSlot=null;
+function renderDropEditor(dimension){
+ const cfg={
+  urgency:{names:categoryNames,assign:assignments,boxes:'categoryNames',pool:'slotAssignments',search:'slotSearch',summary:'assignmentSummary',render:renderEditor},
+  clinician:{names:clinicianCategoryNames,assign:clinicianAssignments,boxes:'clinicianCategoryNames',pool:'clinicianSlotAssignments',search:'clinicianSlotSearch',summary:'clinicianAssignmentSummary',render:renderClinicianEditor},
+  consult:{names:consultCategoryNames,assign:consultAssignments,boxes:'consultCategoryNames',pool:'consultSlotAssignments',search:'consultSlotSearch',summary:'consultAssignmentSummary',render:renderConsultEditor}
+ }[dimension];
+ if(!cfg)return;
+ const boxes=$(cfg.boxes),pool=$(cfg.pool);if(!boxes||!pool)return;
+ boxes.replaceChildren();pool.replaceChildren();
+ const query=$(cfg.search).value.trim().toLowerCase();
+ const filtered=types.filter(t=>t.toLowerCase().includes(query));
+ const current=t=>cfg.names.includes(cfg.assign[t])?cfg.assign[t]:'Uncategorised';
+ const place=(slot,category)=>{
+  if(!types.includes(slot)||!(category==='Uncategorised'||cfg.names.includes(category)))return;
+  cfg.assign[slot]=category;
+  pickedSlot=null;
+  saveCategories();
+  if(dimension==='urgency')rebuildCategoryFilter();
+  cfg.render();
+ };
+ function makeCard(t){
+  const card=document.createElement('div');card.className='slot-chip';card.draggable=true;card.tabIndex=0;
+  card.setAttribute('role','button');card.setAttribute('aria-label',t+'. Drag to a category, or press Enter to select.');
+  const ico=document.createElement('span');ico.className='slot-chip-icon';ico.textContent='⠿';ico.setAttribute('aria-hidden','true');
+  const label=document.createElement('span');label.textContent=t;card.append(ico,label);
+  card.addEventListener('dragstart',e=>{pickedSlot={dimension,slot:t};e.dataTransfer.setData('text/plain',t);e.dataTransfer.effectAllowed='move';card.classList.add('dragging')});
+  card.addEventListener('dragend',()=>{card.classList.remove('dragging');document.querySelectorAll('.drop-over').forEach(el=>el.classList.remove('drop-over'))});
+  card.addEventListener('click',()=>{pickedSlot={dimension,slot:t};document.querySelectorAll('.slot-chip.selected').forEach(el=>el.classList.remove('selected'));card.classList.add('selected')});
+  card.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();card.click()}});
+  return card;
+ }
+ function makeZone(name,isPool=false){
+  const zone=document.createElement('div');zone.className='drop-zone'+(isPool?' unassigned-zone':'');zone.tabIndex=0;
+  zone.setAttribute('role','group');zone.setAttribute('aria-label','Drop slot types into '+name);
+  const head=document.createElement('div');head.className='drop-zone-header';
+  const title=document.createElement('strong');title.textContent=name;
+  const count=document.createElement('span');count.className='drop-count';count.textContent=types.filter(t=>current(t)===name).length+' slots';
+  head.append(title,count);
+  if(!isPool){
+   const del=document.createElement('button');del.type='button';del.className='drop-delete';del.textContent='Delete';
+   del.setAttribute('aria-label','Delete '+name);
+   del.onclick=e=>{e.stopPropagation();if(!confirm('Delete category “'+name+'”? Its slot types will become Uncategorised.'))return;
+    if(dimension==='urgency'){categoryNames=categoryNames.filter(c=>c!==name);for(const t of types)if(assignments[t]===name)assignments[t]='Uncategorised'}
+    else if(dimension==='clinician'){clinicianCategoryNames=clinicianCategoryNames.filter(c=>c!==name);for(const t of types)if(clinicianAssignments[t]===name)clinicianAssignments[t]='Uncategorised'}
+    else{consultCategoryNames=consultCategoryNames.filter(c=>c!==name);for(const t of types)if(consultAssignments[t]===name)consultAssignments[t]='Uncategorised'}
+    saveCategories();if(dimension==='urgency')rebuildCategoryFilter();cfg.render();
+   };head.append(del);
+  }
+  zone.append(head);
+  const body=document.createElement('div');body.className='drop-zone-body';
+  const matching=filtered.filter(t=>current(t)===name);
+  if(!matching.length){const hint=document.createElement('p');hint.className='drop-hint';hint.textContent=query?'No matching slot types':'Drop slot types here';body.append(hint)}
+  for(const t of matching)body.append(makeCard(t));
+  zone.append(body);
+  zone.addEventListener('dragover',e=>{if(pickedSlot?.dimension!==dimension)return;e.preventDefault();e.dataTransfer.dropEffect='move';zone.classList.add('drop-over')});
+  zone.addEventListener('dragleave',e=>{if(!zone.contains(e.relatedTarget))zone.classList.remove('drop-over')});
+  zone.addEventListener('drop',e=>{e.preventDefault();zone.classList.remove('drop-over');if(pickedSlot?.dimension===dimension)place(pickedSlot.slot,name)});
+  // Accessible alternative to drag-and-drop: select a slot, then click its destination.
+  zone.addEventListener('click',e=>{if(e.target.closest('button')||e.target.closest('.slot-chip'))return;if(pickedSlot?.dimension===dimension)place(pickedSlot.slot,name)});
+  zone.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&pickedSlot?.dimension===dimension){e.preventDefault();place(pickedSlot.slot,name)}});
+  return zone;
+ }
+ pool.append(makeZone('Uncategorised',true));
+ for(const c of cfg.names)boxes.append(makeZone(c));
+ $(cfg.summary).textContent=types.filter(t=>cfg.names.includes(cfg.assign[t])).length+' of '+types.length+' slot types assigned. Drag a slot icon into a category box (or select it, then click a box).';
+}
+rebuildCategoryFilter();renderEditor();renderClinicianEditor();renderConsultEditor();refresh();setSync(`${items.length} CSV files · ${valid.toLocaleString('en-GB')} booked rows counted · ${skipped.toLocaleString('en-GB')} skipped · Updated ${new Date().toLocaleString('en-GB')}`)
  }catch(e){setSync('Refresh failed: '+e.message)}finally{busy=false;setButtons()}}
 $('signIn').onclick=async()=>{try{if(!auth){await initAuth();if(!auth)throw Error('Microsoft sign-in is still unavailable. Refresh the page (Ctrl+F5).')}await auth.loginRedirect({scopes:SCOPES})}catch(e){setStatus('Sign-in failed: '+e.message)}};
 $('signOut').onclick=async()=>{if(!activeAccount)return;try{await auth.logoutRedirect({account:activeAccount,postLogoutRedirectUri:REDIRECT_URI})}catch(e){setStatus('Sign-out failed: '+e.message)}};
@@ -275,50 +343,12 @@ const followupMagnitude=Math.pow(10,Math.floor(Math.log10(followupStepRaw)));
 const followupStep=([1,2,5,10].find(v=>v*followupMagnitude>=followupStepRaw)||10)*followupMagnitude;
 drawCategoryChart('followupChart','followup',yearColours.followup,5*followupStep);
 }
-const STORAGE_KEY='appointment-dashboard-categories-v1';let categoryNames=['Urgent','Routine','Follow up'],assignments={};try{const saved=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');categoryNames=Array.isArray(saved.categories)&&saved.categories.length?saved.categories.filter(x=>typeof x==='string'&&x.trim()&&x!=='Uncategorised'):['Urgent','Routine','Follow up'];assignments=saved.assignments&&typeof saved.assignments==='object'?saved.assignments:{};}catch(e){}let clinicianCategoryNames=[],clinicianAssignments={};try{const local=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');if(Array.isArray(local.clinicianCategories))clinicianCategoryNames=validCategoryNames(local.clinicianCategories);if(local.clinicianAssignments)clinicianAssignments=validAssignments(local.clinicianAssignments,clinicianCategoryNames)}catch(e){}let consultCategoryNames=[],consultAssignments={};try{const local=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');if(Array.isArray(local.consultCategories))consultCategoryNames=validCategoryNames(local.consultCategories);if(local.consultAssignments)consultAssignments=validAssignments(local.consultAssignments,consultCategoryNames)}catch(e){}function ensureFollowUpCategory(){if(!categoryNames.some(c=>c.toLowerCase().replace(/[\s-]+/g,'')==='followup'))categoryNames.push('Follow up')}ensureFollowUpCategory();function guessCategory(t){return /RED|YELLOW|AMBER|URGENT|SAME DAY|ACUTE/i.test(t)?'Urgent':/GREEN|FOLLOW UP|ROUTINE/i.test(t)?'Routine':null}function saveCategories(sync=true){try{localStorage.setItem(STORAGE_KEY,JSON.stringify({categories:categoryNames,assignments,clinicianCategories:clinicianCategoryNames,clinicianAssignments,consultCategories:consultCategoryNames,consultAssignments}));}catch(e){alert('Could not save settings in this browser. Please try again.')}if(sync)markCategoryDirty()}function allCategories(){return [...categoryNames,'Uncategorised']}function rebuildCategoryFilter(){const old=new Set([...slots.selectedOptions].map(o=>o.value));slots.replaceChildren();for(const c of allCategories()){const o=document.createElement('option');o.value=c;o.textContent=c;o.selected=old.has(c);slots.append(o)}refresh()}function renderEditor(){const names=document.getElementById('categoryNames');names.replaceChildren();for(const c of categoryNames){const div=document.createElement('div');div.className='catrow';const label=document.createElement('span');label.textContent=c+' ('+types.filter(t=>assignments[t]===c).length+')';const btn=document.createElement('button');btn.textContent='Delete';btn.style.width='auto';btn.onclick=()=>{if(!confirm('Delete category “'+c+'”? Its slot types will become Uncategorised.'))return;categoryNames=categoryNames.filter(x=>x!==c);for(const t of types)if(assignments[t]===c)assignments[t]='Uncategorised';saveCategories();rebuildCategoryFilter();renderEditor()};div.append(label,btn);names.append(div)}const list=document.getElementById('slotAssignments');list.replaceChildren();const q=document.getElementById('slotSearch').value.toLowerCase();for(const t of types.filter(t=>t.toLowerCase().includes(q))){const row=document.createElement('div');row.className='catrow';const name=document.createElement('span');name.textContent=t;const sel=document.createElement('select');for(const c of allCategories()){const opt=document.createElement('option');opt.value=c;opt.textContent=c;sel.append(opt)}sel.value=categoryNames.includes(assignments[t])?assignments[t]:'Uncategorised';sel.onchange=()=>{assignments[t]=sel.value;saveCategories();rebuildCategoryFilter();renderEditor()};row.append(name,sel);list.append(row)}document.getElementById('assignmentSummary').textContent=types.filter(t=>categoryNames.includes(assignments[t])).length+' of '+types.length+' slot types assigned to named categories.'}document.getElementById('addCategory').onclick=()=>{const el=document.getElementById('newCategory');const c=el.value.trim();if(!c)return;if(c.toLowerCase()==='uncategorised'||categoryNames.some(x=>x.toLowerCase()===c.toLowerCase())){alert('This category name already exists or is reserved.');return}categoryNames.push(c);el.value='';saveCategories();rebuildCategoryFilter();renderEditor()};document.getElementById('newCategory').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('addCategory').click()});document.getElementById('slotSearch').addEventListener('input',renderEditor);function showPage(which){document.getElementById('chartPage').classList.toggle('hidden',which!=='chart');document.getElementById('categoryPage').classList.toggle('hidden',which!=='categories');document.getElementById('navChart').classList.toggle('active',which==='chart');document.getElementById('navCategories').classList.toggle('active',which==='categories');if(which==='chart')setTimeout(()=>{refresh();Plotly.Plots.resize('urgentChart');Plotly.Plots.resize('routineChart');Plotly.Plots.resize('followupChart')},0);else {renderEditor();renderClinicianEditor();renderConsultEditor()}}document.getElementById('navChart').onclick=()=>showPage('chart');document.getElementById('navCategories').onclick=()=>showPage('categories');document.getElementById('saveToOneDrive').onclick=()=>{void saveCloudCategories({manual:true})};
-function renderClinicianEditor(){
- const names=$('clinicianCategoryNames');if(!names)return;
- names.replaceChildren();
- for(const c of clinicianCategoryNames){
-  const row=document.createElement('div');row.className='catrow';
-  const label=document.createElement('span');label.textContent=c+' ('+types.filter(t=>clinicianAssignments[t]===c).length+')';
-  const del=document.createElement('button');del.textContent='Delete';del.style.width='auto';
-  del.onclick=()=>{if(!confirm('Delete clinician category “'+c+'”? Its slot types will become Uncategorised.'))return;clinicianCategoryNames=clinicianCategoryNames.filter(x=>x!==c);for(const [slot,v] of Object.entries(clinicianAssignments))if(v===c)clinicianAssignments[slot]='Uncategorised';saveCategories();renderClinicianEditor()};
-  row.append(label,del);names.append(row);
- }
- const list=$('clinicianSlotAssignments');list.replaceChildren();
- const q=$('clinicianSlotSearch').value.trim().toLowerCase();
- for(const t of types.filter(t=>t.toLowerCase().includes(q))){
-  const row=document.createElement('div');row.className='catrow';const label=document.createElement('span');label.textContent=t;
-  const sel=document.createElement('select');for(const c of [...clinicianCategoryNames,'Uncategorised']){const opt=document.createElement('option');opt.value=c;opt.textContent=c;sel.append(opt)}
-  sel.value=clinicianCategoryNames.includes(clinicianAssignments[t])?clinicianAssignments[t]:'Uncategorised';
-  sel.onchange=()=>{clinicianAssignments[t]=sel.value;saveCategories();renderClinicianEditor()};row.append(label,sel);list.append(row);
- }
- $('clinicianAssignmentSummary').textContent=types.filter(t=>clinicianCategoryNames.includes(clinicianAssignments[t])).length+' of '+types.length+' slot types assigned to clinician categories.';
-}
+const STORAGE_KEY='appointment-dashboard-categories-v1';let categoryNames=['Urgent','Routine','Follow up'],assignments={};try{const saved=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');categoryNames=Array.isArray(saved.categories)&&saved.categories.length?saved.categories.filter(x=>typeof x==='string'&&x.trim()&&x!=='Uncategorised'):['Urgent','Routine','Follow up'];assignments=saved.assignments&&typeof saved.assignments==='object'?saved.assignments:{};}catch(e){}let clinicianCategoryNames=[],clinicianAssignments={};try{const local=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');if(Array.isArray(local.clinicianCategories))clinicianCategoryNames=validCategoryNames(local.clinicianCategories);if(local.clinicianAssignments)clinicianAssignments=validAssignments(local.clinicianAssignments,clinicianCategoryNames)}catch(e){}let consultCategoryNames=[],consultAssignments={};try{const local=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');if(Array.isArray(local.consultCategories))consultCategoryNames=validCategoryNames(local.consultCategories);if(local.consultAssignments)consultAssignments=validAssignments(local.consultAssignments,consultCategoryNames)}catch(e){}function ensureFollowUpCategory(){if(!categoryNames.some(c=>c.toLowerCase().replace(/[\s-]+/g,'')==='followup'))categoryNames.push('Follow up')}ensureFollowUpCategory();function guessCategory(t){return /RED|YELLOW|AMBER|URGENT|SAME DAY|ACUTE/i.test(t)?'Urgent':/GREEN|FOLLOW UP|ROUTINE/i.test(t)?'Routine':null}function saveCategories(sync=true){try{localStorage.setItem(STORAGE_KEY,JSON.stringify({categories:categoryNames,assignments,clinicianCategories:clinicianCategoryNames,clinicianAssignments,consultCategories:consultCategoryNames,consultAssignments}));}catch(e){alert('Could not save settings in this browser. Please try again.')}if(sync)markCategoryDirty()}function allCategories(){return [...categoryNames,'Uncategorised']}function rebuildCategoryFilter(){const old=new Set([...slots.selectedOptions].map(o=>o.value));slots.replaceChildren();for(const c of allCategories()){const o=document.createElement('option');o.value=c;o.textContent=c;o.selected=old.has(c);slots.append(o)}refresh()}function renderEditor(){renderDropEditor('urgency')}document.getElementById('addCategory').onclick=()=>{const el=document.getElementById('newCategory');const c=el.value.trim();if(!c)return;if(c.toLowerCase()==='uncategorised'||categoryNames.some(x=>x.toLowerCase()===c.toLowerCase())){alert('This category name already exists or is reserved.');return}categoryNames.push(c);el.value='';saveCategories();rebuildCategoryFilter();renderEditor()};document.getElementById('newCategory').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('addCategory').click()});document.getElementById('slotSearch').addEventListener('input',renderEditor);function showPage(which){document.getElementById('chartPage').classList.toggle('hidden',which!=='chart');document.getElementById('categoryPage').classList.toggle('hidden',which!=='categories');document.getElementById('navChart').classList.toggle('active',which==='chart');document.getElementById('navCategories').classList.toggle('active',which==='categories');if(which==='chart')setTimeout(()=>{refresh();Plotly.Plots.resize('urgentChart');Plotly.Plots.resize('routineChart');Plotly.Plots.resize('followupChart')},0);else {renderEditor();renderClinicianEditor();renderConsultEditor()}}document.getElementById('navChart').onclick=()=>showPage('chart');document.getElementById('navCategories').onclick=()=>showPage('categories');document.getElementById('saveToOneDrive').onclick=()=>{void saveCloudCategories({manual:true})};
+function renderClinicianEditor(){renderDropEditor('clinician')}
 $('addClinicianCategory').onclick=()=>{const el=$('newClinicianCategory');const c=el.value.trim();if(!c)return;if(c.toLowerCase()==='uncategorised'||clinicianCategoryNames.some(x=>x.toLowerCase()===c.toLowerCase())){alert('This clinician category name already exists or is reserved.');return}clinicianCategoryNames.push(c);el.value='';saveCategories();renderClinicianEditor()};
 $('newClinicianCategory').addEventListener('keydown',e=>{if(e.key==='Enter')$('addClinicianCategory').click()});
 $('clinicianSlotSearch').addEventListener('input',renderClinicianEditor);
-function renderConsultEditor(){
- const names=$('consultCategoryNames');if(!names)return;
- names.replaceChildren();
- for(const c of consultCategoryNames){
-  const row=document.createElement('div');row.className='catrow';
-  const label=document.createElement('span');label.textContent=c+' ('+types.filter(t=>consultAssignments[t]===c).length+')';
-  const del=document.createElement('button');del.textContent='Delete';del.style.width='auto';
-  del.onclick=()=>{if(!confirm('Delete consult mode “'+c+'”? Its slot types will become Uncategorised.'))return;consultCategoryNames=consultCategoryNames.filter(x=>x!==c);for(const [slot,v] of Object.entries(consultAssignments))if(v===c)consultAssignments[slot]='Uncategorised';saveCategories();renderConsultEditor()};
-  row.append(label,del);names.append(row);
- }
- const list=$('consultSlotAssignments');list.replaceChildren();
- const q=$('consultSlotSearch').value.trim().toLowerCase();
- for(const t of types.filter(t=>t.toLowerCase().includes(q))){
-  const row=document.createElement('div');row.className='catrow';const label=document.createElement('span');label.textContent=t;
-  const sel=document.createElement('select');for(const c of [...consultCategoryNames,'Uncategorised']){const opt=document.createElement('option');opt.value=c;opt.textContent=c;sel.append(opt)}
-  sel.value=consultCategoryNames.includes(consultAssignments[t])?consultAssignments[t]:'Uncategorised';
-  sel.onchange=()=>{consultAssignments[t]=sel.value;saveCategories();renderConsultEditor()};row.append(label,sel);list.append(row);
- }
- $('consultAssignmentSummary').textContent=types.filter(t=>consultCategoryNames.includes(consultAssignments[t])).length+' of '+types.length+' slot types assigned to consult modes.';
-}
+function renderConsultEditor(){renderDropEditor('consult')}
 $('addConsultCategory').onclick=()=>{const el=$('newConsultCategory');const c=el.value.trim();if(!c)return;if(c.toLowerCase()==='uncategorised'||consultCategoryNames.some(x=>x.toLowerCase()===c.toLowerCase())){alert('This consult mode already exists or is reserved.');return}consultCategoryNames.push(c);el.value='';saveCategories();renderConsultEditor()};
 $('newConsultCategory').addEventListener('keydown',e=>{if(e.key==='Enter')$('addConsultCategory').click()});
 $('consultSlotSearch').addEventListener('input',renderConsultEditor);

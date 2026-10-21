@@ -54,3 +54,8 @@ Manage Categories now has two independent dimensions: Urgency (Urgent/Routine/Fo
 
 ## Consult mode categories
 Manage Categories now includes a third independent user-defined classification: Consult mode. Add names such as Telephone or Face to face, assign slot types, then click Save. The settings are stored in the same OneDrive app settings JSON as urgency and clinician type. Existing graphs are unchanged.
+
+
+## Drag-and-drop category assignment
+
+Manage categories now shows draggable slot-type chips and a drop box for every category, including Uncategorised. Creating a new category immediately creates a box. Drag a chip between boxes to assign it. Alternatively, select a chip (click or Enter), then click or press Enter on a destination box. The existing Save button writes all three category dimensions to OneDrive; no data schema migration is required.
