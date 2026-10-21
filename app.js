@@ -60,7 +60,7 @@ async function loadCloudCategories(){
     saveCategories(false);
     await saveCloudCategories();
    }else cloudNotice('All categories loaded from OneDrive.');
-  }else cloudNotice('No cloud settings yet. Existing browser categories will be saved when you make a change.');
+  }else cloudNotice('No cloud settings yet. Click Save to OneDrive to publish your category assignments.');
   cloudReady=true;
   saveCategories(false);
   renderEditor();
@@ -70,45 +70,62 @@ async function loadCloudCategories(){
   cloudReady=false;
  }
 }
-let cloudSaveRevision=0;
-function scheduleCloudSave(){
- if(!cloudReady||!activeAccount)return;
- cloudSaveRevision++;
- clearTimeout(cloudSaveTimer);
- cloudNotice('Saving all category changes to OneDrive…');
- cloudSaveTimer=setTimeout(()=>{void saveCloudCategories()},700);
+let categoryDirty=false;
+function markCategoryDirty(){
+ categoryDirty=true;
+ cloudNotice('Unsaved category changes — click Save to OneDrive.');
 }
-async function saveCloudCategories(){
- if(!cloudReady||!activeAccount)return;
- if(cloudBusy)return;
+function scheduleCloudSave(){markCategoryDirty()}
+async function saveCloudCategories(options={}){
+ const manual=!!options.manual;
+ if(!activeAccount||!cloudReady){
+  if(manual)cloudNotice('Cannot save: sign in and wait for OneDrive settings to load.');
+  return false;
+ }
+ if(cloudBusy){
+  if(manual)cloudNotice('A OneDrive save is already running. Please try again.');
+  return false;
+ }
  cloudBusy=true;
+ const button=$('saveToOneDrive');
+ if(button)button.disabled=true;
+ if(manual)cloudNotice('Saving all categories and slot assignments to OneDrive…');
+ const snapshot=JSON.stringify({
+  version:3,
+  categories:categoryNames.slice(),
+  assignments:{...assignments},
+  folder:selectedFolder||cloudFolder||null,
+  updatedAt:new Date().toISOString()
+ });
  try{
-  do{
-   const revision=cloudSaveRevision;
-   const snapshot=JSON.stringify({
-    version:2,
-    categories:categoryNames.slice(),
-    assignments:{...assignments},
-    folder:selectedFolder||cloudFolder||null,
-    updatedAt:new Date().toISOString()
-   });
-   const t=await token();
-   const response=await fetch(GRAPH+'/me/drive/special/approot:/'+CLOUD_SETTINGS_NAME+':/content',{
-    method:'PUT',
-    headers:{Authorization:'Bearer '+t,'Content-Type':'application/json'},
-    body:snapshot
-   });
-   if(!response.ok)throw Error('HTTP '+response.status);
-   lastSavedRevision=revision;
-   if(revision===cloudSaveRevision){
-    cloudNotice('All categories saved to OneDrive · '+new Date().toLocaleTimeString('en-GB'));
+  const t=await token();
+  const response=await fetch(GRAPH+'/me/drive/special/approot:/'+CLOUD_SETTINGS_NAME+':/content',{
+   method:'PUT',
+   headers:{Authorization:'Bearer '+t,'Content-Type':'application/json'},
+   body:snapshot
+  });
+  if(!response.ok)throw Error('HTTP '+response.status);
+  if(manual){
+   // Only clear the dirty flag if the user has not changed anything during the save.
+   const current=JSON.stringify({categories:categoryNames,assignments});
+   const saved=JSON.parse(snapshot);
+   if(current===JSON.stringify({categories:saved.categories,assignments:saved.assignments})){
+    categoryDirty=false;
+    cloudNotice('Saved to OneDrive successfully. Other computers will see these categories after refreshing.');
+   }else{
+    categoryDirty=true;
+    cloudNotice('Saved, but further edits are unsaved. Click Save to OneDrive again.');
    }
-  }while(cloudSaveRevision!==revisionAtLastSaved());
- }catch(e){cloudNotice('Category cloud save failed: '+e.message)}
- finally{cloudBusy=false}
+  }
+  return true;
+ }catch(e){
+  cloudNotice('Save failed: '+e.message+'. Changes are still stored in this browser.');
+  return false;
+ }finally{
+  cloudBusy=false;
+  if(button)button.disabled=false;
+ }
 }
-let lastSavedRevision=-1;
-function revisionAtLastSaved(){return lastSavedRevision}
 function setStatus(s){$('connectionStatus').textContent=s;$('loginStatus').textContent=s}
 function setSync(s){$('syncStatus').textContent=s}
 function setButtons(){const logged=!!activeAccount;$('loginScreen').classList.toggle('hidden',logged);$('dashboardShell').classList.toggle('hidden',!logged);$('signIn').disabled=logged;$('signOut').disabled=!logged;$('chooseFolder').disabled=!logged;$('refreshData').disabled=!logged||!selectedFolder||busy}
@@ -213,7 +230,7 @@ const sharedMax=5*tickStep;
 drawCategoryChart('urgentChart','urgent',yearColours.urgent,sharedMax);
 drawCategoryChart('routineChart','routine',yearColours.routine,sharedMax);
 }
-const STORAGE_KEY='appointment-dashboard-categories-v1';let categoryNames=['Urgent','Routine'],assignments={};try{const saved=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');categoryNames=Array.isArray(saved.categories)&&saved.categories.length?saved.categories.filter(x=>typeof x==='string'&&x.trim()&&x!=='Uncategorised'):['Urgent','Routine'];assignments=saved.assignments&&typeof saved.assignments==='object'?saved.assignments:{};}catch(e){}function guessCategory(t){return /RED|YELLOW|AMBER|URGENT|SAME DAY|ACUTE/i.test(t)?'Urgent':/GREEN|FOLLOW UP|ROUTINE/i.test(t)?'Routine':null}function saveCategories(sync=true){try{localStorage.setItem(STORAGE_KEY,JSON.stringify({categories:categoryNames,assignments}));}catch(e){alert('Could not save settings in this browser. Export a backup instead.')}if(sync)scheduleCloudSave()}function allCategories(){return [...categoryNames,'Uncategorised']}function rebuildCategoryFilter(){const old=new Set([...slots.selectedOptions].map(o=>o.value));slots.replaceChildren();for(const c of allCategories()){const o=document.createElement('option');o.value=c;o.textContent=c;o.selected=old.has(c);slots.append(o)}refresh()}function renderEditor(){const names=document.getElementById('categoryNames');names.replaceChildren();for(const c of categoryNames){const div=document.createElement('div');div.className='catrow';const label=document.createElement('span');label.textContent=c+' ('+types.filter(t=>assignments[t]===c).length+')';const btn=document.createElement('button');btn.textContent='Delete';btn.style.width='auto';btn.onclick=()=>{if(!confirm('Delete category “'+c+'”? Its slot types will become Uncategorised.'))return;categoryNames=categoryNames.filter(x=>x!==c);for(const t of types)if(assignments[t]===c)assignments[t]='Uncategorised';saveCategories();rebuildCategoryFilter();renderEditor()};div.append(label,btn);names.append(div)}const list=document.getElementById('slotAssignments');list.replaceChildren();const q=document.getElementById('slotSearch').value.toLowerCase();for(const t of types.filter(t=>t.toLowerCase().includes(q))){const row=document.createElement('div');row.className='catrow';const name=document.createElement('span');name.textContent=t;const sel=document.createElement('select');for(const c of allCategories()){const opt=document.createElement('option');opt.value=c;opt.textContent=c;sel.append(opt)}sel.value=categoryNames.includes(assignments[t])?assignments[t]:'Uncategorised';sel.onchange=()=>{assignments[t]=sel.value;saveCategories();rebuildCategoryFilter();renderEditor()};row.append(name,sel);list.append(row)}document.getElementById('assignmentSummary').textContent=types.filter(t=>categoryNames.includes(assignments[t])).length+' of '+types.length+' slot types assigned to named categories.'}document.getElementById('addCategory').onclick=()=>{const el=document.getElementById('newCategory');const c=el.value.trim();if(!c)return;if(c.toLowerCase()==='uncategorised'||categoryNames.some(x=>x.toLowerCase()===c.toLowerCase())){alert('This category name already exists or is reserved.');return}categoryNames.push(c);el.value='';saveCategories();rebuildCategoryFilter();renderEditor()};document.getElementById('newCategory').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('addCategory').click()});document.getElementById('slotSearch').addEventListener('input',renderEditor);function showPage(which){document.getElementById('chartPage').classList.toggle('hidden',which!=='chart');document.getElementById('categoryPage').classList.toggle('hidden',which!=='categories');document.getElementById('navChart').classList.toggle('active',which==='chart');document.getElementById('navCategories').classList.toggle('active',which==='categories');if(which==='chart')setTimeout(()=>{refresh();Plotly.Plots.resize('urgentChart');Plotly.Plots.resize('routineChart')},0);else renderEditor()}document.getElementById('navChart').onclick=()=>showPage('chart');document.getElementById('navCategories').onclick=()=>showPage('categories');document.getElementById('exportCategories').onclick=()=>{const blob=new Blob([JSON.stringify({categories:categoryNames,assignments},null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='appointment_slot_categories.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)};document.getElementById('importCategories').onclick=()=>document.getElementById('importFile').click();document.getElementById('importFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{const data=JSON.parse(await f.text());if(!Array.isArray(data.categories)||!data.assignments||typeof data.assignments!=='object'||Array.isArray(data.assignments))throw Error('Invalid format');const names=data.categories.filter(c=>typeof c==='string'&&c.trim()&&c!=='Uncategorised');categoryNames=[...new Set(names)];assignments={};for(const t of types)if(categoryNames.includes(data.assignments[t])||data.assignments[t]==='Uncategorised')assignments[t]=data.assignments[t];saveCategories();rebuildCategoryFilter();renderEditor();alert('Category settings imported.')}catch(err){alert('Unable to import settings: '+err.message)}e.target.value=''};rebuildCategoryFilter();renderEditor();
+const STORAGE_KEY='appointment-dashboard-categories-v1';let categoryNames=['Urgent','Routine'],assignments={};try{const saved=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');categoryNames=Array.isArray(saved.categories)&&saved.categories.length?saved.categories.filter(x=>typeof x==='string'&&x.trim()&&x!=='Uncategorised'):['Urgent','Routine'];assignments=saved.assignments&&typeof saved.assignments==='object'?saved.assignments:{};}catch(e){}function guessCategory(t){return /RED|YELLOW|AMBER|URGENT|SAME DAY|ACUTE/i.test(t)?'Urgent':/GREEN|FOLLOW UP|ROUTINE/i.test(t)?'Routine':null}function saveCategories(sync=true){try{localStorage.setItem(STORAGE_KEY,JSON.stringify({categories:categoryNames,assignments}));}catch(e){alert('Could not save settings in this browser. Export a backup instead.')}if(sync)markCategoryDirty()}function allCategories(){return [...categoryNames,'Uncategorised']}function rebuildCategoryFilter(){const old=new Set([...slots.selectedOptions].map(o=>o.value));slots.replaceChildren();for(const c of allCategories()){const o=document.createElement('option');o.value=c;o.textContent=c;o.selected=old.has(c);slots.append(o)}refresh()}function renderEditor(){const names=document.getElementById('categoryNames');names.replaceChildren();for(const c of categoryNames){const div=document.createElement('div');div.className='catrow';const label=document.createElement('span');label.textContent=c+' ('+types.filter(t=>assignments[t]===c).length+')';const btn=document.createElement('button');btn.textContent='Delete';btn.style.width='auto';btn.onclick=()=>{if(!confirm('Delete category “'+c+'”? Its slot types will become Uncategorised.'))return;categoryNames=categoryNames.filter(x=>x!==c);for(const t of types)if(assignments[t]===c)assignments[t]='Uncategorised';saveCategories();rebuildCategoryFilter();renderEditor()};div.append(label,btn);names.append(div)}const list=document.getElementById('slotAssignments');list.replaceChildren();const q=document.getElementById('slotSearch').value.toLowerCase();for(const t of types.filter(t=>t.toLowerCase().includes(q))){const row=document.createElement('div');row.className='catrow';const name=document.createElement('span');name.textContent=t;const sel=document.createElement('select');for(const c of allCategories()){const opt=document.createElement('option');opt.value=c;opt.textContent=c;sel.append(opt)}sel.value=categoryNames.includes(assignments[t])?assignments[t]:'Uncategorised';sel.onchange=()=>{assignments[t]=sel.value;saveCategories();rebuildCategoryFilter();renderEditor()};row.append(name,sel);list.append(row)}document.getElementById('assignmentSummary').textContent=types.filter(t=>categoryNames.includes(assignments[t])).length+' of '+types.length+' slot types assigned to named categories.'}document.getElementById('addCategory').onclick=()=>{const el=document.getElementById('newCategory');const c=el.value.trim();if(!c)return;if(c.toLowerCase()==='uncategorised'||categoryNames.some(x=>x.toLowerCase()===c.toLowerCase())){alert('This category name already exists or is reserved.');return}categoryNames.push(c);el.value='';saveCategories();rebuildCategoryFilter();renderEditor()};document.getElementById('newCategory').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('addCategory').click()});document.getElementById('slotSearch').addEventListener('input',renderEditor);function showPage(which){document.getElementById('chartPage').classList.toggle('hidden',which!=='chart');document.getElementById('categoryPage').classList.toggle('hidden',which!=='categories');document.getElementById('navChart').classList.toggle('active',which==='chart');document.getElementById('navCategories').classList.toggle('active',which==='categories');if(which==='chart')setTimeout(()=>{refresh();Plotly.Plots.resize('urgentChart');Plotly.Plots.resize('routineChart')},0);else renderEditor()}document.getElementById('navChart').onclick=()=>showPage('chart');document.getElementById('navCategories').onclick=()=>showPage('categories');document.getElementById('saveToOneDrive').onclick=()=>{void saveCloudCategories({manual:true})};document.getElementById('exportCategories').onclick=()=>{const blob=new Blob([JSON.stringify({categories:categoryNames,assignments},null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='appointment_slot_categories.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)};document.getElementById('importCategories').onclick=()=>document.getElementById('importFile').click();document.getElementById('importFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{const data=JSON.parse(await f.text());if(!Array.isArray(data.categories)||!data.assignments||typeof data.assignments!=='object'||Array.isArray(data.assignments))throw Error('Invalid format');const names=data.categories.filter(c=>typeof c==='string'&&c.trim()&&c!=='Uncategorised');categoryNames=[...new Set(names)];assignments={};for(const t of types)if(categoryNames.includes(data.assignments[t])||data.assignments[t]==='Uncategorised')assignments[t]=data.assignments[t];saveCategories();rebuildCategoryFilter();renderEditor();alert('Category settings imported.')}catch(err){alert('Unable to import settings: '+err.message)}e.target.value=''};rebuildCategoryFilter();renderEditor();
 refresh();
 
 initAuth();
