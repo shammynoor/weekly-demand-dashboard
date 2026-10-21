@@ -34,3 +34,4 @@ Uses the MSAL Browser 2.38.4 UMD script path instead of the previous 3.x CDN URL
 
 
 Green toggle update: switches are pill-shaped, green when enabled and grey when disabled.
+\n\n## Category synchronisation fix\nAll named categories (including Follow up) and their slot-type assignments are now stored in the OneDrive app settings file. On the original computer, old browser-only categories can be migrated from the previous version. Open that computer first after deploying.\n

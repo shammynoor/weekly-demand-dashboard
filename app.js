@@ -13,9 +13,102 @@ let cloudFolder=null;
 const CLOUD_SETTINGS_NAME='weekly-demand-categories.json';
 function cloudNotice(msg){const el=$('cloudCategoryStatus');if(el)el.textContent=msg}
 async function cloudFile(){const t=await token();const r=await fetch(GRAPH+'/me/drive/special/approot:/'+CLOUD_SETTINGS_NAME+':/content',{headers:{Authorization:'Bearer '+t}});if(r.status===404)return null;if(!r.ok)throw Error('Settings read failed (HTTP '+r.status+')');return r.json()}
-async function loadCloudCategories(){if(!activeAccount)return;cloudReady=false;cloudNotice('Loading categories from OneDrive…');try{const data=await cloudFile();if(data){cloudFolder=data.folder&&typeof data.folder.id==='string'?data.folder:null;if(!Array.isArray(data.categories)||!data.assignments||typeof data.assignments!=='object')throw Error('Saved category settings are invalid');categoryNames=['Urgent','Routine'];assignments={};for(const [t,c] of Object.entries(data.assignments)){if(typeof t==='string'&&['Urgent','Routine','Uncategorised'].includes(c))assignments[t]=c}cloudNotice('Categories loaded from OneDrive.');}else{cloudNotice('No cloud settings yet. Your existing browser categories will be saved when you make a change.')}cloudReady=true;saveCategories(false);renderEditor();refresh()}catch(e){cloudNotice('Could not load cloud categories: '+e.message+' (local settings retained)');cloudReady=false}}
-function scheduleCloudSave(){if(!cloudReady||!activeAccount)return;clearTimeout(cloudSaveTimer);cloudNotice('Saving category changes to OneDrive…');cloudSaveTimer=setTimeout(saveCloudCategories,900)}
-async function saveCloudCategories(){if(!cloudReady||cloudBusy)return;cloudBusy=true;try{const t=await token();const response=await fetch(GRAPH+'/me/drive/special/approot:/'+CLOUD_SETTINGS_NAME+':/content',{method:'PUT',headers:{Authorization:'Bearer '+t,'Content-Type':'application/json'},body:JSON.stringify({version:1,categories:['Urgent','Routine'],assignments,folder:selectedFolder||cloudFolder||null,updatedAt:new Date().toISOString()})});if(!response.ok)throw Error('HTTP '+response.status);cloudNotice('Categories saved to OneDrive · '+new Date().toLocaleTimeString('en-GB'))}catch(e){cloudNotice('Category cloud save failed: '+e.message)}finally{cloudBusy=false}}
+function validCategoryNames(names){
+ if(!Array.isArray(names))throw Error('Saved categories are invalid');
+ const result=[];
+ for(const item of names){
+  if(typeof item!=='string')continue;
+  const name=item.trim();
+  if(name&&name.toLowerCase()!=='uncategorised'&&!result.some(x=>x.toLowerCase()===name.toLowerCase()))result.push(name);
+ }
+ return result;
+}
+function validAssignments(values,names){
+ if(!values||typeof values!=='object'||Array.isArray(values))throw Error('Saved assignments are invalid');
+ const result={};
+ for(const [slot,category] of Object.entries(values)){
+  if(typeof category==='string'&&(category==='Uncategorised'||names.includes(category)))result[slot]=category;
+ }
+ return result;
+}
+async function loadCloudCategories(){
+ if(!activeAccount)return;
+ cloudReady=false;
+ cloudNotice('Loading all categories from OneDrive…');
+ try{
+  const data=await cloudFile();
+  if(data){
+   cloudFolder=data.folder&&typeof data.folder.id==='string'?data.folder:null;
+   const names=validCategoryNames(data.categories);
+   const remoteAssignments=validAssignments(data.assignments,names);
+   // Older dashboard versions only saved Urgent and Routine to OneDrive.
+   // On the original computer, preserve additional local categories during migration.
+   const legacy=Number(data.version||1)<2;
+   const localNames=categoryNames.slice();
+   const localAssignments={...assignments};
+   categoryNames=names.length?names:['Urgent','Routine'];
+   assignments=remoteAssignments;
+   if(legacy&&localNames.some(c=>!categoryNames.includes(c))){
+    for(const c of localNames)if(!categoryNames.includes(c))categoryNames.push(c);
+    for(const [slot,cat] of Object.entries(localAssignments)){
+     if(!Object.prototype.hasOwnProperty.call(assignments,slot)||!['Urgent','Routine','Uncategorised'].includes(cat)){
+      if(categoryNames.includes(cat)||cat==='Uncategorised')assignments[slot]=cat;
+     }
+    }
+    cloudNotice('Recovered browser categories; saving all categories to OneDrive…');
+    cloudReady=true;
+    saveCategories(false);
+    await saveCloudCategories();
+   }else cloudNotice('All categories loaded from OneDrive.');
+  }else cloudNotice('No cloud settings yet. Existing browser categories will be saved when you make a change.');
+  cloudReady=true;
+  saveCategories(false);
+  renderEditor();
+  refresh();
+ }catch(e){
+  cloudNotice('Could not load cloud categories: '+e.message+' (local settings retained)');
+  cloudReady=false;
+ }
+}
+let cloudSaveRevision=0;
+function scheduleCloudSave(){
+ if(!cloudReady||!activeAccount)return;
+ cloudSaveRevision++;
+ clearTimeout(cloudSaveTimer);
+ cloudNotice('Saving all category changes to OneDrive…');
+ cloudSaveTimer=setTimeout(()=>{void saveCloudCategories()},700);
+}
+async function saveCloudCategories(){
+ if(!cloudReady||!activeAccount)return;
+ if(cloudBusy)return;
+ cloudBusy=true;
+ try{
+  do{
+   const revision=cloudSaveRevision;
+   const snapshot=JSON.stringify({
+    version:2,
+    categories:categoryNames.slice(),
+    assignments:{...assignments},
+    folder:selectedFolder||cloudFolder||null,
+    updatedAt:new Date().toISOString()
+   });
+   const t=await token();
+   const response=await fetch(GRAPH+'/me/drive/special/approot:/'+CLOUD_SETTINGS_NAME+':/content',{
+    method:'PUT',
+    headers:{Authorization:'Bearer '+t,'Content-Type':'application/json'},
+    body:snapshot
+   });
+   if(!response.ok)throw Error('HTTP '+response.status);
+   lastSavedRevision=revision;
+   if(revision===cloudSaveRevision){
+    cloudNotice('All categories saved to OneDrive · '+new Date().toLocaleTimeString('en-GB'));
+   }
+  }while(cloudSaveRevision!==revisionAtLastSaved());
+ }catch(e){cloudNotice('Category cloud save failed: '+e.message)}
+ finally{cloudBusy=false}
+}
+let lastSavedRevision=-1;
+function revisionAtLastSaved(){return lastSavedRevision}
 function setStatus(s){$('connectionStatus').textContent=s;$('loginStatus').textContent=s}
 function setSync(s){$('syncStatus').textContent=s}
 function setButtons(){const logged=!!activeAccount;$('loginScreen').classList.toggle('hidden',logged);$('dashboardShell').classList.toggle('hidden',!logged);$('signIn').disabled=logged;$('signOut').disabled=!logged;$('chooseFolder').disabled=!logged;$('refreshData').disabled=!logged||!selectedFolder||busy}
