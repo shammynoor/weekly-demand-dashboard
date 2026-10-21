@@ -139,16 +139,29 @@ async function saveCloudCategories(options={}){
 }
 function setStatus(s){$('connectionStatus').textContent=s;$('loginStatus').textContent=s}
 function setSync(s){$('syncStatus').textContent=s}
-function setButtons(){const logged=!!activeAccount;$('loginScreen').classList.toggle('hidden',logged);$('dashboardShell').classList.toggle('hidden',!logged);$('signIn').disabled=logged;$('signOut').disabled=!logged;$('chooseFolder').disabled=!logged;$('refreshData').disabled=!logged||!selectedFolder||busy}
+function setButtons(){
+ // Never interpret a background chart/data refresh as a sign-out.
+ // Recover the active MSAL account from its persistent cache if needed.
+ if(!activeAccount&&auth){
+  try{activeAccount=auth.getActiveAccount()||auth.getAllAccounts()[0]||null}catch(e){}
+ }
+ const logged=!!activeAccount;
+ $('loginScreen').classList.toggle('hidden',logged);
+ $('dashboardShell').classList.toggle('hidden',!logged);
+ $('signIn').disabled=logged;
+ $('signOut').disabled=!logged;
+ $('chooseFolder').disabled=!logged;
+ $('refreshData').disabled=!logged||!selectedFolder||busy;
+}
 async function initAuth(){
  if(authInitPromise)return authInitPromise;
  authInitPromise=(async()=>{
  try{
   if(!window.msal)throw Error('Microsoft sign-in library did not load. Please refresh with Ctrl+F5 or check browser content blocking.');
-  if(!window.Plotly||!window.Papa)throw Error('Chart or CSV library did not load. Please refresh with Ctrl+F5.');
+  if(!window.Plotly||!window.Papa)setSync('A chart or CSV library did not load. Refresh the page to retry.');
   auth=new msal.PublicClientApplication({auth:{clientId:CLIENT_ID,authority:'https://login.microsoftonline.com/consumers',redirectUri:REDIRECT_URI,navigateToLoginRequestUrl:false},cache:{cacheLocation:'localStorage',storeAuthStateInCookie:false}});
   if(typeof auth.initialize==='function')await auth.initialize();const result=await auth.handleRedirectPromise();
-  activeAccount=result?.account||auth.getAllAccounts()[0]||null;
+  activeAccount=result?.account||auth.getActiveAccount()||auth.getAllAccounts()[0]||activeAccount||null;
   if(activeAccount){
    auth.setActiveAccount(activeAccount);
    setButtons(); // Keep the dashboard visible while OneDrive requests are running.
@@ -162,7 +175,7 @@ async function initAuth(){
    if(selectedFolder){$('folderStatus').textContent='Source: '+selectedFolder.name;await loadFolder(false)}
    else {setSync('No source folder saved yet. Use Manage categories → Source folder setup once on the computer where you previously selected it.');$('sourceSetup').classList.remove('hidden')}
   }else setStatus('Sign in with the Hotmail account that owns your OneDrive files.');
- }catch(e){setStatus('Sign-in setup error: '+e.message)}finally{setButtons()}
+ }catch(e){setStatus('Sign-in setup error: '+e.message);if(auth){try{activeAccount=activeAccount||auth.getActiveAccount()||auth.getAllAccounts()[0]||null}catch(_){}}}finally{setButtons()}
  })();
  return authInitPromise;
 }

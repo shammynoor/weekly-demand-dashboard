@@ -59,3 +59,7 @@ Manage Categories now includes a third independent user-defined classification: 
 ## Drag-and-drop category assignment
 
 Manage categories now shows draggable slot-type chips and a drop box for every category, including Uncategorised. Creating a new category immediately creates a box. Drag a chip between boxes to assign it. Alternatively, select a chip (click or Enter), then click or press Enter on a destination box. The existing Save button writes all three category dimensions to OneDrive; no data schema migration is required.
+
+
+## Sign-in stability update
+Keeps the dashboard visible during background OneDrive loading and restores the cached Microsoft account when a UI update runs. Versioned JavaScript URL avoids stale browser caches.
