@@ -266,3 +266,5 @@ Restored compact Days/Weeks segmented controls on both availability pages, match
 
 
 Days/Weeks segmented controls: subtle inset shadow on the selected dark-grey button for both pages.
+\n\n## Routine chart recovery
+Fixed a circular dependency in auto-disabled clinician/consult filters that could leave all options disabled and the Routine chart empty. Eligibility now checks each dimension independently and automatically recovers available selections. Kept both charts and existing Day/Week shadow styling.\n
