@@ -172,9 +172,17 @@ function setButtons(){
   try{activeAccount=auth.getActiveAccount()||auth.getAllAccounts()[0]||null}catch(e){}
  }
  if(activeAccount)authenticatedOnce=true;
- const logged=!!activeAccount||authenticatedOnce;
- $('loginScreen').classList.toggle('hidden',logged);
- $('dashboardShell').classList.toggle('hidden',!logged);
+ // A completed sign-in is only cleared by the explicit Sign out action.
+ // A graph redraw or temporary MSAL cache lookup must never reveal login.
+ const logged=!!activeAccount||authenticatedOnce||$('dashboardShell').dataset.signedIn==='true';
+ if(logged){authenticatedOnce=true;$('dashboardShell').dataset.signedIn='true'}
+ if(logged){
+  $('loginScreen').classList.add('hidden');
+  $('dashboardShell').classList.remove('hidden');
+ }else if($('dashboardShell').dataset.signedIn!=='true'){
+  $('loginScreen').classList.remove('hidden');
+  $('dashboardShell').classList.add('hidden');
+ }
  $('signIn').disabled=logged;
  $('signOut').disabled=!logged;
  $('chooseFolder').disabled=!logged;
@@ -191,6 +199,7 @@ async function initAuth(){
   activeAccount=result?.account||auth.getActiveAccount()||auth.getAllAccounts()[0]||activeAccount||null;
   if(activeAccount){
    authenticatedOnce=true;
+   $('dashboardShell').dataset.signedIn='true';
    auth.setActiveAccount(activeAccount);
    setButtons(); // Keep the dashboard visible while OneDrive requests are running.
    try{selectedFolder=JSON.parse(localStorage.getItem(FOLDER_KEY)||'null')}catch{}
@@ -335,8 +344,8 @@ async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;
  saveCategories(false);lastFingerprint=fingerprint;
 rebuildCategoryFilter();renderEditor();renderClinicianEditor();renderConsultEditor();refresh();renderAvailabilityChart();showRefreshFeedback('Data refreshed successfully');scheduleChartResize();setSync(`${items.length} CSV files · ${valid.toLocaleString('en-GB')} booked rows counted · ${skipped.toLocaleString('en-GB')} skipped · Updated ${new Date().toLocaleString('en-GB')}`)
  }catch(e){showRefreshFeedback('Refresh failed');setSync('Refresh failed: '+e.message)}finally{busy=false;setButtons()}}
-$('signIn').onclick=async()=>{try{if(!auth){await initAuth();if(!auth)throw Error('Microsoft sign-in is still unavailable. Refresh the page (Ctrl+F5).')}await auth.loginRedirect({scopes:SCOPES})}catch(e){setStatus('Sign-in failed: '+e.message)}};
-$('signOut').onclick=async()=>{if(!activeAccount)return;try{await auth.logoutRedirect({account:activeAccount,postLogoutRedirectUri:REDIRECT_URI})}catch(e){setStatus('Sign-out failed: '+e.message)}};
+$('signIn').onclick=async()=>{if(authenticatedOnce||activeAccount)return;try{if(!auth){await initAuth();if(!auth)throw Error('Microsoft sign-in is still unavailable. Refresh the page (Ctrl+F5).')}await auth.loginRedirect({scopes:SCOPES})}catch(e){setStatus('Sign-in failed: '+e.message)}};
+$('signOut').onclick=async()=>{if(!activeAccount)return;try{authenticatedOnce=false;$('dashboardShell').dataset.signedIn='false';await auth.logoutRedirect({account:activeAccount,postLogoutRedirectUri:REDIRECT_URI})}catch(e){setStatus('Sign-out failed: '+e.message)}};
 $('chooseFolder').onclick=showFolderPicker;
 $('sourceSetup').onclick=showFolderPicker;
 $('cancelFolder').onclick=()=>$('folderPicker').classList.add('hidden');

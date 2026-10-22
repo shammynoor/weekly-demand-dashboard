@@ -126,3 +126,7 @@ The availability chart filters by the Urgent category assignments in Manage Cate
 
 ## Urgency category selector (22 October 2026)
 Urgent Appointment Availability has a selectable Urgency category filter, populated from user-created urgency categories, defaulting to Urgent. It does not filter on literal slot-type names. All slot types (including those with no booked rows) appear in Manage categories. The availability chart shows an explanation when the selected category has no matching data.
+
+
+## Sign-in screen stability
+The signed-in dashboard view is latched after Microsoft authentication, so chart redraws, category updates and background data refreshes cannot switch back to the login screen. Only explicit Sign out clears the latch. Microsoft Graph token failures remain visible as errors rather than silently displaying the login page.
