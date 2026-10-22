@@ -157,3 +157,7 @@ Availability chart styling: separators between Saturday and Sunday; reduced bar 
 
 ## Group Urgency
 Manage Categories includes Detailed urgency (existing slot-type assignments) and Group Urgency (new drag-and-drop grouping of detailed urgency categories). Group categories and assignments are persisted in browser settings and the existing OneDrive category JSON, without changing existing chart category definitions.
+
+
+## Urgency Group availability filter
+The appointment availability chart dropdown now lists Urgency Group categories, not detailed urgency categories. Counts include slots whose detailed urgency category is assigned to the selected Urgency Group. The management tab is labelled Urgency Group.
