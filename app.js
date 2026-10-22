@@ -47,7 +47,7 @@ async function loadCloudCategories(){
    clinicianCategoryNames=Array.isArray(data.clinicianCategories)?validCategoryNames(data.clinicianCategories):clinicianCategoryNames;
    clinicianAssignments=data.clinicianAssignments?validAssignments(data.clinicianAssignments,clinicianCategoryNames):clinicianAssignments;
    consultCategoryNames=Array.isArray(data.consultCategories)?validCategoryNames(data.consultCategories):[];
-   consultAssignments=data.consultAssignments?validAssignments(data.consultAssignments,consultCategoryNames):{};
+   consultAssignments=data.consultAssignments?validAssignments(data.consultAssignments,consultCategoryNames):{};lastConsultFilterNames=[];
    if(Array.isArray(data.clinicianGroupCategories)){clinicianGroupNames=validCategoryNames(data.clinicianGroupCategories);clinicianGroupAssignments=data.clinicianGroupAssignments?validAssignments(data.clinicianGroupAssignments,clinicianGroupNames):{};}
    if(Array.isArray(data.groupUrgencyCategories)){
     groupUrgencyNames=validCategoryNames(data.groupUrgencyCategories);
@@ -475,6 +475,31 @@ function clinicianMatches(clinician){
  // Only session-holder user types mapped through a detailed category to an enabled group count.
  return clinicianGroupNames.includes(group)&&!disabledClinicianTypes.has(group);
 }
+// Consultation-mode switches on the Weekly Demand Chart.
+const disabledConsultModes=new Set();
+let lastConsultFilterNames=[];
+function updateConsultChartFilter(){
+ const root=$('consultChartFilters');if(!root)return;
+ const names=[...consultCategoryNames];
+ if(names.length===lastConsultFilterNames.length&&names.every((n,i)=>n===lastConsultFilterNames[i]))return;
+ lastConsultFilterNames=names;
+ root.replaceChildren();
+ if(!names.length){const note=document.createElement('span');note.className='hint';note.textContent='Create consult modes in Manage categories.';root.append(note);return;}
+ for(const name of names){
+  const row=document.createElement('label');row.className='filter-row';
+  const switchEl=document.createElement('span');switchEl.className='switch';
+  const input=document.createElement('input');input.type='checkbox';input.setAttribute('role','switch');input.checked=!disabledConsultModes.has(name);input.setAttribute('aria-label','Include '+name);
+  const track=document.createElement('span');track.className='switch-track';
+  switchEl.append(input,track);
+  const title=document.createElement('span');title.textContent=name;
+  row.append(switchEl,title);root.append(row);
+  input.addEventListener('change',()=>{if(input.checked)disabledConsultModes.delete(name);else disabledConsultModes.add(name);refresh()});
+ }
+}
+function consultMatches(slot){
+ const mode=consultAssignments[slot];
+ return consultCategoryNames.includes(mode)&&!disabledConsultModes.has(mode);
+}
 const bankHolidayWeeks=new Set(holidayDates.map(mondayOf));let excludeBankHolidays=true;
 document.getElementById('excludeBH').onchange=e=>{excludeBankHolidays=!e.target.checked;refresh()};
 function isoWeek(weekStart){const d=new Date(weekStart+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+3);const year=d.getUTCFullYear();const jan4=new Date(Date.UTC(year,0,4,12));jan4.setUTCDate(jan4.getUTCDate()-((jan4.getUTCDay()+6)%7));const week=1+Math.round((d-jan4)/604800000);return {year,week}}
@@ -497,7 +522,7 @@ document.getElementById('periodMode').onchange=e=>{
 document.getElementById('currentWeekToggle').onchange=e=>{showCurrentWeek=e.target.checked;refresh()};
 document.getElementById('displayMode').onchange=e=>{continuousMode=e.target.checked;document.getElementById('timelineValue').textContent=continuousMode?'Continuous':'Superimposed';refresh()};
 function periodKey(r){return monthlyMode?r.bookedDay?.slice(0,7):r.bookedWeek}
-function includedRecord(r){return r.status==='Booked'&&clinicianMatches(r.clinician)&&(monthlyMode||!excludeBankHolidays||!bankHolidayWeeks.has(r.bookedWeek))}
+function includedRecord(r){return r.status==='Booked'&&clinicianMatches(r.clinician)&&consultMatches(r.slot)&&(monthlyMode||!excludeBankHolidays||!bankHolidayWeeks.has(r.bookedWeek))}
 function monthOfPeriod(p){return monthlyMode?p+'-01':p}
 function periodIsCurrent(p){return p===(monthlyMode?thisMonth:thisWeek)}
 function weeklyUrgencyMatches(slot,category){
@@ -508,7 +533,7 @@ function weeklyUrgencyMatches(slot,category){
  }
  return detailed.trim().toLowerCase().replace(/[\s-]+/g,'')===category;
 }
-function refresh(){updateClinicianChartFilter();
+function refresh(){updateClinicianChartFilter();updateConsultChartFilter();
 const activeWeeks=[...new Set(records.filter(includedRecord).map(periodKey).filter(Boolean))].sort();
 const selectedWeeks=activeWeeks.filter(w=>w>=(monthlyMode?'2025-07':'2025-07-07')&&w<=(monthlyMode?thisMonth:thisWeek)&&(showCurrentWeek||!periodIsCurrent(w)));
 const sums=new Map(selectedWeeks.map(w=>[w,0]));
@@ -623,7 +648,7 @@ let groupUrgencyNames=[],groupUrgencyAssignments={};
 let clinicianGroupNames=[],clinicianGroupAssignments={};
 const STORAGE_KEY='appointment-dashboard-categories-v1';let categoryNames=['Urgent','Routine','Follow up'],assignments={};try{const saved=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');categoryNames=Array.isArray(saved.categories)&&saved.categories.length?saved.categories.filter(x=>typeof x==='string'&&x.trim()&&x!=='Uncategorised'):['Urgent','Routine','Follow up'];assignments=saved.assignments&&typeof saved.assignments==='object'?saved.assignments:{};}catch(e){}let clinicianCategoryNames=[],clinicianAssignments={};try{const local=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');if(Array.isArray(local.clinicianCategories))clinicianCategoryNames=validCategoryNames(local.clinicianCategories);if(local.clinicianAssignments)clinicianAssignments=validAssignments(local.clinicianAssignments,clinicianCategoryNames)}catch(e){}let consultCategoryNames=[],consultAssignments={};try{const local=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');if(Array.isArray(local.consultCategories))consultCategoryNames=validCategoryNames(local.consultCategories);if(local.consultAssignments)consultAssignments=validAssignments(local.consultAssignments,consultCategoryNames)}catch(e){}try{const local=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');if(Array.isArray(local.groupUrgencyCategories))groupUrgencyNames=validCategoryNames(local.groupUrgencyCategories);if(local.groupUrgencyAssignments)groupUrgencyAssignments=validAssignments(local.groupUrgencyAssignments,groupUrgencyNames)}catch(e){}
 try{const local=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');if(Array.isArray(local.clinicianGroupCategories))clinicianGroupNames=validCategoryNames(local.clinicianGroupCategories);if(local.clinicianGroupAssignments)clinicianGroupAssignments=validAssignments(local.clinicianGroupAssignments,clinicianGroupNames)}catch(e){}
-function ensureFollowUpCategory(){if(!categoryNames.some(c=>c.toLowerCase().replace(/[\s-]+/g,'')==='followup'))categoryNames.push('Follow up')}ensureFollowUpCategory();function guessCategory(t){return /RED|YELLOW|AMBER|URGENT|SAME DAY|ACUTE/i.test(t)?'Urgent':/GREEN|FOLLOW UP|ROUTINE/i.test(t)?'Routine':null}function saveCategories(sync=true){try{localStorage.setItem(STORAGE_KEY,JSON.stringify({categories:categoryNames,assignments,clinicianCategories:clinicianCategoryNames,clinicianAssignments,consultCategories:consultCategoryNames,consultAssignments,groupUrgencyCategories:groupUrgencyNames,groupUrgencyAssignments,clinicianGroupCategories:clinicianGroupNames,clinicianGroupAssignments}));}catch(e){alert('Could not save settings in this browser. Please try again.')}if(sync)markCategoryDirty()}function allCategories(){return [...categoryNames,'Uncategorised']}function rebuildCategoryFilter(){const old=new Set([...slots.selectedOptions].map(o=>o.value));slots.replaceChildren();for(const c of allCategories()){const o=document.createElement('option');o.value=c;o.textContent=c;o.selected=old.has(c);slots.append(o)}}function renderEditor(){renderDropEditor('urgency');updateAvailabilityUrgencyFilter()}
+function ensureFollowUpCategory(){if(!categoryNames.some(c=>c.toLowerCase().replace(/[\s-]+/g,'')==='followup'))categoryNames.push('Follow up')}ensureFollowUpCategory();function guessCategory(t){return /RED|YELLOW|AMBER|URGENT|SAME DAY|ACUTE/i.test(t)?'Urgent':/GREEN|FOLLOW UP|ROUTINE/i.test(t)?'Routine':null}function saveCategories(sync=true){lastConsultFilterNames=[];try{localStorage.setItem(STORAGE_KEY,JSON.stringify({categories:categoryNames,assignments,clinicianCategories:clinicianCategoryNames,clinicianAssignments,consultCategories:consultCategoryNames,consultAssignments,groupUrgencyCategories:groupUrgencyNames,groupUrgencyAssignments,clinicianGroupCategories:clinicianGroupNames,clinicianGroupAssignments}));}catch(e){alert('Could not save settings in this browser. Please try again.')}if(sync)markCategoryDirty()}function allCategories(){return [...categoryNames,'Uncategorised']}function rebuildCategoryFilter(){const old=new Set([...slots.selectedOptions].map(o=>o.value));slots.replaceChildren();for(const c of allCategories()){const o=document.createElement('option');o.value=c;o.textContent=c;o.selected=old.has(c);slots.append(o)}}function renderEditor(){renderDropEditor('urgency');updateAvailabilityUrgencyFilter()}
 function renderGroupUrgencyEditor(){renderDropEditor('groupUrgency');updateAvailabilityUrgencyFilter()}document.getElementById('addCategory').onclick=()=>{const el=document.getElementById('newCategory');const c=el.value.trim();if(!c)return;if(c.toLowerCase()==='uncategorised'||categoryNames.some(x=>x.toLowerCase()===c.toLowerCase())){alert('This category name already exists or is reserved.');return}categoryNames.push(c);el.value='';saveCategories();rebuildCategoryFilter();renderEditor();renderGroupUrgencyEditor()};document.getElementById('newCategory').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('addCategory').click()});document.getElementById('slotSearch').addEventListener('input',renderEditor);function showPage(which){
  for(const [page,nav,name] of [['chartPage','navChart','chart'],['categoryPage','navCategories','categories'],['availabilityPage','navAvailability','availability']]){
   $(page).classList.toggle('hidden',which!==name);$(nav).classList.toggle('active',which===name);

@@ -207,3 +207,7 @@ Detailed Clinician Types is based on the filled-down CSV field `User Type of the
 
 ## Weekly Demand Chart filters
 Urgent appointments use the `Urgent` Urgency Group (Detailed urgency -> Urgency Group); clinician filter switches are from Clinician Groups (CSV session-holder user type -> Detailed Clinician Types -> Clinician Groups). Routine and Follow up remain mapped to their Detailed urgency categories. Unassigned clinician types are excluded.
+
+
+## Consult mode filters
+The Weekly Demand Chart now has a third filter card, Consult mode, next to Filters and Clinician Groups. Each toggle is populated from Manage categories > Consult mode and filters all three demand charts using the slot type's consult-mode assignment. All switches start on; unassigned slot types are excluded until assigned a consult mode.
