@@ -229,3 +229,7 @@ Calculated booking timestamps from appointment date/time minus `Booked Time to S
 
 ## Booking Times refinements
 The chart shows only 06:00–21:00 with the left count axis hidden; the 0–100% cumulative axis remains on the right. The running percentage is calculated over all bookings throughout the entire day. A dotted vertical line drops from the first 15-minute bin reaching 50% to the bottom of the chart; if that point is outside the displayed range, no marker is drawn.
+
+
+## Urgent availability detailed-category toggles
+The previous Reds & Extras / Priority panels are replaced by one chart and right-hand switches for every Detailed urgency category assigned to the Urgent Urgency Group. Booked portions use category-specific pastel colours (Red red, Extras purple, Priority yellow). Blocked, Embargoed and Available remain separate status categories and are summed over enabled urgency categories. The legend uses circles for enabled categories plus availability statuses.
