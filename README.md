@@ -138,3 +138,7 @@ A OneDrive data-fetch error is shown with its actual reason rather than only 'Re
 
 ## Render and login stability
 Removed repeated Plotly redraws during a single CSV load and removed the redraw/resize feedback loop. The charts now render once per data refresh and respond to ordinary window resizing. MSAL session restoration avoids showing the sign-in screen while cached credentials are being restored. Errors remain visible in the dashboard status.
+
+
+## Persistent dashboard session
+The dashboard's visible signed-in state now survives unexpected page reloads in the same tab, independently of chart refresh and CSV parsing. Actual Microsoft access still requires a valid MSAL account. A failed session restoration is reported in the dashboard rather than silently returning to the sign-in page. The Sign out button clears this tab's dashboard view marker.
