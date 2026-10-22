@@ -723,6 +723,50 @@ function updateAvailabilityUrgencyFilter(){
 }
 const urgentClinicianDisabled=new Set();
 const urgentConsultDisabled=new Set();
+function availabilityOptionHasData(page,kind,name){
+ const urgent=page==='urgent';
+ const from=urgent?-urgentWeeksBack:routineStartWeek;
+ const to=urgent?urgentWeeksForward:routineEndWeek;
+ const start=new Date(thisWeek+'T12:00:00Z');start.setUTCDate(start.getUTCDate()+from*7);
+ const finish=new Date(thisWeek+'T12:00:00Z');finish.setUTCDate(finish.getUTCDate()+(to+1)*7);
+ const startDay=start.toISOString().slice(0,10),endDay=finish.toISOString().slice(0,10);
+ return availabilityRecords.some(r=>{
+  if(!(r.count>0)||r.date<startDay||r.date>=endDay)return false;
+  const category=String(assignments[r.slot]||'').trim();
+  const group=String(groupUrgencyAssignments[category]||'').trim().toLowerCase();
+  if(group!==(urgent?'urgent':'routine'))return false;
+  const clinician=clinicianGroupAssignments[clinicianAssignments[r.clinician]];
+  const consult=consultAssignments[r.slot];
+  if(urgent){
+   if(kind==='category'?category!==name:urgentCategoryDisabled.has(category))return false;
+   if(kind==='clinician'?clinician!==name:urgentClinicianDisabled.has(clinician))return false;
+   if(kind==='consult'?consult!==name:urgentConsultDisabled.has(consult))return false;
+   const weekday=new Date(r.date+'T12:00:00Z').getUTCDay();
+   if(weekday===0||weekday===6)return false;
+  }else{
+   if(kind==='clinician'?clinician!==name:routineDisabledClinicianGroups.has(clinician))return false;
+   if(kind==='consult'?consult!==name:routineDisabledConsultModes.has(consult))return false;
+  }
+  return true;
+ });
+}
+function refreshAvailabilityOptionStates(page){
+ const configs=page==='urgent'?
+  [['urgentCategoryToggles','category',urgentCategoryDisabled],['urgentClinicianToggles','clinician',urgentClinicianDisabled],['urgentConsultToggles','consult',urgentConsultDisabled]]:
+  [['routineClinicianFilters','clinician',routineDisabledClinicianGroups],['routineConsultFilters','consult',routineDisabledConsultModes]];
+ for(const [id,kind,disabled] of configs){
+  const root=$(id);if(!root)continue;
+  for(const input of root.querySelectorAll('input[data-filter-name]')){
+   const name=input.dataset.filterName;
+   const possible=availabilityOptionHasData(page,kind,name);
+   if(!possible)disabled.add(name);
+   input.checked=possible&&!disabled.has(name);
+   input.disabled=!possible;
+   input.closest('.filter-row')?.classList.toggle('availability-option-unavailable',!possible);
+   input.title=possible?'':'No matching appointments in the selected date range and other filters';
+  }
+ }
+}
 function renderUrgentSideFilters(){
  const build=(id,names,disabled,colour)=>{
   const root=$(id);if(!root)return;
@@ -738,7 +782,7 @@ function renderUrgentSideFilters(){
    const caption=document.createElement('span');caption.textContent=name;
    sw.append(input,track);row.append(sw,caption);root.append(row);
    input.addEventListener('change',()=>{
-    if(!input.checked&&names.filter(n=>!disabled.has(n)).length<=1){input.checked=true;return;}
+    if(!input.checked&&names.filter(n=>!disabled.has(n)&&availabilityOptionHasData(id.startsWith('urgent')?'urgent':'routine',id.toLowerCase().includes('clinician')?'clinician':'consult',n)).length<=1){input.checked=true;return;}
     if(input.checked)disabled.delete(name);else disabled.add(name);
     renderAvailabilityChart();
    });
@@ -756,6 +800,14 @@ function urgentConsultMatches(slot){
  return consultCategoryNames.includes(mode)&&!urgentConsultDisabled.has(mode);
 }
 const urgentCategoryDisabled=new Set();
+let urgentAvailabilityGranularity='day';
+function setUrgentAvailabilityGranularity(mode){
+ urgentAvailabilityGranularity=mode==='week'?'week':'day';
+ document.querySelectorAll('[data-urgent-granularity]').forEach(btn=>{const selected=btn.dataset.urgentGranularity===urgentAvailabilityGranularity;btn.classList.toggle('active',selected);btn.setAttribute('aria-pressed',String(selected));});
+ renderAvailabilityChart();
+}
+document.querySelectorAll('[data-urgent-granularity]').forEach(btn=>btn.addEventListener('click',()=>setUrgentAvailabilityGranularity(btn.dataset.urgentGranularity)));
+
 let urgentWeeksBack=1,urgentWeeksForward=3;
 function setupUrgentRangeControls(){
  const back=$('urgentWeeksBack'),forward=$('urgentWeeksForward');
@@ -798,7 +850,7 @@ function renderUrgentCategoryToggles(){
   const colour=urgentColour(name);track.style.setProperty('--switch-on',colour);
   sw.append(input,track);row.append(sw,title);root.append(row);
   input.addEventListener('change',()=>{
-   if(!input.checked&&names.filter(n=>!urgentCategoryDisabled.has(n)).length<=1){input.checked=true;return;}
+   if(!input.checked&&names.filter(n=>!urgentCategoryDisabled.has(n)&&availabilityOptionHasData('urgent','category',n)).length<=1){input.checked=true;return;}
    if(input.checked)urgentCategoryDisabled.delete(name);else urgentCategoryDisabled.add(name);
    renderAvailabilityChart();
   });
@@ -818,6 +870,7 @@ function renderAvailabilityChart(){
  if($('availabilityPage').classList.contains('hidden')||!window.Plotly||!target)return;
  renderUrgentCategoryToggles();
  renderUrgentSideFilters();
+ refreshAvailabilityOptionStates('urgent');
  const names=urgentCategoryNames().filter(n=>!urgentCategoryDisabled.has(n));
  const monday=new Date(thisWeek+'T12:00:00Z');const start=new Date(monday);start.setUTCDate(start.getUTCDate()-7*urgentWeeksBack);
  const weekCount=urgentWeeksBack+urgentWeeksForward+1;
@@ -834,27 +887,35 @@ function renderAvailabilityChart(){
   if(!label)continue;
   const key=JSON.stringify([r.date,label]);counts.set(key,(counts.get(key)||0)+r.count);
  }
+ const weekly=urgentAvailabilityGranularity==='week';
+ const buckets=weekly?Array.from({length:weekCount},(_,i)=>dates[i*7]):dates;
+ const bucketFor=date=>weekly?mondayOf(date):date;
+ if(weekly){
+  const aggregated=new Map();
+  for(const [key,count] of counts){const [date,label]=JSON.parse(key);const k=JSON.stringify([bucketFor(date),label]);aggregated.set(k,(aggregated.get(k)||0)+count);}
+  counts.clear();for(const [key,count] of aggregated)counts.set(key,count);
+ }
  const labels=[...names,'Blocked','Embargoed','Available'];
  const colours=Object.fromEntries(names.map(n=>[n,urgentColour(n)]));
  Object.assign(colours,{Blocked:'#59636e',Embargoed:'#aab2bb',Available:'#ffffff'});
- const totals=dates.map(date=>labels.reduce((a,n)=>a+(counts.get(JSON.stringify([date,n]))||0),0));
+ const totals=buckets.map(date=>labels.reduce((a,n)=>a+(counts.get(JSON.stringify([date,n]))||0),0));
  const max=Math.ceil(Math.max(1,...totals)*1.2/10)*10;
- const daySummary=dates.map(date=>{
-  const weekday=new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'long',timeZone:'UTC'});
+ const daySummary=buckets.map(date=>{
+  const weekday=weekly?'Week commencing '+date:new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'long',timeZone:'UTC'});
   return weekday+'<br>'+labels.map(n=>n+': '+(counts.get(JSON.stringify([date,n]))||0).toLocaleString('en-GB')).join('<br>')+'<br><b>Total: '+totals[dates.indexOf(date)].toLocaleString('en-GB')+'</b>';
  });
- const traces=labels.map(name=>({type:'bar',name,showlegend:false,x:dates,y:dates.map(date=>weekdays.has(date)?counts.get(JSON.stringify([date,name]))||0:null),marker:{color:colours[name],line:{color:name==='Available'?'#ffffff':'#e2e7ec',width:name==='Available'?0:1.1}},customdata:daySummary,hovertemplate:'%{customdata}<extra></extra>'}));
+ const traces=labels.map(name=>({type:'bar',name,showlegend:false,x:buckets,y:buckets.map(date=>(weekly||weekdays.has(date))?counts.get(JSON.stringify([date,name]))||0:null),marker:{color:colours[name],line:{color:name==='Available'?'#ffffff':'#e2e7ec',width:name==='Available'?0:1.1}},customdata:daySummary,hovertemplate:'%{customdata}<extra></extra>'}));
  for(const name of labels)traces.push({type:'scatter',mode:'markers',name,x:[null],y:[null],marker:{symbol:'circle',size:14,color:colours[name],line:{color:name==='Available'?'#aeb8c3':colours[name],width:name==='Available'?1.5:0}},hoverinfo:'skip',showlegend:true});
  const weekLabels=Array.from({length:weekCount},(_,i)=>{const offset=i-urgentWeeksBack;return offset===0?'This Week':offset===-1?'Last Week':offset<0?Math.abs(offset)+' weeks ago':offset===1?'Next Week':offset+' weeks'});
- const annotations=weekLabels.map((text,i)=>({x:dates[i*7+2],xref:'x',y:1.045,yref:'paper',text,showarrow:false,font:{size:12,color:'#444444'},xanchor:'center',yanchor:'bottom'}));
- const shapes=Array.from({length:weekCount},(_,i)=>({type:'line',xref:'x',yref:'paper',x0:i*7+5.5,x1:i*7+5.5,y0:0,y1:1,line:{color:'#9ca6b1',width:1.3,dash:'dot'}}));
+ const annotations=weekLabels.map((text,i)=>({x:weekly?buckets[i]:dates[i*7+2],xref:'x',y:1.045,yref:'paper',text,showarrow:false,font:{size:12,color:'#444444'},xanchor:'center',yanchor:'bottom'}));
+ const shapes=Array.from({length:weekCount},(_,i)=>({type:'line',xref:'x',yref:'paper',x0:weekly?i+0.5:i*7+5.5,x1:weekly?i+0.5:i*7+5.5,y0:0,y1:1,line:{color:'#9ca6b1',width:1.3,dash:'dot'}}));
  if(dateSet.has(todayLondon)){
-  const x=dates.indexOf(todayLondon);
+  const x=weekly?urgentWeeksBack-0.5+((new Date(todayLondon+'T12:00:00Z').getUTCDay()+6)%7)/7:dates.indexOf(todayLondon);
   shapes.unshift({type:'rect',xref:'x',yref:'paper',x0:-.5,x1:x,y0:0,y1:1,fillcolor:'rgba(128,136,146,0.50)',line:{width:0},layer:'above'});
   shapes.push({type:'line',xref:'x',yref:'paper',x0:x,x1:x,y0:0,y1:1,line:{color:'#4b5563',width:2,dash:'dot'}});
   annotations.push({x,xref:'x',y:1.005,yref:'paper',text:'Today',showarrow:false,font:{size:16,color:'#374151'},xanchor:'left',yanchor:'top',xshift:7,yshift:-8});
  }
- dates.forEach((date,i)=>{if(weekdays.has(date)&&totals[i])annotations.push({x:date,xref:'x',y:totals[i],yref:'y',text:String(totals[i]),showarrow:false,font:{size:10,color:'#818b96'},yshift:4,yanchor:'bottom'})});
+ buckets.forEach((date,i)=>{if((weekly||weekdays.has(date))&&totals[i])annotations.push({x:date,xref:'x',y:totals[i],yref:'y',text:String(totals[i]),showarrow:false,font:{size:10,color:'#818b96'},yshift:4,yanchor:'bottom'})});
  const note=$('availabilityNote');if(note)note.textContent=names.length?'':'Select an Urgent detailed urgency category to display appointments.';
  Plotly.react(target,traces,{
   autosize:true,height:510,barmode:'stack',bargap:0.015,margin:{l:62,r:12,t:66,b:105},paper_bgcolor:'white',plot_bgcolor:'#e2e7ec',
@@ -885,7 +946,7 @@ function renderRoutineAvailabilityFilters(){
    const title=document.createElement('span');title.textContent=name;
    switchEl.append(input,track);row.append(switchEl,title);root.append(row);
    input.addEventListener('change',()=>{
-    if(!input.checked&&names.filter(n=>!disabled.has(n)).length<=1){input.checked=true;return;}
+    if(!input.checked&&names.filter(n=>!disabled.has(n)&&availabilityOptionHasData('routine',id==='routineClinicianFilters'?'clinician':'consult',n)).length<=1){input.checked=true;return;}
     if(input.checked)disabled.delete(name);else disabled.add(name);
     renderRoutineAvailabilityChart();
    });
@@ -936,6 +997,7 @@ function renderRoutineAvailabilityChart(){
  const target=$('routineAvailabilityChart');
  if(!target||$('routineAvailabilityPage').classList.contains('hidden')||!window.Plotly)return;
  renderRoutineAvailabilityFilters();
+ refreshAvailabilityOptionStates('routine');
  const isDaily=routineAvailabilityGranularity==='day';
  const start=new Date(thisWeek+'T12:00:00Z');start.setUTCDate(start.getUTCDate()+7*routineStartWeek);
  const weeks=[];
