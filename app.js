@@ -803,12 +803,13 @@ const urgentCategoryDisabled=new Set();
 let urgentAvailabilityGranularity='day';
 function setUrgentAvailabilityGranularity(mode){
  urgentAvailabilityGranularity=mode==='week'?'week':'day';
- const toggle=$('urgentDayWeekToggle'),label=$('urgentDayWeekValue');
- if(toggle)toggle.checked=urgentAvailabilityGranularity==='week';
- if(label)label.textContent=urgentAvailabilityGranularity==='week'?'Week':'Day';
+ document.querySelectorAll('[data-urgent-granularity]').forEach(button=>{
+  const active=button.dataset.urgentGranularity===urgentAvailabilityGranularity;
+  button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));
+ });
  renderAvailabilityChart();
 }
-$('urgentDayWeekToggle')?.addEventListener('change',event=>setUrgentAvailabilityGranularity(event.target.checked?'week':'day'));
+document.querySelectorAll('[data-urgent-granularity]').forEach(button=>button.addEventListener('click',()=>setUrgentAvailabilityGranularity(button.dataset.urgentGranularity)));
 
 let urgentWeeksBack=1,urgentWeeksForward=3;
 function setupUrgentRangeControls(){
@@ -970,12 +971,13 @@ let routineStartWeek=-1,routineEndWeek=6;
 let routineAvailabilityGranularity='week';
 function setRoutineAvailabilityGranularity(mode){
  routineAvailabilityGranularity=mode==='day'?'day':'week';
- const toggle=$('routineDayWeekToggle'),label=$('routineDayWeekValue');
- if(toggle)toggle.checked=routineAvailabilityGranularity==='week';
- if(label)label.textContent=routineAvailabilityGranularity==='week'?'Week':'Day';
+ document.querySelectorAll('[data-routine-granularity]').forEach(button=>{
+  const active=button.dataset.routineGranularity===routineAvailabilityGranularity;
+  button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));
+ });
  renderRoutineAvailabilityChart();
 }
-$('routineDayWeekToggle')?.addEventListener('change',event=>setRoutineAvailabilityGranularity(event.target.checked?'week':'day'));
+document.querySelectorAll('[data-routine-granularity]').forEach(button=>button.addEventListener('click',()=>setRoutineAvailabilityGranularity(button.dataset.routineGranularity)));
 
 function setupRoutineRangeControls(){
  const start=$('routineWeeksStart'),end=$('routineWeeksEnd');
