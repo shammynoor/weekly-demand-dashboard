@@ -215,3 +215,7 @@ The Weekly Demand Chart now has a third filter card, Consult mode, next to Filte
 
 ## Routine Appointment Availability
 New navigation tab: weekly stacked slot counts from the appointment date (not the booking date), for last week, current week, and the following six weeks. Includes only slots whose Detailed urgency category is assigned to the Routine Urgency Group. Booked pastel green, Blocked dark grey, Embargoed light grey, Available white; weekly totals and hover breakdowns.
+
+
+## Routine chart: Today and independent filters
+The Routine Availability page has its own Clinician Groups and Consult mode switches, initially enabled, filtering availability records through saved category mappings. The dotted Today line lies 5%, 25%, 45%, 65%, or 85% across the current week for Monday through Friday, with the plot to its left shaded 50%-opacity grey. Weekends clamp to the Friday position.

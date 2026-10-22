@@ -843,9 +843,43 @@ function renderAvailabilityPanel(targetId,kind,sharedMax){
 }
 window.addEventListener('resize',()=>{if(!$('availabilityPage').classList.contains('hidden'))renderAvailabilityChart()});
 
+// Independent filters for Routine Appointment Availability.
+const routineDisabledClinicianGroups=new Set();
+const routineDisabledConsultModes=new Set();
+function renderRoutineAvailabilityFilters(){
+ const build=(id,names,disabled,empty)=>{
+  const root=$(id);if(!root)return;
+  const previous=[...root.querySelectorAll('input')].map(el=>el.getAttribute('data-filter-name'));
+  if(previous.length===names.length&&names.every((name,i)=>name===previous[i]))return;
+  root.replaceChildren();
+  if(!names.length){const note=document.createElement('span');note.className='hint';note.textContent=empty;root.append(note);return}
+  for(const name of names){
+   const row=document.createElement('label');row.className='filter-row';
+   const switchEl=document.createElement('span');switchEl.className='switch';
+   const input=document.createElement('input');input.type='checkbox';input.setAttribute('role','switch');input.setAttribute('data-filter-name',name);
+   input.checked=!disabled.has(name);input.setAttribute('aria-label','Include '+name);
+   const track=document.createElement('span');track.className='switch-track';
+   const title=document.createElement('span');title.textContent=name;
+   switchEl.append(input,track);row.append(switchEl,title);root.append(row);
+   input.addEventListener('change',()=>{if(input.checked)disabled.delete(name);else disabled.add(name);renderRoutineAvailabilityChart()});
+  }
+ };
+ build('routineClinicianFilters',clinicianGroupNames,routineDisabledClinicianGroups,'Create clinician groups in Manage categories.');
+ build('routineConsultFilters',consultCategoryNames,routineDisabledConsultModes,'Create consult modes in Manage categories.');
+}
+function routineClinicianMatches(clinician){
+ const detailed=clinicianAssignments[clinician];
+ const group=clinicianGroupAssignments[detailed];
+ return clinicianGroupNames.includes(group)&&!routineDisabledClinicianGroups.has(group);
+}
+function routineConsultMatches(slot){
+ const mode=consultAssignments[slot];
+ return consultCategoryNames.includes(mode)&&!routineDisabledConsultModes.has(mode);
+}
 function renderRoutineAvailabilityChart(){
  const target=$('routineAvailabilityChart');
  if(!target||$('routineAvailabilityPage').classList.contains('hidden')||!window.Plotly)return;
+ renderRoutineAvailabilityFilters();
  // Monday of last week through Sunday six weeks after the current week: eight weeks.
  const start=new Date(thisWeek+'T12:00:00Z');start.setUTCDate(start.getUTCDate()-7);
  const weeks=[];
@@ -855,7 +889,7 @@ function renderRoutineAvailabilityChart(){
  for(const r of availabilityRecords){
   const detailed=String(assignments[r.slot]||'').trim();
   const group=String(groupUrgencyAssignments[detailed]||'').trim();
-  if(group.toLowerCase()!=='routine')continue;
+  if(group.toLowerCase()!=='routine'||!routineClinicianMatches(r.clinician)||!routineConsultMatches(r.slot))continue;
   const week=mondayOf(r.date);
   if(!weeks.includes(week))continue;
   const status=String(r.availability||'').trim().toLowerCase();
@@ -873,6 +907,16 @@ function renderRoutineAvailabilityChart(){
  const totals=weeks.map(w=>labels.reduce((sum,label)=>sum+(byWeek.get(JSON.stringify([w,label]))||0),0));
  const max=Math.max(1,...totals);
  const annotations=totals.flatMap((total,i)=>total?[{x:weekLabels[i],y:total,text:total.toLocaleString('en-GB'),showarrow:false,yshift:5,font:{size:11,color:'#768392'}}]:[]);
+ // Each category occupies a full week from x=index-0.5 to x=index+0.5.
+ // Place Today at 5%, 25%, 45%, 65% or 85% of its week for Mon–Fri.
+ const dayIndex=(new Date(todayLondon+'T12:00:00Z').getUTCDay()+6)%7;
+ const weekIndex=weeks.indexOf(thisWeek);
+ const todayX=weekIndex<0?null:weekIndex-0.5+(Math.min(dayIndex,4)*0.2+0.05);
+ const shapes=todayX===null?[]:[
+  {type:'rect',xref:'x',yref:'paper',x0:-0.5,x1:todayX,y0:0,y1:1,fillcolor:'rgba(128,136,146,0.50)',line:{width:0},layer:'below'},
+  {type:'line',xref:'x',yref:'paper',x0:todayX,x1:todayX,y0:0,y1:1,line:{color:'#344355',width:2,dash:'dot'},layer:'above'}
+ ];
+ if(todayX!==null)annotations.push({xref:'x',yref:'paper',x:todayX,y:1.02,text:'Today',showarrow:false,xanchor:'left',font:{size:12,color:'#344355'}});
  const note=$('routineAvailabilityNote');
  if(note)note.textContent=matched?'':"No matching Routine urgency-group appointments found. Check Manage categories → Urgency Group.";
  Plotly.react(target,traces,{
@@ -881,7 +925,7 @@ function renderRoutineAvailabilityChart(){
   legend:{orientation:'h',x:0,y:1.14,xanchor:'left',yanchor:'bottom',font:{size:13}},
   xaxis:{title:'Week commencing (appointment date)',type:'category',categoryorder:'array',categoryarray:weekLabels,tickfont:{size:12,color:'#444'},showgrid:false},
   yaxis:{title:'Appointment slots',range:[0,Math.ceil(max*1.18/10)*10],gridcolor:'#dce2e8'},
-  annotations,hovermode:'closest'
+  annotations,shapes,hovermode:'closest'
  },{responsive:true,displaylogo:false});
 }
 window.addEventListener('resize',()=>{if(!$('routineAvailabilityPage').classList.contains('hidden'))renderRoutineAvailabilityChart()});
