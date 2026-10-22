@@ -106,3 +106,11 @@ The toggle is labelled Month or week level data, with Week and Month indicators.
 
 ## Seasonal backgrounds
 Very light grey bands show winter (Dec–Feb), spring (Mar–May), summer (Jun–Aug), and autumn (Sep–Nov) on all three charts, in both weekly/monthly and superimposed/continuous views.
+
+
+## Shade seasons switch
+The Filters box has a Shade seasons switch, on by default. Turning it off removes seasonal background bands from all three charts; turning it on restores them.
+
+
+## Fix 22 October 2026
+Continuous timeline x-axis range is explicitly constrained to displayed periods so season background rectangles cannot extend the axis. The Shade seasons toggle state is now stored outside refresh() and is not reset to ON during every redraw. Both modes and all three charts use the setting.

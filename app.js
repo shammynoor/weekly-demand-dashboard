@@ -368,6 +368,8 @@ document.getElementById('excludeBH').onchange=e=>{excludeBankHolidays=!e.target.
 function isoWeek(weekStart){const d=new Date(weekStart+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+3);const year=d.getUTCFullYear();const jan4=new Date(Date.UTC(year,0,4,12));jan4.setUTCDate(jan4.getUTCDate()-((jan4.getUTCDay()+6)%7));const week=1+Math.round((d-jan4)/604800000);return {year,week}}
 const colours=['#1475b8','#e57a28','#159a78','#9053b4','#c64c69','#65748b'];
 let current=[];let continuousMode=false;let showCurrentWeek=true;let monthlyMode=false;
+let shadeSeasons=document.getElementById('shadeSeasons').checked;
+document.getElementById('shadeSeasons').onchange=e=>{shadeSeasons=e.target.checked;refresh()};
 const todayLondon=(()=>{const parts=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/London',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());const v=Object.fromEntries(parts.map(p=>[p.type,p.value]));return `${v.year}-${v.month}-${v.day}`})();
 const thisWeek=mondayOf(todayLondon),thisMonth=todayLondon.slice(0,7);
 let savedWeeklyIncludeBankHolidays=document.getElementById('excludeBH').checked;
@@ -388,7 +390,7 @@ function monthOfPeriod(p){return monthlyMode?p+'-01':p}
 function periodIsCurrent(p){return p===(monthlyMode?thisMonth:thisWeek)}
 function refresh(){updateClinicianChartFilter();
 const activeWeeks=[...new Set(records.filter(includedRecord).map(periodKey).filter(Boolean))].sort();
-const selectedWeeks=activeWeeks.filter(w=>w>=(monthlyMode?'2025-07':'2025-07-07')&&(showCurrentWeek||!periodIsCurrent(w)));
+const selectedWeeks=activeWeeks.filter(w=>w>=(monthlyMode?'2025-07':'2025-07-07')&&w<=(monthlyMode?thisMonth:thisWeek)&&(showCurrentWeek||!periodIsCurrent(w)));
 const sums=new Map(selectedWeeks.map(w=>[w,0]));
 for(const r of records){const key=periodKey(r);if(!sums.has(key)||!includedRecord(r))continue;sums.set(key,sums.get(key)+r.count)}
 current=[...sums].map(([week,count])=>({week,count,...isoWeek(monthOfPeriod(week))}));
@@ -404,7 +406,7 @@ function seasonBackgroundShapes(periods){
   groups.forEach((intervals,season)=>intervals.forEach(([x0,x1])=>shapes.push({type:'rect',xref:'x',yref:'paper',x0,x1,y0:0,y1:1,fillcolor:shades[season],line:{width:0},layer:'below'})));
  }else{
   const years=periods.map(v=>Number(v.slice(0,4)));
-  const start=Math.min(...years,2025)-1,end=Math.max(...years,2026)+1;
+  const start=Math.min(...years,2025)-1,end=Math.max(...years,2025)+1;
   for(let year=start;year<=end;year++){
    const bands=[[0,`${year}-01-01`,`${year}-03-01`],[1,`${year}-03-01`,`${year}-06-01`],[2,`${year}-06-01`,`${year}-09-01`],[3,`${year}-09-01`,`${year}-12-01`],[0,`${year}-12-01`,`${year+1}-01-01`]];
    for(const [season,x0,x1] of bands)shapes.push({type:'rect',xref:'x',yref:'paper',x0,x1,y0:0,y1:1,fillcolor:shades[season],line:{width:0},layer:'below'});
@@ -467,9 +469,11 @@ function drawCategoryChart(target,category,palette,sharedMax){
  }
  // One flat average, calculated from every displayed week across every year.
  traces.push({name:'All-years '+(monthlyMode?'monthly':'weekly')+' average ('+Math.round(average).toLocaleString('en-GB')+')',x:continuousMode?[monthOfPeriod(selectedWeeks[0]||'2025-07-07'),monthOfPeriod(selectedWeeks[selectedWeeks.length-1]||'2025-07-14')]:[0,12],y:[average,average],type:'scatter',mode:'lines',hoverinfo:'skip',opacity:0.58,line:{color:category==='urgent'?'#9c2633':category==='followup'?'#286cb8':'#23885b',width:2,dash:'dash'},showlegend:true});
+ const visibleDates=selectedWeeks.map(monthOfPeriod).sort();
+ const continuousRange=visibleDates.length?[visibleDates[0],visibleDates[visibleDates.length-1]]:null;
  const chartEl=$(target);
  const chartWidth=Math.max(280,Math.floor(chartEl.parentElement.getBoundingClientRect().width)-2);
- Plotly.react(target,traces,{autosize:true,width:chartWidth,margin:{l:58,r:12,t:32,b:65},paper_bgcolor:'white',plot_bgcolor:'white',shapes:seasonBackgroundShapes(selectedWeeks),legend:{orientation:'h',y:1.17,x:0},xaxis:continuousMode?{type:'date',title:monthlyMode?'Booking month':'Booking date',tickformat:'%b %Y',gridcolor:'#edf1f5'}:axis,yaxis:{title:'Appointments',range:[0,sharedMax],dtick:sharedMax/5,gridcolor:'#edf1f5'},hovermode:'closest',annotations:!hasAppointments&&category==='followup'?[{text:'No follow-up appointments found. In Manage Categories, assign slot types to Follow up and click Save.',xref:'paper',yref:'paper',x:.5,y:.55,showarrow:false,align:'center',font:{size:13,color:'#286cb8'}}]:[]},{responsive:true,displaylogo:false}).then(scheduleChartResize);
+ Plotly.react(target,traces,{autosize:true,width:chartWidth,margin:{l:58,r:12,t:32,b:65},paper_bgcolor:'white',plot_bgcolor:'white',shapes:shadeSeasons?seasonBackgroundShapes(selectedWeeks):[],legend:{orientation:'h',y:1.17,x:0},xaxis:continuousMode?{type:'date',title:monthlyMode?'Booking month':'Booking date',tickformat:'%b %Y',gridcolor:'#edf1f5',...(continuousRange?{range:continuousRange}: {})}:axis,yaxis:{title:'Appointments',range:[0,sharedMax],dtick:sharedMax/5,gridcolor:'#edf1f5'},hovermode:'closest',annotations:!hasAppointments&&category==='followup'?[{text:'No follow-up appointments found. In Manage Categories, assign slot types to Follow up and click Save.',xref:'paper',yref:'paper',x:.5,y:.55,showarrow:false,align:'center',font:{size:13,color:'#286cb8'}}]:[]},{responsive:true,displaylogo:false}).then(scheduleChartResize);
 }
 let maximum=0;
 let followupMaximum=0;
