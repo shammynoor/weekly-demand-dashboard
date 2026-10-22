@@ -721,6 +721,36 @@ function updateAvailabilityUrgencyFilter(){
  if(!same){select.replaceChildren();for(const name of names){const opt=document.createElement('option');opt.value=name;opt.textContent=name;select.append(opt)}}
  select.value=selectedAvailabilityUrgency;
 }
+const urgentClinicianDisabled=new Set();
+const urgentConsultDisabled=new Set();
+function renderUrgentSideFilters(){
+ const build=(id,names,disabled,colour)=>{
+  const root=$(id);if(!root)return;
+  const previous=[...root.querySelectorAll('input[data-filter-name]')].map(el=>el.dataset.filterName);
+  if(previous.length===names.length&&names.every((n,i)=>n===previous[i]))return;
+  root.replaceChildren();
+  for(const name of names){
+   const row=document.createElement('label');row.className='filter-row';
+   const sw=document.createElement('span');sw.className='switch';
+   const input=document.createElement('input');input.type='checkbox';input.setAttribute('role','switch');input.dataset.filterName=name;input.checked=!disabled.has(name);
+   input.setAttribute('aria-label','Include '+name);
+   const track=document.createElement('span');track.className='switch-track';track.style.setProperty('--switch-on',colour);
+   const caption=document.createElement('span');caption.textContent=name;
+   sw.append(input,track);row.append(sw,caption);root.append(row);
+   input.addEventListener('change',()=>{if(input.checked)disabled.delete(name);else disabled.add(name);renderAvailabilityChart()});
+  }
+ };
+ build('urgentClinicianToggles',clinicianGroupNames,urgentClinicianDisabled,'#a6d6b2');
+ build('urgentConsultToggles',consultCategoryNames,urgentConsultDisabled,'#a1c8e8');
+}
+function urgentClinicianMatches(clinician){
+ const detailed=clinicianAssignments[clinician];const group=clinicianGroupAssignments[detailed];
+ return clinicianGroupNames.includes(group)&&!urgentClinicianDisabled.has(group);
+}
+function urgentConsultMatches(slot){
+ const mode=consultAssignments[slot];
+ return consultCategoryNames.includes(mode)&&!urgentConsultDisabled.has(mode);
+}
 const urgentCategoryDisabled=new Set();
 let urgentWeeksBack=1,urgentWeeksForward=3;
 function setupUrgentRangeControls(){
@@ -779,6 +809,7 @@ function renderAvailabilityChart(){
  const target=$('availabilityChart');
  if($('availabilityPage').classList.contains('hidden')||!window.Plotly||!target)return;
  renderUrgentCategoryToggles();
+ renderUrgentSideFilters();
  const names=urgentCategoryNames().filter(n=>!urgentCategoryDisabled.has(n));
  const monday=new Date(thisWeek+'T12:00:00Z');const start=new Date(monday);start.setUTCDate(start.getUTCDate()-7*urgentWeeksBack);
  const weekCount=urgentWeeksBack+urgentWeeksForward+1;
@@ -789,7 +820,7 @@ function renderAvailabilityChart(){
  for(const r of availabilityRecords){
   if(!weekdays.has(r.date))continue;
   const category=String(assignments[r.slot]||'').trim();
-  if(!names.includes(category))continue;
+  if(!names.includes(category)||!urgentClinicianMatches(r.clinician)||!urgentConsultMatches(r.slot))continue;
   const status=String(r.availability||'').trim().toLowerCase();
   const label=status==='booked'?category:status==='blocked'?'Blocked':status==='embargoed'?'Embargoed':status==='available'?'Available':null;
   if(!label)continue;

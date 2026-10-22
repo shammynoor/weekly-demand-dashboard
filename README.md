@@ -241,3 +241,7 @@ Compact urgency toggle panel with category-coloured switches; circular availabil
 
 ## Single dual-handle week range slider
 Urgent Availability now uses one shared range track with two independently draggable handles for start (-3 to 0 weeks) and end (0 to +4 weeks), defaulting to last week through three weeks ahead. The highlighted track shows the selected interval.
+
+
+## Urgent chart right sidebar filters
+Added Clinician Groups (pastel green) and Consult mode (pastel blue) toggle panels above Urgent categories in the same 155px sidebar column. Filters are independent of Weekly Demand and Routine chart switches, and apply to all status segments. The chart column retains its previous width.
