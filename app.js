@@ -999,22 +999,33 @@ function renderBookingTimesChart(){
   if(!Number.isFinite(r.minute)||r.minute<0||r.minute>=1440)continue;
   bins[Math.floor(r.minute/15)]+=r.count;count+=r.count;
  }
+ // Preserve the full-day denominator so the 50% marker means half of all bookings.
  const times=Array.from({length:96},(_,i)=>String(Math.floor(i/4)).padStart(2,'0')+':'+String((i%4)*15).padStart(2,'0'));
  let running=0;
  const cumulative=bins.map(n=>{running+=n;return count?running/count*100:0});
- const tickvals=times.filter((_,i)=>i%8===0);
+ const visibleStart=24; // 06:00
+ const visibleEnd=84;   // 21:00 (exclusive for 15-minute bins)
+ const visibleTimes=times.slice(visibleStart,visibleEnd);
+ const visibleBins=bins.slice(visibleStart,visibleEnd);
+ const visibleCumulative=cumulative.slice(visibleStart,visibleEnd);
+ const tickvals=visibleTimes.filter((_,i)=>i%8===0);
+ const medianBin=count?cumulative.findIndex(p=>p>=50):-1;
+ const medianVisible=medianBin>=visibleStart&&medianBin<visibleEnd;
+ const medianTime=medianVisible?times[medianBin]:null;
+ const shapes=medianVisible?[{type:'line',xref:'x',yref:'y2',x0:medianTime,x1:medianTime,y0:0,y1:50,line:{color:'#636d78',width:1.8,dash:'dot'}}]:[];
+ const annotations=medianVisible?[{xref:'x',yref:'y2',x:medianTime,y:50,text:'50% · '+medianTime,showarrow:false,xanchor:'left',yanchor:'bottom',xshift:6,font:{size:12,color:'#475569'}}]:[];
  const traces=[
-  {type:'bar',name:'Bookings per 15 minutes',x:times,y:bins,marker:{color:'#8fb4d3',line:{width:0}},hovertemplate:'%{x}–15 min later<br>%{y:,} bookings<extra></extra>',yaxis:'y'},
-  {type:'scatter',mode:'lines',name:'Cumulative %',x:times,y:cumulative,yaxis:'y2',line:{color:'#bc756e',width:3,shape:'hv'},hovertemplate:'%{x}<br>%{y:.1f}% booked by this time<extra></extra>'}
+  {type:'bar',name:'Bookings per 15 minutes',x:visibleTimes,y:visibleBins,marker:{color:'#8fb4d3',line:{width:0}},hovertemplate:'%{x}–15 min later<br>%{y:,} bookings<extra></extra>',yaxis:'y'},
+  {type:'scatter',mode:'lines',name:'Cumulative %',x:visibleTimes,y:visibleCumulative,yaxis:'y2',line:{color:'#bc756e',width:3,shape:'hv'},hovertemplate:'%{x}<br>%{y:.1f}% booked by this time<extra></extra>'}
  ];
  Plotly.react(chart,traces,{
-  height:520,autosize:true,margin:{l:72,r:74,t:70,b:65},
+  height:520,autosize:true,margin:{l:24,r:85,t:70,b:65},
   paper_bgcolor:'#fff',plot_bgcolor:'#f1f3f5',bargap:0.04,
   legend:{orientation:'h',x:0,y:1.13,xanchor:'left',yanchor:'bottom'},
-  xaxis:{type:'category',categoryorder:'array',categoryarray:times,tickmode:'array',tickvals,ticktext:tickvals,title:'Calculated booking time (24-hour clock)',showgrid:false},
-  yaxis:{title:'Bookings per 15 minutes',rangemode:'tozero',gridcolor:'#d9e1e8'},
-  yaxis2:{title:'Cumulative bookings (%)',overlaying:'y',side:'right',range:[0,100],ticksuffix:'%',showgrid:false},
-  hovermode:'x unified'
+  xaxis:{type:'category',categoryorder:'array',categoryarray:visibleTimes,tickmode:'array',tickvals,ticktext:tickvals,title:'Calculated booking time (06:00–21:00)',showgrid:false},
+  yaxis:{visible:false,rangemode:'tozero',showgrid:false,zeroline:false},
+  yaxis2:{title:'Cumulative bookings (%)',overlaying:'y',side:'right',range:[0,100],ticksuffix:'%',showgrid:true,gridcolor:'#d9e1e8',zeroline:false},
+  shapes,annotations,hovermode:'x unified'
  },{responsive:true,displaylogo:false});
  const note=$('bookingTimesNote');
  if(note)note.textContent=count?count.toLocaleString('en-GB')+' booked appointments across the loaded CSV files and selected categories.':'No bookings match these filters. Check category assignments in Manage categories.';

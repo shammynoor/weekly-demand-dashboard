@@ -225,3 +225,7 @@ Routine chart styling: hidden X tick labels, 8 week headers, dotted vertical wee
 
 ## Booking Times tab
 Calculated booking timestamps from appointment date/time minus `Booked Time to Slot Time` (minutes) are grouped into 96 15-minute bins across all loaded CSV files. A bar histogram shows count and a line on a secondary 0–100% axis shows the running cumulative share. Independent urgency group, clinician group, and consult mode switches use saved category assignments. Only booked appointments with valid booking lead time and all three group assignments are included. Existing charts remain unchanged.
+
+
+## Booking Times refinements
+The chart shows only 06:00–21:00 with the left count axis hidden; the 0–100% cumulative axis remains on the right. The running percentage is calculated over all bookings throughout the entire day. A dotted vertical line drops from the first 15-minute bin reaching 50% to the bottom of the chart; if that point is outside the displayed range, no marker is drawn.
