@@ -153,3 +153,7 @@ Six weeks are shown with Saturday and Sunday as blank spacing columns (no weeken
 
 
 Availability chart styling: separators between Saturday and Sunday; reduced bar gaps; muted red booked bars; 80%-transparent pale red shading before today.
+
+
+## Group Urgency
+Manage Categories includes Detailed urgency (existing slot-type assignments) and Group Urgency (new drag-and-drop grouping of detailed urgency categories). Group categories and assignments are persisted in browser settings and the existing OneDrive category JSON, without changing existing chart category definitions.
