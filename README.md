@@ -263,3 +263,6 @@ Routine dual slider keeps start within -2 to 0 (This Week) and end within +1 (Ne
 \n\nRoutine chart: Weeks/Days segmented switch beside range slider, daily bars use appointment dates and preserve all status and side filters. Weekly bars widened. Urgent weekly separators dotted.\n\n\nUrgent availability has Weeks/Days switch beside slider (defaults Days). Both chart granularity controls use compact dark-grey styling. Availability sidebar filters grey out zero-data options based on selected date range and active filters.\n\n\nCorrected switch style: matching Timeline switch UI with 'by Day or Week' and Day/Week value on both availability pages. Fixed urgent weekly Plotly category axis and hover totals to use aggregated weekly buckets.\n
 
 Restored compact Days/Weeks segmented controls on both availability pages, matching dark-grey theme.
+
+
+Days/Weeks segmented controls: subtle inset shadow on the selected dark-grey button for both pages.
