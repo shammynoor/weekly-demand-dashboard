@@ -219,3 +219,5 @@ New navigation tab: weekly stacked slot counts from the appointment date (not th
 
 ## Routine chart: Today and independent filters
 The Routine Availability page has its own Clinician Groups and Consult mode switches, initially enabled, filtering availability records through saved category mappings. The dotted Today line lies 5%, 25%, 45%, 65%, or 85% across the current week for Monday through Friday, with the plot to its left shaded 50%-opacity grey. Weekends clamp to the Friday position.
+
+Routine chart styling: hidden X tick labels, 8 week headers, dotted vertical week dividers, vertical left circular legend, lighter stack separators, outline-free Available segments, darker plot background and thicker baseline.

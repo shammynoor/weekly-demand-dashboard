@@ -903,10 +903,15 @@ function renderRoutineAvailabilityChart(){
  const dateText=d=>new Date(d+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',timeZone:'UTC'});
  const weekLabels=weeks.map(w=>dateText(w));
  const summaries=weeks.map((week,i)=>'<b>Week commencing '+dateText(week)+'</b><br>'+labels.map(label=>label+': '+(byWeek.get(JSON.stringify([week,label]))||0).toLocaleString('en-GB')).join('<br>')+'<br><b>Total: '+labels.reduce((sum,label)=>sum+(byWeek.get(JSON.stringify([week,label]))||0),0).toLocaleString('en-GB')+'</b>');
- const traces=labels.map(label=>({type:'bar',name:label,x:weekLabels,y:weeks.map(w=>byWeek.get(JSON.stringify([w,label]))||0),marker:{color:colours[label],line:{color:label==='Available'?'#aeb8c3':'#f1f3f5',width:1}},customdata:summaries,hovertemplate:'%{customdata}<extra></extra>'}));
+ const plotBackground='#e0e4e8';
+ const traces=labels.map(label=>({type:'bar',name:label,showlegend:false,x:weekLabels,y:weeks.map(w=>byWeek.get(JSON.stringify([w,label]))||0),marker:{color:colours[label],line:{color:label==='Available'?'rgba(0,0,0,0)':plotBackground,width:label==='Available'?0:1.5}},customdata:summaries,hovertemplate:'%{customdata}<extra></extra>'}));
+ // Scatter traces provide circular legend symbols instead of Plotly bar squares.
+ for(const label of labels)traces.push({type:'scatter',mode:'markers',name:label,x:[null],y:[null],marker:{symbol:'circle',size:14,color:colours[label],line:{color:label==='Available'?'#9ba7b2':colours[label],width:label==='Available'?1.5:0}},showlegend:true,hoverinfo:'skip'});
  const totals=weeks.map(w=>labels.reduce((sum,label)=>sum+(byWeek.get(JSON.stringify([w,label]))||0),0));
  const max=Math.max(1,...totals);
  const annotations=totals.flatMap((total,i)=>total?[{x:weekLabels[i],y:total,text:total.toLocaleString('en-GB'),showarrow:false,yshift:5,font:{size:11,color:'#768392'}}]:[]);
+ const weekTitles=['Last Week','This Week','Next Week','2 weeks','3 weeks','4 weeks','5 weeks','6 weeks'];
+ for(let i=0;i<weeks.length;i++)annotations.push({xref:'x',yref:'paper',x:i,y:1.105,text:weekTitles[i],showarrow:false,font:{family:'Arial',size:12,color:'#384858'}});
  // Each category occupies a full week from x=index-0.5 to x=index+0.5.
  // Place Today at 5%, 25%, 45%, 65% or 85% of its week for Mon–Fri.
  const dayIndex=(new Date(todayLondon+'T12:00:00Z').getUTCDay()+6)%7;
@@ -916,14 +921,15 @@ function renderRoutineAvailabilityChart(){
   {type:'rect',xref:'x',yref:'paper',x0:-0.5,x1:todayX,y0:0,y1:1,fillcolor:'rgba(128,136,146,0.50)',line:{width:0},layer:'below'},
   {type:'line',xref:'x',yref:'paper',x0:todayX,x1:todayX,y0:0,y1:1,line:{color:'#344355',width:2,dash:'dot'},layer:'above'}
  ];
+ for(let i=0;i<weeks.length-1;i++)shapes.push({type:'line',xref:'x',yref:'paper',x0:i+0.5,x1:i+0.5,y0:0,y1:1,line:{color:'#98a2ad',width:1,dash:'dot'},layer:'above'});
  if(todayX!==null)annotations.push({xref:'x',yref:'paper',x:todayX,y:1.02,text:'Today',showarrow:false,xanchor:'left',font:{size:12,color:'#344355'}});
  const note=$('routineAvailabilityNote');
  if(note)note.textContent=matched?'':"No matching Routine urgency-group appointments found. Check Manage categories → Urgency Group.";
  Plotly.react(target,traces,{
-  height:510,autosize:true,barmode:'stack',bargap:0.17,
-  margin:{l:70,r:24,t:55,b:75},paper_bgcolor:'#fff',plot_bgcolor:'#f1f3f5',
-  legend:{orientation:'h',x:0,y:1.14,xanchor:'left',yanchor:'bottom',font:{size:13}},
-  xaxis:{title:'Week commencing (appointment date)',type:'category',categoryorder:'array',categoryarray:weekLabels,tickfont:{size:12,color:'#444'},showgrid:false},
+  height:510,autosize:true,barmode:'stack',bargap:0.12,
+  margin:{l:185,r:24,t:85,b:35},paper_bgcolor:'#fff',plot_bgcolor:plotBackground,
+  legend:{orientation:'v',x:-0.075,y:0.5,xanchor:'right',yanchor:'middle',font:{size:13,color:'#344355'},traceorder:'normal'},
+  xaxis:{type:'category',categoryorder:'array',categoryarray:weekLabels,showticklabels:false,showgrid:false,showline:true,linecolor:'#374350',linewidth:3,zeroline:false},
   yaxis:{title:'Appointment slots',range:[0,Math.ceil(max*1.18/10)*10],gridcolor:'#dce2e8'},
   annotations,shapes,hovermode:'closest'
  },{responsive:true,displaylogo:false});
