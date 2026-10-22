@@ -803,10 +803,12 @@ const urgentCategoryDisabled=new Set();
 let urgentAvailabilityGranularity='day';
 function setUrgentAvailabilityGranularity(mode){
  urgentAvailabilityGranularity=mode==='week'?'week':'day';
- document.querySelectorAll('[data-urgent-granularity]').forEach(btn=>{const selected=btn.dataset.urgentGranularity===urgentAvailabilityGranularity;btn.classList.toggle('active',selected);btn.setAttribute('aria-pressed',String(selected));});
+ const toggle=$('urgentDayWeekToggle'),label=$('urgentDayWeekValue');
+ if(toggle)toggle.checked=urgentAvailabilityGranularity==='week';
+ if(label)label.textContent=urgentAvailabilityGranularity==='week'?'Week':'Day';
  renderAvailabilityChart();
 }
-document.querySelectorAll('[data-urgent-granularity]').forEach(btn=>btn.addEventListener('click',()=>setUrgentAvailabilityGranularity(btn.dataset.urgentGranularity)));
+$('urgentDayWeekToggle')?.addEventListener('change',event=>setUrgentAvailabilityGranularity(event.target.checked?'week':'day'));
 
 let urgentWeeksBack=1,urgentWeeksForward=3;
 function setupUrgentRangeControls(){
@@ -902,13 +904,13 @@ function renderAvailabilityChart(){
  const max=Math.ceil(Math.max(1,...totals)*1.2/10)*10;
  const daySummary=buckets.map(date=>{
   const weekday=weekly?'Week commencing '+date:new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'long',timeZone:'UTC'});
-  return weekday+'<br>'+labels.map(n=>n+': '+(counts.get(JSON.stringify([date,n]))||0).toLocaleString('en-GB')).join('<br>')+'<br><b>Total: '+totals[dates.indexOf(date)].toLocaleString('en-GB')+'</b>';
+  return weekday+'<br>'+labels.map(n=>n+': '+(counts.get(JSON.stringify([date,n]))||0).toLocaleString('en-GB')).join('<br>')+'<br><b>Total: '+totals[buckets.indexOf(date)].toLocaleString('en-GB')+'</b>';
  });
  const traces=labels.map(name=>({type:'bar',name,showlegend:false,x:buckets,y:buckets.map(date=>(weekly||weekdays.has(date))?counts.get(JSON.stringify([date,name]))||0:null),marker:{color:colours[name],line:{color:name==='Available'?'#ffffff':'#e2e7ec',width:name==='Available'?0:1.1}},customdata:daySummary,hovertemplate:'%{customdata}<extra></extra>'}));
  for(const name of labels)traces.push({type:'scatter',mode:'markers',name,x:[null],y:[null],marker:{symbol:'circle',size:14,color:colours[name],line:{color:name==='Available'?'#aeb8c3':colours[name],width:name==='Available'?1.5:0}},hoverinfo:'skip',showlegend:true});
  const weekLabels=Array.from({length:weekCount},(_,i)=>{const offset=i-urgentWeeksBack;return offset===0?'This Week':offset===-1?'Last Week':offset<0?Math.abs(offset)+' weeks ago':offset===1?'Next Week':offset+' weeks'});
  const annotations=weekLabels.map((text,i)=>({x:weekly?buckets[i]:dates[i*7+2],xref:'x',y:1.045,yref:'paper',text,showarrow:false,font:{size:12,color:'#444444'},xanchor:'center',yanchor:'bottom'}));
- const shapes=Array.from({length:weekCount},(_,i)=>({type:'line',xref:'x',yref:'paper',x0:weekly?i+0.5:i*7+5.5,x1:weekly?i+0.5:i*7+5.5,y0:0,y1:1,line:{color:'#9ca6b1',width:1.3,dash:'dot'}}));
+ const shapes=Array.from({length:weekCount-1},(_,i)=>({type:'line',xref:'x',yref:'paper',x0:weekly?i+0.5:i*7+5.5,x1:weekly?i+0.5:i*7+5.5,y0:0,y1:1,line:{color:'#9ca6b1',width:1.3,dash:'dot'}}));
  if(dateSet.has(todayLondon)){
   const x=weekly?urgentWeeksBack-0.5+((new Date(todayLondon+'T12:00:00Z').getUTCDay()+6)%7)/7:dates.indexOf(todayLondon);
   shapes.unshift({type:'rect',xref:'x',yref:'paper',x0:-.5,x1:x,y0:0,y1:1,fillcolor:'rgba(128,136,146,0.50)',line:{width:0},layer:'above'});
@@ -918,9 +920,9 @@ function renderAvailabilityChart(){
  buckets.forEach((date,i)=>{if((weekly||weekdays.has(date))&&totals[i])annotations.push({x:date,xref:'x',y:totals[i],yref:'y',text:String(totals[i]),showarrow:false,font:{size:10,color:'#818b96'},yshift:4,yanchor:'bottom'})});
  const note=$('availabilityNote');if(note)note.textContent=names.length?'':'Select an Urgent detailed urgency category to display appointments.';
  Plotly.react(target,traces,{
-  autosize:true,height:510,barmode:'stack',bargap:0.015,margin:{l:62,r:12,t:66,b:105},paper_bgcolor:'white',plot_bgcolor:'#e2e7ec',
+  autosize:true,height:510,barmode:'stack',bargap:weekly?0.04:0.015,margin:{l:62,r:12,t:66,b:105},paper_bgcolor:'white',plot_bgcolor:'#e2e7ec',
   legend:{orientation:'h',x:0.5,y:-0.23,xanchor:'center',yanchor:'top',font:{size:12,color:'#444444'},bgcolor:'rgba(255,255,255,0)'},
-  xaxis:{type:'category',categoryorder:'array',categoryarray:dates,tickmode:'array',tickvals:dates,ticktext:dates.map(date=>weekdays.has(date)?new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'short',timeZone:'UTC'}):''),tickangle:-90,tickfont:{size:12,color:'#444444'},showgrid:false,range:[-.5,dates.length-.5],fixedrange:true},
+  xaxis:{type:'category',categoryorder:'array',categoryarray:buckets,tickmode:'array',tickvals:buckets,ticktext:buckets.map(date=>weekly?'':weekdays.has(date)?new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'short',timeZone:'UTC'}):''),tickangle:-90,tickfont:{size:12,color:'#444444'},showgrid:false,range:[-.5,buckets.length-.5],fixedrange:true},
   yaxis:{title:'Appointment slots',range:[0,max],gridcolor:'#dce2e8'},annotations,shapes,hovermode:'closest'
  },{responsive:true,displaylogo:false});
 }
@@ -968,10 +970,12 @@ let routineStartWeek=-1,routineEndWeek=6;
 let routineAvailabilityGranularity='week';
 function setRoutineAvailabilityGranularity(mode){
  routineAvailabilityGranularity=mode==='day'?'day':'week';
- document.querySelectorAll('[data-routine-granularity]').forEach(btn=>{const selected=btn.dataset.routineGranularity===routineAvailabilityGranularity;btn.classList.toggle('active',selected);btn.setAttribute('aria-pressed',String(selected));});
+ const toggle=$('routineDayWeekToggle'),label=$('routineDayWeekValue');
+ if(toggle)toggle.checked=routineAvailabilityGranularity==='week';
+ if(label)label.textContent=routineAvailabilityGranularity==='week'?'Week':'Day';
  renderRoutineAvailabilityChart();
 }
-document.querySelectorAll('[data-routine-granularity]').forEach(btn=>btn.addEventListener('click',()=>setRoutineAvailabilityGranularity(btn.dataset.routineGranularity)));
+$('routineDayWeekToggle')?.addEventListener('change',event=>setRoutineAvailabilityGranularity(event.target.checked?'week':'day'));
 
 function setupRoutineRangeControls(){
  const start=$('routineWeeksStart'),end=$('routineWeeksEnd');
