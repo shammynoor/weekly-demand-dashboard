@@ -617,7 +617,7 @@ function updateAvailabilityUrgencyFilter(){
 }
 function renderAvailabilityChart(){
  const version=$('availabilityVersion');
- if(version)version.textContent='Chart layout v2 · 22 Oct 2026';
+ if(version)version.textContent='Availability status split · 22 Oct 2026';
  if($('availabilityPage').classList.contains('hidden')||!window.Plotly)return;
  // Use one shared scale so the two panels can be compared directly.
  const sharedMax=availabilitySharedYMax();
@@ -668,15 +668,15 @@ function renderAvailabilityPanel(targetId,kind,sharedMax){
   if(kind==='reds'&&detailedCategory!=='reds'&&detailedCategory!=='extras')continue;
   if(kind==='priority'&&detailedCategory!=='priority')continue;
   const status=r.availability.trim().toLowerCase();
-  // Extras is a detailed urgency category within the selected urgency group.
+  // Extras is a detailed urgency category and is displayed separately.
   // Count it separately (regardless of availability) to avoid double-counting.
-  const label=kind==='reds'&&detailedCategory==='extras'?'Extras':status==='booked'?'Booked':(status==='blocked'||status==='embargoed')?'Held Back':status==='available'?'Available':null;
+  const label=kind==='reds'&&detailedCategory==='extras'?'Extras':status==='booked'?'Booked':status==='blocked'?'Blocked':status==='embargoed'?'Embargoed':status==='available'?'Available':null;
   if(!label)continue;
   const key=JSON.stringify([r.date,label]);
   counts.set(key,(counts.get(key)||0)+r.count);
  }
- const labels=kind==='reds'?['Booked','Held Back','Extras','Available']:['Booked','Held Back','Available'];
- const colourByLabel={'Booked':kind==='priority'?'#e8cd83':'#bf7775','Held Back':'#636c76','Extras':'#8e67b6','Available':'#ffffff'};
+ const labels=kind==='reds'?['Booked','Blocked','Embargoed','Extras','Available']:['Booked','Blocked','Embargoed','Available'];
+ const colourByLabel={'Booked':kind==='priority'?'#e8cd83':'#bf7775','Blocked':'#59636e','Embargoed':'#aab2bb','Extras':'#8e67b6','Available':'#ffffff'};
  const colours=labels.map(name=>colourByLabel[name]);
  const totals=dates.map(date=>labels.reduce((sum,name)=>sum+(counts.get(JSON.stringify([date,name]))||0),0));
  const daySummary=dates.map(date=>{
