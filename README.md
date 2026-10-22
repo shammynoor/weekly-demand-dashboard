@@ -118,3 +118,4 @@ Continuous timeline x-axis range is explicitly constrained to displayed periods 
 
 ## Urgent Appointment Availability
 Third navigation page with a daily stacked bar chart, using Appointment Date directly and stacking the CSV Availability values. It includes only slot types assigned to the Urgent category. The fixed six-week window runs Monday two weeks before the current week through Sunday three weeks after. Data refresh updates the chart.
+\n\n## Availability chart refinement\nUses only the exact Slot Type 'urgent appts' (case-insensitive). Monday–Friday only. Booked (red) at the base, Held Back = Blocked + Embargoed (dark grey), Available (white) on top. Light grey plot background, weekday-only X labels, six week labels above each group.\n
