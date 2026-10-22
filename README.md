@@ -130,3 +130,7 @@ Urgent Appointment Availability has a selectable Urgency category filter, popula
 
 ## Sign-in screen stability
 The signed-in dashboard view is latched after Microsoft authentication, so chart redraws, category updates and background data refreshes cannot switch back to the login screen. Only explicit Sign out clears the latch. Microsoft Graph token failures remain visible as errors rather than silently displaying the login page.
+
+
+## Refresh diagnostics
+A OneDrive data-fetch error is shown with its actual reason rather than only 'Refresh failed'. Chart rendering errors are isolated from loading so the dashboard remains signed in and displays the specific chart error. Unhandled background errors are displayed in the status area. These changes aid diagnosing a persistent sign-in/refresh problem without masking it.

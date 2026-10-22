@@ -342,8 +342,25 @@ async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;
  // Do not guess assignments: unknown slot types stay Uncategorised until manually assigned.
 
  saveCategories(false);lastFingerprint=fingerprint;
-rebuildCategoryFilter();renderEditor();renderClinicianEditor();renderConsultEditor();refresh();renderAvailabilityChart();showRefreshFeedback('Data refreshed successfully');scheduleChartResize();setSync(`${items.length} CSV files · ${valid.toLocaleString('en-GB')} booked rows counted · ${skipped.toLocaleString('en-GB')} skipped · Updated ${new Date().toLocaleString('en-GB')}`)
- }catch(e){showRefreshFeedback('Refresh failed');setSync('Refresh failed: '+e.message)}finally{busy=false;setButtons()}}
+const drawingErrors=[];
+ for(const [label,draw] of [
+  ['category filters',()=>rebuildCategoryFilter()],
+  ['urgency categories',()=>renderEditor()],
+  ['clinician categories',()=>renderClinicianEditor()],
+  ['consult categories',()=>renderConsultEditor()],
+  ['weekly charts',()=>refresh()],
+  ['availability chart',()=>renderAvailabilityChart()]
+ ]){
+  try{draw()}catch(error){drawingErrors.push(label+': '+(error?.message||String(error)));console.error('Dashboard rendering error in '+label,error)}
+ }
+ showRefreshFeedback(drawingErrors.length?'Data loaded; chart issue: '+drawingErrors.join('; '):'Data refreshed successfully');
+ scheduleChartResize();setSync(`${items.length} CSV files · ${valid.toLocaleString('en-GB')} booked rows counted · ${skipped.toLocaleString('en-GB')} skipped · Updated ${new Date().toLocaleString('en-GB')}`)
+ }catch(e){
+ const message=e?.message||String(e);
+ console.error('OneDrive refresh error',e);
+ showRefreshFeedback('Refresh failed: '+message);
+ setSync('Refresh failed: '+message+' · You remain signed in; the existing charts have been preserved where possible.');
+ }finally{busy=false;setButtons()}}
 $('signIn').onclick=async()=>{if(authenticatedOnce||activeAccount)return;try{if(!auth){await initAuth();if(!auth)throw Error('Microsoft sign-in is still unavailable. Refresh the page (Ctrl+F5).')}await auth.loginRedirect({scopes:SCOPES})}catch(e){setStatus('Sign-in failed: '+e.message)}};
 $('signOut').onclick=async()=>{if(!activeAccount)return;try{authenticatedOnce=false;$('dashboardShell').dataset.signedIn='false';await auth.logoutRedirect({account:activeAccount,postLogoutRedirectUri:REDIRECT_URI})}catch(e){setStatus('Sign-out failed: '+e.message)}};
 $('chooseFolder').onclick=showFolderPicker;
@@ -633,3 +650,16 @@ function renderAvailabilityChart(){
  },{responsive:true,displaylogo:false});
 }
 window.addEventListener('resize',()=>{if(!$('availabilityPage').classList.contains('hidden'))renderAvailabilityChart()});
+
+window.addEventListener('unhandledrejection',event=>{
+ const message=event.reason?.message||String(event.reason||'Unknown background error');
+ console.error('Unhandled dashboard error',event.reason);
+ if($('dashboardShell')&&!$('dashboardShell').classList.contains('hidden')){
+  setSync('Background error: '+message+' · You are still signed in.');
+ }
+});
+window.addEventListener('error',event=>{
+ if($('dashboardShell')&&!$('dashboardShell').classList.contains('hidden')){
+  setSync('Dashboard error: '+event.message+' · You are still signed in.');
+ }
+});
