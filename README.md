@@ -221,3 +221,7 @@ New navigation tab: weekly stacked slot counts from the appointment date (not th
 The Routine Availability page has its own Clinician Groups and Consult mode switches, initially enabled, filtering availability records through saved category mappings. The dotted Today line lies 5%, 25%, 45%, 65%, or 85% across the current week for Monday through Friday, with the plot to its left shaded 50%-opacity grey. Weekends clamp to the Friday position.
 
 Routine chart styling: hidden X tick labels, 8 week headers, dotted vertical week dividers, vertical left circular legend, lighter stack separators, outline-free Available segments, darker plot background and thicker baseline.
+
+
+## Booking Times tab
+Calculated booking timestamps from appointment date/time minus `Booked Time to Slot Time` (minutes) are grouped into 96 15-minute bins across all loaded CSV files. A bar histogram shows count and a line on a secondary 0–100% axis shows the running cumulative share. Independent urgency group, clinician group, and consult mode switches use saved category assignments. Only booked appointments with valid booking lead time and all three group assignments are included. Existing charts remain unchanged.
