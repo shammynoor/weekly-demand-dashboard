@@ -252,28 +252,47 @@ function aggregateCSV(csv,aggregated,availabilityAggregate){
  const parsed=Papa.parse(csv,{header:true,skipEmptyLines:'greedy'});
  const fields=parsed.meta.fields||[];
  for(const required of ['Appointment Date','Appointment Time','Booked Time to Slot Time','Slot Type','Availability'])if(!fields.includes(required))throw Error('Missing column: '+required);
- let day='',time='',lastSlot='',valid=0,skipped=0;
+ let valid=0,skipped=0;
+ const fillColumns=[
+  'Appointment Date',
+  'Appointment Time',
+  'User Type of the Session Holder of the Session',
+  'Slot Type',
+  'Availability',
+  'Town of the Location of the Session',
+  'Full Name of the Session Holder of the Session'
+ ];
+ // Fill down all seven exported fields, independently, within this CSV only.
+ // Never carry a value from a previous CSV file.
+ const previous=Object.fromEntries(fillColumns.map(column=>[column,'']));
  const recognized=new Set(['booked','available','blocked','embargoed']);
- for(const r of parsed.data){
-  const rawDay=(r['Appointment Date']||'').trim();
-  if(rawDay){day=rawDay;time='';lastSlot='';}
-  const rawTime=(r['Appointment Time']||'').trim();
-  if(rawTime)time=rawTime;
-  const explicitSlot=(r['Slot Type']||'').trim();
-  if(explicitSlot)lastSlot=explicitSlot;
-  const availability=(r['Availability']||'').trim();
+ for(const original of parsed.data){
+  const r={...original};
+  const explicitStatus=String(original['Availability']??'').trim();
+  const explicitSlot=String(original['Slot Type']??'').trim();
+  const leadRaw=String(original['Booked Time to Slot Time']??'').trim();
+  const explicitTime=String(original['Appointment Time']??'').trim();
+  // These rows are secondary patient details rather than separate appointment slots.
+  // Still fill their fields, but do not count them as an extra appointment.
+  const hasSlotEvidence=Boolean(explicitStatus||explicitSlot||leadRaw||explicitTime);
+  for(const column of fillColumns){
+   const value=String(r[column]??'').trim();
+   if(value)previous[column]=value;
+   else r[column]=previous[column];
+  }
+  if(!hasSlotEvidence)continue;
+  const day=String(r['Appointment Date']??'').trim();
+  const time=String(r['Appointment Time']??'').trim();
+  const slotType=String(r['Slot Type']??'').trim();
+  const availability=String(r['Availability']??'').trim();
   const status=availability.toLowerCase();
-  // Continuation rows without a recognised appointment status are not slots.
-  // Blank Slot Type inherits the most recent explicit type within this appointment date.
-  if(!recognized.has(status)||!lastSlot)continue;
-  const slotType=explicitSlot||lastSlot;
+  if(!recognized.has(status)||!slotType)continue;
   const appointmentDay=parseDate(day);
   if(!appointmentDay)continue;
   const date=appointmentDay.toISOString().slice(0,10);
   const akey=JSON.stringify([date,slotType,availability]);
   availabilityAggregate.set(akey,(availabilityAggregate.get(akey)||0)+1);
   if(status!=='booked')continue;
-  const leadRaw=(r['Booked Time to Slot Time']||'').trim();
   const lead=Number(leadRaw.replace(/,/g,''));
   const tm=/^(\d{1,2}):(\d{2})/.exec(time);
   if(!tm||!leadRaw||!Number.isFinite(lead)){skipped++;continue;}

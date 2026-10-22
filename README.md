@@ -191,3 +191,7 @@ Both availability charts now show Blocked and Embargoed as separate stacked segm
 
 ## CSV continuation-row fix (22 October 2026)
 Rows with blank Slot Type inherit the most recent nonblank Slot Type within the same Appointment Date. Rows without a recognised Availability (Booked, Available, Blocked, Embargoed) are not counted as slots. Date changes reset inherited slot type and time. Both the daily availability charts and weekly booking aggregation use the corrected slot type. This may change counts; verify against your export and category assignments.
+
+
+## Seven-field CSV fill-down correction
+Within each CSV, the import independently fills down blank Appointment Date, Appointment Time, User Type of the Session Holder of the Session, Slot Type, Availability, Town of the Location of the Session, and Full Name of the Session Holder of the Session. The fill-down resets at the beginning of each file. Rows containing only patient-detail continuation data (without an explicit availability, slot type, appointment time, or booked-to-slot lead) are not counted as additional appointment slots. This avoids duplicate counting of secondary patient-detail rows.
