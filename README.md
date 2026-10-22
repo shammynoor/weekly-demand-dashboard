@@ -134,3 +134,7 @@ The signed-in dashboard view is latched after Microsoft authentication, so chart
 
 ## Refresh diagnostics
 A OneDrive data-fetch error is shown with its actual reason rather than only 'Refresh failed'. Chart rendering errors are isolated from loading so the dashboard remains signed in and displays the specific chart error. Unhandled background errors are displayed in the status area. These changes aid diagnosing a persistent sign-in/refresh problem without masking it.
+
+
+## Render and login stability
+Removed repeated Plotly redraws during a single CSV load and removed the redraw/resize feedback loop. The charts now render once per data refresh and respond to ordinary window resizing. MSAL session restoration avoids showing the sign-in screen while cached credentials are being restored. Errors remain visible in the dashboard status.

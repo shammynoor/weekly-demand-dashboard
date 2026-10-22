@@ -158,12 +158,7 @@ function scheduleChartResize(){
  requestAnimationFrame(()=>requestAnimationFrame(resizeVisibleCharts));
 }
 window.addEventListener('resize',scheduleChartResize);
-if(window.ResizeObserver){
- const chartResizeObserver=new ResizeObserver(()=>scheduleChartResize());
- for(const id of ['urgentChart','routineChart','followupChart']){
-  const el=$(id);if(el)chartResizeObserver.observe(el.parentElement);
- }
-}
+
 
 function setButtons(){
  // Never interpret a background chart/data refresh as a sign-out.
@@ -190,6 +185,16 @@ function setButtons(){
 }
 async function initAuth(){
  if(authInitPromise)return authInitPromise;
+ // A reload can occur while large CSVs are parsed. If MSAL has a cached
+ // account, do not flash the login page while redirect handling resolves.
+ try{
+  const cache=localStorage.getItem('msal.account.keys');
+  if(cache&&cache!=='[]'){
+   $('loginScreen').classList.add('hidden');
+   $('dashboardShell').classList.remove('hidden');
+   setSync('Restoring Microsoft session…');
+  }
+ }catch(e){}
  authInitPromise=(async()=>{
  try{
   if(!window.msal)throw Error('Microsoft sign-in library did not load. Please refresh with Ctrl+F5 or check browser content blocking.');
@@ -509,7 +514,7 @@ function drawCategoryChart(target,category,palette,sharedMax){
  const continuousRange=visibleDates.length?[visibleDates[0],visibleDates[visibleDates.length-1]]:null;
  const chartEl=$(target);
  const chartWidth=Math.max(280,Math.floor(chartEl.parentElement.getBoundingClientRect().width)-2);
- Plotly.react(target,traces,{autosize:true,width:chartWidth,margin:{l:58,r:12,t:32,b:65},paper_bgcolor:'white',plot_bgcolor:'white',shapes:shadeSeasons?seasonBackgroundShapes(selectedWeeks):[],legend:{orientation:'h',y:1.17,x:0},xaxis:continuousMode?{type:'date',title:monthlyMode?'Booking month':'Booking date',tickformat:'%b %Y',gridcolor:'#edf1f5',...(continuousRange?{range:continuousRange}: {})}:axis,yaxis:{title:'Appointments',range:[0,sharedMax],dtick:sharedMax/5,gridcolor:'#edf1f5'},hovermode:'closest',annotations:!hasAppointments&&category==='followup'?[{text:'No follow-up appointments found. In Manage Categories, assign slot types to Follow up and click Save.',xref:'paper',yref:'paper',x:.5,y:.55,showarrow:false,align:'center',font:{size:13,color:'#286cb8'}}]:[]},{responsive:true,displaylogo:false}).then(scheduleChartResize);
+ Plotly.react(target,traces,{autosize:true,width:chartWidth,margin:{l:58,r:12,t:32,b:65},paper_bgcolor:'white',plot_bgcolor:'white',shapes:shadeSeasons?seasonBackgroundShapes(selectedWeeks):[],legend:{orientation:'h',y:1.17,x:0},xaxis:continuousMode?{type:'date',title:monthlyMode?'Booking month':'Booking date',tickformat:'%b %Y',gridcolor:'#edf1f5',...(continuousRange?{range:continuousRange}: {})}:axis,yaxis:{title:'Appointments',range:[0,sharedMax],dtick:sharedMax/5,gridcolor:'#edf1f5'},hovermode:'closest',annotations:!hasAppointments&&category==='followup'?[{text:'No follow-up appointments found. In Manage Categories, assign slot types to Follow up and click Save.',xref:'paper',yref:'paper',x:.5,y:.55,showarrow:false,align:'center',font:{size:13,color:'#286cb8'}}]:[]},{responsive:true,displaylogo:false});
 }
 let maximum=0;
 let followupMaximum=0;
@@ -535,7 +540,7 @@ const followupMagnitude=Math.pow(10,Math.floor(Math.log10(followupStepRaw)));
 const followupStep=([1,2,5,10].find(v=>v*followupMagnitude>=followupStepRaw)||10)*followupMagnitude;
 drawCategoryChart('followupChart','followup',yearColours.followup,5*followupStep);
 }
-const STORAGE_KEY='appointment-dashboard-categories-v1';let categoryNames=['Urgent','Routine','Follow up'],assignments={};try{const saved=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');categoryNames=Array.isArray(saved.categories)&&saved.categories.length?saved.categories.filter(x=>typeof x==='string'&&x.trim()&&x!=='Uncategorised'):['Urgent','Routine','Follow up'];assignments=saved.assignments&&typeof saved.assignments==='object'?saved.assignments:{};}catch(e){}let clinicianCategoryNames=[],clinicianAssignments={};try{const local=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');if(Array.isArray(local.clinicianCategories))clinicianCategoryNames=validCategoryNames(local.clinicianCategories);if(local.clinicianAssignments)clinicianAssignments=validAssignments(local.clinicianAssignments,clinicianCategoryNames)}catch(e){}let consultCategoryNames=[],consultAssignments={};try{const local=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');if(Array.isArray(local.consultCategories))consultCategoryNames=validCategoryNames(local.consultCategories);if(local.consultAssignments)consultAssignments=validAssignments(local.consultAssignments,consultCategoryNames)}catch(e){}function ensureFollowUpCategory(){if(!categoryNames.some(c=>c.toLowerCase().replace(/[\s-]+/g,'')==='followup'))categoryNames.push('Follow up')}ensureFollowUpCategory();function guessCategory(t){return /RED|YELLOW|AMBER|URGENT|SAME DAY|ACUTE/i.test(t)?'Urgent':/GREEN|FOLLOW UP|ROUTINE/i.test(t)?'Routine':null}function saveCategories(sync=true){try{localStorage.setItem(STORAGE_KEY,JSON.stringify({categories:categoryNames,assignments,clinicianCategories:clinicianCategoryNames,clinicianAssignments,consultCategories:consultCategoryNames,consultAssignments}));}catch(e){alert('Could not save settings in this browser. Please try again.')}if(sync)markCategoryDirty()}function allCategories(){return [...categoryNames,'Uncategorised']}function rebuildCategoryFilter(){const old=new Set([...slots.selectedOptions].map(o=>o.value));slots.replaceChildren();for(const c of allCategories()){const o=document.createElement('option');o.value=c;o.textContent=c;o.selected=old.has(c);slots.append(o)}refresh()}function renderEditor(){renderDropEditor('urgency');updateAvailabilityUrgencyFilter()}document.getElementById('addCategory').onclick=()=>{const el=document.getElementById('newCategory');const c=el.value.trim();if(!c)return;if(c.toLowerCase()==='uncategorised'||categoryNames.some(x=>x.toLowerCase()===c.toLowerCase())){alert('This category name already exists or is reserved.');return}categoryNames.push(c);el.value='';saveCategories();rebuildCategoryFilter();renderEditor()};document.getElementById('newCategory').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('addCategory').click()});document.getElementById('slotSearch').addEventListener('input',renderEditor);function showPage(which){
+const STORAGE_KEY='appointment-dashboard-categories-v1';let categoryNames=['Urgent','Routine','Follow up'],assignments={};try{const saved=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');categoryNames=Array.isArray(saved.categories)&&saved.categories.length?saved.categories.filter(x=>typeof x==='string'&&x.trim()&&x!=='Uncategorised'):['Urgent','Routine','Follow up'];assignments=saved.assignments&&typeof saved.assignments==='object'?saved.assignments:{};}catch(e){}let clinicianCategoryNames=[],clinicianAssignments={};try{const local=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');if(Array.isArray(local.clinicianCategories))clinicianCategoryNames=validCategoryNames(local.clinicianCategories);if(local.clinicianAssignments)clinicianAssignments=validAssignments(local.clinicianAssignments,clinicianCategoryNames)}catch(e){}let consultCategoryNames=[],consultAssignments={};try{const local=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');if(Array.isArray(local.consultCategories))consultCategoryNames=validCategoryNames(local.consultCategories);if(local.consultAssignments)consultAssignments=validAssignments(local.consultAssignments,consultCategoryNames)}catch(e){}function ensureFollowUpCategory(){if(!categoryNames.some(c=>c.toLowerCase().replace(/[\s-]+/g,'')==='followup'))categoryNames.push('Follow up')}ensureFollowUpCategory();function guessCategory(t){return /RED|YELLOW|AMBER|URGENT|SAME DAY|ACUTE/i.test(t)?'Urgent':/GREEN|FOLLOW UP|ROUTINE/i.test(t)?'Routine':null}function saveCategories(sync=true){try{localStorage.setItem(STORAGE_KEY,JSON.stringify({categories:categoryNames,assignments,clinicianCategories:clinicianCategoryNames,clinicianAssignments,consultCategories:consultCategoryNames,consultAssignments}));}catch(e){alert('Could not save settings in this browser. Please try again.')}if(sync)markCategoryDirty()}function allCategories(){return [...categoryNames,'Uncategorised']}function rebuildCategoryFilter(){const old=new Set([...slots.selectedOptions].map(o=>o.value));slots.replaceChildren();for(const c of allCategories()){const o=document.createElement('option');o.value=c;o.textContent=c;o.selected=old.has(c);slots.append(o)}}function renderEditor(){renderDropEditor('urgency');updateAvailabilityUrgencyFilter()}document.getElementById('addCategory').onclick=()=>{const el=document.getElementById('newCategory');const c=el.value.trim();if(!c)return;if(c.toLowerCase()==='uncategorised'||categoryNames.some(x=>x.toLowerCase()===c.toLowerCase())){alert('This category name already exists or is reserved.');return}categoryNames.push(c);el.value='';saveCategories();rebuildCategoryFilter();renderEditor()};document.getElementById('newCategory').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('addCategory').click()});document.getElementById('slotSearch').addEventListener('input',renderEditor);function showPage(which){
  for(const [page,nav,name] of [['chartPage','navChart','chart'],['categoryPage','navCategories','categories'],['availabilityPage','navAvailability','availability']]){
   $(page).classList.toggle('hidden',which!==name);$(nav).classList.toggle('active',which===name);
  }
@@ -543,7 +548,7 @@ const STORAGE_KEY='appointment-dashboard-categories-v1';let categoryNames=['Urge
  else if(which==='availability')setTimeout(renderAvailabilityChart,0);
  else {renderEditor();renderClinicianEditor();renderConsultEditor()}
 }document.getElementById('navChart').onclick=()=>showPage('chart');document.getElementById('navCategories').onclick=()=>showPage('categories');document.getElementById('navAvailability').onclick=()=>showPage('availability');document.getElementById('saveToOneDrive').onclick=()=>{void saveCloudCategories({manual:true})};
-function renderClinicianEditor(){renderDropEditor('clinician');updateClinicianChartFilter();refresh()}
+function renderClinicianEditor(){renderDropEditor('clinician');updateClinicianChartFilter()}
 $('addClinicianCategory').onclick=()=>{const el=$('newClinicianCategory');const c=el.value.trim();if(!c)return;if(c.toLowerCase()==='uncategorised'||clinicianCategoryNames.some(x=>x.toLowerCase()===c.toLowerCase())){alert('This clinician category name already exists or is reserved.');return}clinicianCategoryNames.push(c);el.value='';saveCategories();renderClinicianEditor()};
 $('newClinicianCategory').addEventListener('keydown',e=>{if(e.key==='Enter')$('addClinicianCategory').click()});
 $('clinicianSlotSearch').addEventListener('input',renderClinicianEditor);
