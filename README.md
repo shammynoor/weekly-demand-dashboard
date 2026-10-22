@@ -211,3 +211,7 @@ Urgent appointments use the `Urgent` Urgency Group (Detailed urgency -> Urgency 
 
 ## Consult mode filters
 The Weekly Demand Chart now has a third filter card, Consult mode, next to Filters and Clinician Groups. Each toggle is populated from Manage categories > Consult mode and filters all three demand charts using the slot type's consult-mode assignment. All switches start on; unassigned slot types are excluded until assigned a consult mode.
+
+
+## Routine Appointment Availability
+New navigation tab: weekly stacked slot counts from the appointment date (not the booking date), for last week, current week, and the following six weeks. Includes only slots whose Detailed urgency category is assigned to the Routine Urgency Group. Booked pastel green, Blocked dark grey, Embargoed light grey, Available white; weekly totals and hover breakdowns.
