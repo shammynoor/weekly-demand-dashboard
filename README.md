@@ -199,3 +199,7 @@ Within each CSV, the import independently fills down blank Appointment Date, App
 
 ## Counting continuation rows (October 2026 correction)
 Every non-empty imported CSV row is counted after filling down the seven appointment fields. The previous hasSlotEvidence exclusion has been removed. On the supplied Q4 export, Tuesday 27 October now gives 22 Blocked and 108 Embargoed RED-named rows, matching the Excel figures. The booking lead-time chart still requires a valid booking lead time to calculate booking dates.
+
+
+## Clinician categories
+Detailed Clinician Types is based on the filled-down CSV field `User Type of the Session Holder of the Session` (not Slot Type). Clinician Groups groups those detailed categories. Both persist in browser and OneDrive settings. Weekly chart clinician filters use session-holder user type.
