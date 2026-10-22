@@ -615,11 +615,14 @@ function updateAvailabilityUrgencyFilter(){
  if(!same){select.replaceChildren();for(const name of names){const opt=document.createElement('option');opt.value=name;opt.textContent=name;select.append(opt)}}
  select.value=selectedAvailabilityUrgency;
 }
-$('availabilityUrgencyFilter').addEventListener('change',e=>{selectedAvailabilityUrgency=e.target.value;renderAvailabilityChart()});
 function renderAvailabilityChart(){
- const target=$('availabilityChart');
- if(!target||$('availabilityPage').classList.contains('hidden')||!window.Plotly)return;
- updateAvailabilityUrgencyFilter();
+ if($('availabilityPage').classList.contains('hidden')||!window.Plotly)return;
+ renderAvailabilityPanel('availabilityChart','reds');
+ renderAvailabilityPanel('availabilityPriorityChart','priority');
+}
+function renderAvailabilityPanel(targetId,kind){
+ const target=$(targetId);
+ if(!target)return;
  const monday=new Date(thisWeek+'T12:00:00Z');
  const start=new Date(monday);start.setUTCDate(start.getUTCDate()-14);
  const dates=[],weekStarts=[];
@@ -635,19 +638,22 @@ function renderAvailabilityChart(){
  const weekdays=new Set(dates.filter(d=>{const n=new Date(d+'T12:00:00Z').getUTCDay();return n!==0&&n!==6}));
  const counts=new Map();
  for(const r of availabilityRecords){
-  // Include slot types assigned to the Urgent category in Manage Categories.
-  if(!weekdays.has(r.date)||groupUrgencyAssignments[assignments[r.slot]]!==selectedAvailabilityUrgency)continue;
+  // The two panels are driven by Detailed urgency, not by the selected urgency group.
+  const detailedCategory=String(assignments[r.slot]||'').trim().toLowerCase();
+  if(!weekdays.has(r.date))continue;
+  if(kind==='reds'&&detailedCategory!=='reds'&&detailedCategory!=='extras')continue;
+  if(kind==='priority'&&detailedCategory!=='priority')continue;
   const status=r.availability.trim().toLowerCase();
   // Extras is a detailed urgency category within the selected urgency group.
   // Count it separately (regardless of availability) to avoid double-counting.
-  const detailedCategory=String(assignments[r.slot]||'').trim().toLowerCase();
-  const label=detailedCategory==='extras'?'Extras':status==='booked'?'Booked':(status==='blocked'||status==='embargoed')?'Held Back':status==='available'?'Available':null;
+  const label=kind==='reds'&&detailedCategory==='extras'?'Extras':status==='booked'?'Booked':(status==='blocked'||status==='embargoed')?'Held Back':status==='available'?'Available':null;
   if(!label)continue;
   const key=JSON.stringify([r.date,label]);
   counts.set(key,(counts.get(key)||0)+r.count);
  }
- const labels=['Booked','Held Back','Extras','Available'];
- const colours=['#bf7775','#636c76','#8e67b6','#ffffff'];
+ const labels=kind==='reds'?['Booked','Held Back','Extras','Available']:['Booked','Held Back','Available'];
+ const colourByLabel={'Booked':'#bf7775','Held Back':'#636c76','Extras':'#8e67b6','Available':'#ffffff'};
+ const colours=labels.map(name=>colourByLabel[name]);
  const totals=dates.map(date=>labels.reduce((sum,name)=>sum+(counts.get(JSON.stringify([date,name]))||0),0));
  const maxTotal=Math.max(1,...totals);
  const daySummary=dates.map(date=>{
@@ -693,8 +699,12 @@ function renderAvailabilityChart(){
    xanchor:'center',yanchor:'bottom',yshift:4});
  });
  const displayedTotal=[...counts.values()].reduce((a,b)=>a+b,0);
- const matchingSlots=availabilityRecords.filter(r=>groupUrgencyAssignments[assignments[r.slot]]===selectedAvailabilityUrgency);
- $('availabilityNote').textContent=displayedTotal?('Weekends shown as gaps · Category: '+selectedAvailabilityUrgency+' · Held Back combines Blocked and Embargoed · Extras is shown separately in purple.'):(groupUrgencyNames.length?'No appointments found for urgency group '+selectedAvailabilityUrgency+' in this six-week window. '+(matchingSlots.length?'Matching category slots exist, but no Booked, Blocked, Embargoed or Available records fall within the selected dates.':'Assign detailed urgency categories to this group in Manage categories → Urgency Group.'):'Create an Urgency Group in Manage categories → Urgency Group, then drag detailed urgency categories into it.');
+ const note=$(kind==='reds'?'availabilityNote':'availabilityPriorityNote');
+ const categories=kind==='reds'?['reds','extras']:['priority'];
+ const matchingSlots=availabilityRecords.filter(r=>categories.includes(String(assignments[r.slot]||'').trim().toLowerCase()));
+ note.textContent=displayedTotal
+  ?('Weekends shown as gaps · Detailed urgency: '+(kind==='reds'?'Reds + Extras':'Priority')+' · Held Back combines Blocked and Embargoed.'+(kind==='reds'?' Extras shown separately in purple.':''))
+  :(matchingSlots.length?'No appointment records with a recognised availability status for '+(kind==='reds'?'Reds / Extras':'Priority')+' in this six-week window.':'No matching slot types found. Assign slot types to the '+(kind==='reds'?'Reds and Extras':'Priority')+' Detailed urgency categories in Manage categories.');
  const width=Math.max(300,Math.floor(target.getBoundingClientRect().width));
  Plotly.react(target,traces,{
   autosize:true,width,height:560,barmode:'stack',bargap:0.01,

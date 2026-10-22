@@ -168,3 +168,7 @@ The availability chart now shows the detailed urgency category named Extras as a
 
 
 Availability visual update: circular left-aligned legend, lighter Held Back and week separators, fine gaps between stack segments, slightly wider bars, taller plot with y-axis headroom, concise daily tooltips and grey totals above each weekday bar.
+
+
+## Appointment availability: two detailed-urgency charts
+The availability page now has two independent, identically styled six-week plots. The upper plot uses Detailed urgency categories Reds and Extras, with Extras counted as a separate purple stack. The lower plot uses only Detailed urgency category Priority, with Booked, Held Back (Blocked + Embargoed) and Available. These charts do not depend on the Urgency Group selector; the selector has been removed from this page. Assignments continue to come from Manage categories.
