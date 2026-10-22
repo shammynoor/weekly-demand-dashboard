@@ -245,3 +245,7 @@ Urgent Availability now uses one shared range track with two independently dragg
 
 ## Urgent chart right sidebar filters
 Added Clinician Groups (pastel green) and Consult mode (pastel blue) toggle panels above Urgent categories in the same 155px sidebar column. Filters are independent of Weekly Demand and Routine chart switches, and apply to all status segments. The chart column retains its previous width.
+
+
+## Routine availability visual alignment
+Routine Appointment Availability now uses a single dual-handle slider (-2 to +7 weeks, default -1 to +6), the same 155px right sidebar as urgent availability, stacked Clinician Groups and Consult mode toggles (pastel green and blue), and a centred legend below the chart. Booked slots use deeper pastel green #81c6a0. The existing daily-relative Today marker and shading remain.

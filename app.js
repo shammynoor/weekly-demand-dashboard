@@ -891,14 +891,33 @@ function routineConsultMatches(slot){
  const mode=consultAssignments[slot];
  return consultCategoryNames.includes(mode)&&!routineDisabledConsultModes.has(mode);
 }
+let routineStartWeek=-1,routineEndWeek=6;
+function setupRoutineRangeControls(){
+ const start=$('routineWeeksStart'),end=$('routineWeeksEnd');
+ if(!start||!end)return;
+ const label=n=>n===0?'This week':n===-1?'Last week':n<0?Math.abs(n)+' weeks ago':n===1?'Next week':n+' weeks ahead';
+ const update=changed=>{
+  let a=Number(start.value),b=Number(end.value);
+  if(a>b){if(changed==='start')b=a;else a=b;start.value=a;end.value=b}
+  routineStartWeek=a;routineEndWeek=b;
+  $('routineWeeksStartValue').textContent=label(a);
+  $('routineWeeksEndValue').textContent=label(b);
+  const left=(a+2)/9*100,right=(b+2)/9*100;
+  const active=$('routineRangeActive');active.style.left=left+'%';active.style.width=(right-left)+'%';
+  renderRoutineAvailabilityChart();
+ };
+ start.addEventListener('input',()=>update('start'));
+ end.addEventListener('input',()=>update('end'));
+ update('start');
+}
 function renderRoutineAvailabilityChart(){
  const target=$('routineAvailabilityChart');
  if(!target||$('routineAvailabilityPage').classList.contains('hidden')||!window.Plotly)return;
  renderRoutineAvailabilityFilters();
- // Monday of last week through Sunday six weeks after the current week: eight weeks.
- const start=new Date(thisWeek+'T12:00:00Z');start.setUTCDate(start.getUTCDate()-7);
+ // Selected range from two weeks ago through seven weeks ahead.
+ const start=new Date(thisWeek+'T12:00:00Z');start.setUTCDate(start.getUTCDate()+7*routineStartWeek);
  const weeks=[];
- for(let i=0;i<8;i++){const d=new Date(start);d.setUTCDate(start.getUTCDate()+7*i);weeks.push(d.toISOString().slice(0,10));}
+ for(let i=0;i<=routineEndWeek-routineStartWeek;i++){const d=new Date(start);d.setUTCDate(start.getUTCDate()+7*i);weeks.push(d.toISOString().slice(0,10));}
  const byWeek=new Map();
  let matched=0;
  for(const r of availabilityRecords){
@@ -914,7 +933,7 @@ function renderRoutineAvailabilityChart(){
   const key=JSON.stringify([week,label]);byWeek.set(key,(byWeek.get(key)||0)+r.count);
  }
  const labels=['Booked','Blocked','Embargoed','Available'];
- const colours={'Booked':'#a7d7b4','Blocked':'#59636e','Embargoed':'#aab2bb','Available':'#ffffff'};
+ const colours={'Booked':'#81c6a0','Blocked':'#59636e','Embargoed':'#aab2bb','Available':'#ffffff'};
  const dateText=d=>new Date(d+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',timeZone:'UTC'});
  const weekLabels=weeks.map(w=>dateText(w));
  const summaries=weeks.map((week,i)=>'<b>Week commencing '+dateText(week)+'</b><br>'+labels.map(label=>label+': '+(byWeek.get(JSON.stringify([week,label]))||0).toLocaleString('en-GB')).join('<br>')+'<br><b>Total: '+labels.reduce((sum,label)=>sum+(byWeek.get(JSON.stringify([week,label]))||0),0).toLocaleString('en-GB')+'</b>');
@@ -925,7 +944,7 @@ function renderRoutineAvailabilityChart(){
  const totals=weeks.map(w=>labels.reduce((sum,label)=>sum+(byWeek.get(JSON.stringify([w,label]))||0),0));
  const max=Math.max(1,...totals);
  const annotations=totals.flatMap((total,i)=>total?[{x:weekLabels[i],y:total,text:total.toLocaleString('en-GB'),showarrow:false,yshift:5,font:{size:11,color:'#768392'}}]:[]);
- const weekTitles=['Last Week','This Week','Next Week','2 weeks','3 weeks','4 weeks','5 weeks','6 weeks'];
+ const weekTitles=weeks.map((_,i)=>{const offset=routineStartWeek+i;return offset===0?'This Week':offset===-1?'Last Week':offset<0?Math.abs(offset)+' weeks ago':offset===1?'Next Week':offset+' weeks'});
  for(let i=0;i<weeks.length;i++)annotations.push({xref:'x',yref:'paper',x:i,y:1.105,text:weekTitles[i],showarrow:false,font:{family:'Arial',size:12,color:'#384858'}});
  // Each category occupies a full week from x=index-0.5 to x=index+0.5.
  // Place Today at 5%, 25%, 45%, 65% or 85% of its week for Mon–Fri.
@@ -942,14 +961,15 @@ function renderRoutineAvailabilityChart(){
  if(note)note.textContent=matched?'':"No matching Routine urgency-group appointments found. Check Manage categories → Urgency Group.";
  Plotly.react(target,traces,{
   height:510,autosize:true,barmode:'stack',bargap:0.12,
-  margin:{l:185,r:24,t:85,b:35},paper_bgcolor:'#fff',plot_bgcolor:plotBackground,
-  legend:{orientation:'v',x:-0.075,y:0.5,xanchor:'right',yanchor:'middle',font:{size:13,color:'#344355'},traceorder:'normal'},
+  margin:{l:65,r:12,t:85,b:100},paper_bgcolor:'#fff',plot_bgcolor:plotBackground,
+  legend:{orientation:'h',x:0.5,y:-0.20,xanchor:'center',yanchor:'top',font:{size:13,color:'#344355'},traceorder:'normal'},
   xaxis:{type:'category',categoryorder:'array',categoryarray:weekLabels,showticklabels:false,showgrid:false,showline:true,linecolor:'#374350',linewidth:3,zeroline:false},
   yaxis:{title:'Appointment slots',range:[0,Math.ceil(max*1.18/10)*10],gridcolor:'#dce2e8'},
   annotations,shapes,hovermode:'closest'
  },{responsive:true,displaylogo:false});
 }
 window.addEventListener('resize',()=>{if(!$('routineAvailabilityPage').classList.contains('hidden'))renderRoutineAvailabilityChart()});
+setupRoutineRangeControls();
 
 
 window.addEventListener('unhandledrejection',event=>{
