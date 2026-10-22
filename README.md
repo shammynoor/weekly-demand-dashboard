@@ -142,3 +142,7 @@ Removed repeated Plotly redraws during a single CSV load and removed the redraw/
 
 ## Persistent dashboard session
 The dashboard's visible signed-in state now survives unexpected page reloads in the same tab, independently of chart refresh and CSV parsing. Actual Microsoft access still requires a valid MSAL account. A failed session restoration is reported in the dashboard rather than silently returning to the sign-in page. The Sign out button clears this tab's dashboard view marker.
+
+
+## Fix: startup crash
+Initialise `selectedAvailabilityUrgency` before the initial call to `renderEditor()`; previously it was declared afterwards, causing a temporal-dead-zone ReferenceError and preventing normal dashboard startup. Updated app.js cache version.

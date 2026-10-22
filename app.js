@@ -1,3 +1,5 @@
+// Initialise the availability filter before the first category-editor render.
+let selectedAvailabilityUrgency='Urgent';
 "use strict";
 const CLIENT_ID='ba2bc895-4213-447c-ba62-d7edec6e8173';
 const SCOPES=['Files.Read','Files.ReadWrite.AppFolder'];
@@ -588,7 +590,6 @@ initAuth();
 })();
 
 
-let selectedAvailabilityUrgency='Urgent';
 function updateAvailabilityUrgencyFilter(){
  const select=$('availabilityUrgencyFilter');if(!select)return;
  const names=[...categoryNames];
