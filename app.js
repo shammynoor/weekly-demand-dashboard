@@ -722,6 +722,19 @@ function updateAvailabilityUrgencyFilter(){
  select.value=selectedAvailabilityUrgency;
 }
 const urgentCategoryDisabled=new Set();
+let urgentWeeksBack=1,urgentWeeksForward=3;
+function setupUrgentRangeControls(){
+ const back=$('urgentWeeksBack'),forward=$('urgentWeeksForward');
+ if(!back||!forward)return;
+ back.value=urgentWeeksBack;forward.value=urgentWeeksForward;
+ const update=()=>{
+  urgentWeeksBack=Number(back.value);urgentWeeksForward=Number(forward.value);
+  $('urgentWeeksBackValue').textContent=urgentWeeksBack===0?'This week':urgentWeeksBack===1?'1 week':urgentWeeksBack+' weeks';
+  $('urgentWeeksForwardValue').textContent=urgentWeeksForward===0?'This week':urgentWeeksForward===1?'1 week':urgentWeeksForward+' weeks';
+  renderAvailabilityChart();
+ };
+ back.addEventListener('input',update);forward.addEventListener('input',update);
+}
 function urgentCategoryNames(){
  return categoryNames.filter(name=>String(groupUrgencyAssignments[name]||'').trim().toLowerCase()==='urgent');
 }
@@ -738,6 +751,7 @@ function renderUrgentCategoryToggles(){
   const input=document.createElement('input');input.type='checkbox';input.setAttribute('role','switch');input.dataset.filterName=name;input.checked=!urgentCategoryDisabled.has(name);
   const track=document.createElement('span');track.className='switch-track';
   const title=document.createElement('span');title.textContent=name;
+  const colour=urgentColour(name);track.style.setProperty('--switch-on',colour);
   sw.append(input,track);row.append(sw,title);root.append(row);
   input.addEventListener('change',()=>{if(input.checked)urgentCategoryDisabled.delete(name);else urgentCategoryDisabled.add(name);renderAvailabilityChart()});
  }
@@ -756,8 +770,9 @@ function renderAvailabilityChart(){
  if($('availabilityPage').classList.contains('hidden')||!window.Plotly||!target)return;
  renderUrgentCategoryToggles();
  const names=urgentCategoryNames().filter(n=>!urgentCategoryDisabled.has(n));
- const monday=new Date(thisWeek+'T12:00:00Z');const start=new Date(monday);start.setUTCDate(start.getUTCDate()-14);
- const dates=[];for(let w=0;w<6;w++)for(let d=0;d<7;d++){const day=new Date(start);day.setUTCDate(start.getUTCDate()+w*7+d);dates.push(day.toISOString().slice(0,10))}
+ const monday=new Date(thisWeek+'T12:00:00Z');const start=new Date(monday);start.setUTCDate(start.getUTCDate()-7*urgentWeeksBack);
+ const weekCount=urgentWeeksBack+urgentWeeksForward+1;
+ const dates=[];for(let w=0;w<weekCount;w++)for(let d=0;d<7;d++){const day=new Date(start);day.setUTCDate(start.getUTCDate()+w*7+d);dates.push(day.toISOString().slice(0,10))}
  const dateSet=new Set(dates);
  const weekdays=new Set(dates.filter(d=>{const n=new Date(d+'T12:00:00Z').getUTCDay();return n!==0&&n!==6}));
  const counts=new Map();
@@ -779,11 +794,11 @@ function renderAvailabilityChart(){
   const weekday=new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'long',timeZone:'UTC'});
   return weekday+'<br>'+labels.map(n=>n+': '+(counts.get(JSON.stringify([date,n]))||0).toLocaleString('en-GB')).join('<br>')+'<br><b>Total: '+totals[dates.indexOf(date)].toLocaleString('en-GB')+'</b>';
  });
- const traces=labels.map(name=>({type:'bar',name,showlegend:false,x:dates,y:dates.map(date=>weekdays.has(date)?counts.get(JSON.stringify([date,name]))||0:null),marker:{color:colours[name],line:{color:name==='Available'?'#b6bec8':'#f1f3f5',width:1.1}},customdata:daySummary,hovertemplate:'%{customdata}<extra></extra>'}));
+ const traces=labels.map(name=>({type:'bar',name,showlegend:false,x:dates,y:dates.map(date=>weekdays.has(date)?counts.get(JSON.stringify([date,name]))||0:null),marker:{color:colours[name],line:{color:name==='Available'?'#ffffff':'#e2e7ec',width:name==='Available'?0:1.1}},customdata:daySummary,hovertemplate:'%{customdata}<extra></extra>'}));
  for(const name of labels)traces.push({type:'scatter',mode:'markers',name,x:[null],y:[null],marker:{symbol:'circle',size:14,color:colours[name],line:{color:name==='Available'?'#aeb8c3':colours[name],width:name==='Available'?1.5:0}},hoverinfo:'skip',showlegend:true});
- const weekLabels=['2 weeks ago','Last Week','This Week','Next Week','2 weeks','3 weeks'];
+ const weekLabels=Array.from({length:weekCount},(_,i)=>{const offset=i-urgentWeeksBack;return offset===0?'This Week':offset===-1?'Last Week':offset<0?Math.abs(offset)+' weeks ago':offset===1?'Next Week':offset+' weeks'});
  const annotations=weekLabels.map((text,i)=>({x:dates[i*7+2],xref:'x',y:1.045,yref:'paper',text,showarrow:false,font:{size:12,color:'#444444'},xanchor:'center',yanchor:'bottom'}));
- const shapes=Array.from({length:6},(_,i)=>({type:'line',xref:'x',yref:'paper',x0:i*7+5.5,x1:i*7+5.5,y0:0,y1:1,line:{color:'#9ca6b1',width:1.3}}));
+ const shapes=Array.from({length:weekCount},(_,i)=>({type:'line',xref:'x',yref:'paper',x0:i*7+5.5,x1:i*7+5.5,y0:0,y1:1,line:{color:'#9ca6b1',width:1.3}}));
  if(dateSet.has(todayLondon)){
   const x=dates.indexOf(todayLondon);
   shapes.unshift({type:'rect',xref:'x',yref:'paper',x0:-.5,x1:x,y0:0,y1:1,fillcolor:'rgba(224,117,117,0.20)',line:{width:0},layer:'below'});
@@ -793,13 +808,14 @@ function renderAvailabilityChart(){
  dates.forEach((date,i)=>{if(weekdays.has(date)&&totals[i])annotations.push({x:date,xref:'x',y:totals[i],yref:'y',text:String(totals[i]),showarrow:false,font:{size:10,color:'#818b96'},yshift:4,yanchor:'bottom'})});
  const note=$('availabilityNote');if(note)note.textContent=names.length?'':'Select an Urgent detailed urgency category to display appointments.';
  Plotly.react(target,traces,{
-  autosize:true,height:490,barmode:'stack',bargap:0.015,margin:{l:150,r:18,t:66,b:60},paper_bgcolor:'white',plot_bgcolor:'#f1f3f5',
-  legend:{orientation:'v',x:-0.09,y:0.5,xanchor:'right',yanchor:'middle',font:{size:12,color:'#444444'},bgcolor:'rgba(255,255,255,0)'},
+  autosize:true,height:510,barmode:'stack',bargap:0.015,margin:{l:62,r:12,t:66,b:105},paper_bgcolor:'white',plot_bgcolor:'#e2e7ec',
+  legend:{orientation:'h',x:0.5,y:-0.23,xanchor:'center',yanchor:'top',font:{size:12,color:'#444444'},bgcolor:'rgba(255,255,255,0)'},
   xaxis:{type:'category',categoryorder:'array',categoryarray:dates,tickmode:'array',tickvals:dates,ticktext:dates.map(date=>weekdays.has(date)?new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'short',timeZone:'UTC'}):''),tickangle:-90,tickfont:{size:12,color:'#444444'},showgrid:false,range:[-.5,dates.length-.5],fixedrange:true},
   yaxis:{title:'Appointment slots',range:[0,max],gridcolor:'#dce2e8'},annotations,shapes,hovermode:'closest'
  },{responsive:true,displaylogo:false});
 }
 window.addEventListener('resize',()=>{if(!$('availabilityPage').classList.contains('hidden'))renderAvailabilityChart()});
+setupUrgentRangeControls();
 
 // Independent filters for Routine Appointment Availability.
 const routineDisabledClinicianGroups=new Set();

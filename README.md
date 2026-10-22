@@ -233,3 +233,7 @@ The chart shows only 06:00–21:00 with the left count axis hidden; the 0–100%
 
 ## Urgent availability detailed-category toggles
 The previous Reds & Extras / Priority panels are replaced by one chart and right-hand switches for every Detailed urgency category assigned to the Urgent Urgency Group. Booked portions use category-specific pastel colours (Red red, Extras purple, Priority yellow). Blocked, Embargoed and Available remain separate status categories and are summed over enabled urgency categories. The legend uses circles for enabled categories plus availability statuses.
+
+
+## Urgent chart display update
+Compact urgency toggle panel with category-coloured switches; circular availability/category legend centred beneath the plot; darker plot background and outline-free Available bars. Independent range sliders choose 0–3 weeks before and 0–4 weeks after the current week (defaults: 1 week back, 3 weeks ahead).
