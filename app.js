@@ -627,7 +627,7 @@ function renderAvailabilityChart(){
   counts.set(key,(counts.get(key)||0)+r.count);
  }
  const labels=['Booked','Held Back','Available'];
- const colours=['#d9534f','#414850','#ffffff'];
+ const colours=['#bf7775','#414850','#ffffff'];
  const traces=labels.map((name,i)=>({
   type:'bar',name,x:dates,y:dates.map(date=>weekdays.has(date)?(counts.get(JSON.stringify([date,name]))||0):null),
   marker:{color:colours[i],line:{color:i===2?'#c1c8cf':colours[i],width:i===2?1:0}},
@@ -639,13 +639,19 @@ function renderAvailabilityChart(){
   x:dates[i*7+2],xref:'x',y:1.045,yref:'paper',text:'<b>'+label+'</b>',
   showarrow:false,font:{size:12,color:'#53667a'},xanchor:'center',yanchor:'bottom'
  }));
- const shapes=[1,2,3,4,5].map(i=>({type:'line',xref:'x',yref:'paper',
-  x0:i*7-.5,x1:i*7-.5,y0:0,y1:1,line:{color:'#414850',width:2}}));
+ // Week dividers sit between Saturday and Sunday, within the weekend gap.
+ const shapes=[0,1,2,3,4,5].map(i=>({type:'line',xref:'x',yref:'paper',
+  x0:i*7+5.5,x1:i*7+5.5,y0:0,y1:1,line:{color:'#414850',width:2}}));
+ // 80% transparent light-red overlay to the left of today's marker.
+ // Use categorical axis positions to align exactly with the Today line.
+ if(dateSet.has(todayLondon))shapes.unshift({type:'rect',xref:'x',yref:'paper',
+  x0:-.5,x1:dates.indexOf(todayLondon),y0:0,y1:1,
+  fillcolor:'rgba(224,117,117,0.20)',line:{width:0},layer:'below'});
  // Today is positioned on the same London-local calendar date used elsewhere in the dashboard.
  if(dateSet.has(todayLondon))shapes.push({type:'line',xref:'x',yref:'paper',
-  x0:todayLondon,x1:todayLondon,y0:0,y1:1,
+  x0:dates.indexOf(todayLondon),x1:dates.indexOf(todayLondon),y0:0,y1:1,
   line:{color:'#4b5563',width:2,dash:'dot'}});
- const todayAnnotations=dateSet.has(todayLondon)?[{x:todayLondon,xref:'x',y:1.005,yref:'paper',
+ const todayAnnotations=dateSet.has(todayLondon)?[{x:dates.indexOf(todayLondon),xref:'x',y:1.005,yref:'paper',
   text:'Today',showarrow:false,font:{size:11,color:'#374151'},xanchor:'left',yanchor:'bottom',xshift:5}]:[];
  annotations.push(...todayAnnotations);
  const displayedTotal=[...counts.values()].reduce((a,b)=>a+b,0);
@@ -653,7 +659,7 @@ function renderAvailabilityChart(){
  $('availabilityNote').textContent=displayedTotal?('Weekends shown as gaps · Category: '+selectedAvailabilityUrgency+' · Held Back combines Blocked and Embargoed.'):('No appointments found for '+selectedAvailabilityUrgency+' in this six-week window. '+(matchingSlots.length?'Matching category slots exist, but no Booked, Blocked, Embargoed or Available records fall within the selected dates.':'Check that slot types have been assigned to this urgency category under Manage categories.'));
  const width=Math.max(300,Math.floor(target.getBoundingClientRect().width));
  Plotly.react(target,traces,{
-  autosize:true,width,height:490,barmode:'stack',bargap:0.2,
+  autosize:true,width,height:490,barmode:'stack',bargap:0.04,
   margin:{l:60,r:18,t:110,b:65},paper_bgcolor:'white',plot_bgcolor:'#f1f3f5',
   legend:{title:{text:'Availability'},orientation:'h',x:0,y:1.29,traceorder:'normal'},
   xaxis:{type:'category',categoryorder:'array',categoryarray:dates,

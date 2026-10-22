@@ -150,3 +150,6 @@ Initialise `selectedAvailabilityUrgency` before the initial call to `renderEdito
 
 ## Availability chart spacing
 Six weeks are shown with Saturday and Sunday as blank spacing columns (no weekend tick labels or bars). Solid dark grey lines mark each new week. A vertical dotted dark grey line marks today's London-local date. The urgency category dropdown remains in place.
+
+
+Availability chart styling: separators between Saturday and Sunday; reduced bar gaps; muted red booked bars; 80%-transparent pale red shading before today.
