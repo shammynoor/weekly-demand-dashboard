@@ -272,15 +272,12 @@ function aggregateCSV(csv,aggregated,availabilityAggregate){
   const explicitSlot=String(original['Slot Type']??'').trim();
   const leadRaw=String(original['Booked Time to Slot Time']??'').trim();
   const explicitTime=String(original['Appointment Time']??'').trim();
-  // These rows are secondary patient details rather than separate appointment slots.
-  // Still fill their fields, but do not count them as an extra appointment.
-  const hasSlotEvidence=Boolean(explicitStatus||explicitSlot||leadRaw||explicitTime);
+  // Count every non-empty CSV row after independently filling down the seven columns.
   for(const column of fillColumns){
    const value=String(r[column]??'').trim();
    if(value)previous[column]=value;
    else r[column]=previous[column];
   }
-  if(!hasSlotEvidence)continue;
   const day=String(r['Appointment Date']??'').trim();
   const time=String(r['Appointment Time']??'').trim();
   const slotType=String(r['Slot Type']??'').trim();

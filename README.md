@@ -195,3 +195,7 @@ Rows with blank Slot Type inherit the most recent nonblank Slot Type within the 
 
 ## Seven-field CSV fill-down correction
 Within each CSV, the import independently fills down blank Appointment Date, Appointment Time, User Type of the Session Holder of the Session, Slot Type, Availability, Town of the Location of the Session, and Full Name of the Session Holder of the Session. The fill-down resets at the beginning of each file. Rows containing only patient-detail continuation data (without an explicit availability, slot type, appointment time, or booked-to-slot lead) are not counted as additional appointment slots. This avoids duplicate counting of secondary patient-detail rows.
+
+
+## Counting continuation rows (October 2026 correction)
+Every non-empty imported CSV row is counted after filling down the seven appointment fields. The previous hasSlotEvidence exclusion has been removed. On the supplied Q4 export, Tuesday 27 October now gives 22 Blocked and 108 Embargoed RED-named rows, matching the Excel figures. The booking lead-time chart still requires a valid booking lead time to calculate booking dates.
