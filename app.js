@@ -737,7 +737,11 @@ function renderUrgentSideFilters(){
    const track=document.createElement('span');track.className='switch-track';track.style.setProperty('--switch-on',colour);
    const caption=document.createElement('span');caption.textContent=name;
    sw.append(input,track);row.append(sw,caption);root.append(row);
-   input.addEventListener('change',()=>{if(input.checked)disabled.delete(name);else disabled.add(name);renderAvailabilityChart()});
+   input.addEventListener('change',()=>{
+    if(!input.checked&&names.filter(n=>!disabled.has(n)).length<=1){input.checked=true;return;}
+    if(input.checked)disabled.delete(name);else disabled.add(name);
+    renderAvailabilityChart();
+   });
   }
  };
  build('urgentClinicianToggles',clinicianGroupNames,urgentClinicianDisabled,'#a6d6b2');
@@ -793,7 +797,11 @@ function renderUrgentCategoryToggles(){
   const title=document.createElement('span');title.textContent=name;
   const colour=urgentColour(name);track.style.setProperty('--switch-on',colour);
   sw.append(input,track);row.append(sw,title);root.append(row);
-  input.addEventListener('change',()=>{if(input.checked)urgentCategoryDisabled.delete(name);else urgentCategoryDisabled.add(name);renderAvailabilityChart()});
+  input.addEventListener('change',()=>{
+   if(!input.checked&&names.filter(n=>!urgentCategoryDisabled.has(n)).length<=1){input.checked=true;return;}
+   if(input.checked)urgentCategoryDisabled.delete(name);else urgentCategoryDisabled.add(name);
+   renderAvailabilityChart();
+  });
  }
 }
 function urgentColour(name){
@@ -842,9 +850,9 @@ function renderAvailabilityChart(){
  const shapes=Array.from({length:weekCount},(_,i)=>({type:'line',xref:'x',yref:'paper',x0:i*7+5.5,x1:i*7+5.5,y0:0,y1:1,line:{color:'#9ca6b1',width:1.3}}));
  if(dateSet.has(todayLondon)){
   const x=dates.indexOf(todayLondon);
-  shapes.unshift({type:'rect',xref:'x',yref:'paper',x0:-.5,x1:x,y0:0,y1:1,fillcolor:'rgba(224,117,117,0.20)',line:{width:0},layer:'below'});
+  shapes.unshift({type:'rect',xref:'x',yref:'paper',x0:-.5,x1:x,y0:0,y1:1,fillcolor:'rgba(128,136,146,0.50)',line:{width:0},layer:'above'});
   shapes.push({type:'line',xref:'x',yref:'paper',x0:x,x1:x,y0:0,y1:1,line:{color:'#4b5563',width:2,dash:'dot'}});
-  annotations.push({x,xref:'x',y:1.005,yref:'paper',text:'Today',showarrow:false,font:{size:11,color:'#374151'},xanchor:'left',yanchor:'bottom',xshift:5});
+  annotations.push({x,xref:'x',y:1.005,yref:'paper',text:'Today',showarrow:false,font:{size:16,color:'#374151'},xanchor:'left',yanchor:'top',xshift:7,yshift:-8});
  }
  dates.forEach((date,i)=>{if(weekdays.has(date)&&totals[i])annotations.push({x:date,xref:'x',y:totals[i],yref:'y',text:String(totals[i]),showarrow:false,font:{size:10,color:'#818b96'},yshift:4,yanchor:'bottom'})});
  const note=$('availabilityNote');if(note)note.textContent=names.length?'':'Select an Urgent detailed urgency category to display appointments.';
@@ -876,7 +884,11 @@ function renderRoutineAvailabilityFilters(){
    const track=document.createElement('span');track.className='switch-track';
    const title=document.createElement('span');title.textContent=name;
    switchEl.append(input,track);row.append(switchEl,title);root.append(row);
-   input.addEventListener('change',()=>{if(input.checked)disabled.delete(name);else disabled.add(name);renderRoutineAvailabilityChart()});
+   input.addEventListener('change',()=>{
+    if(!input.checked&&names.filter(n=>!disabled.has(n)).length<=1){input.checked=true;return;}
+    if(input.checked)disabled.delete(name);else disabled.add(name);
+    renderRoutineAvailabilityChart();
+   });
   }
  };
  build('routineClinicianFilters',clinicianGroupNames,routineDisabledClinicianGroups,'Create clinician groups in Manage categories.');
@@ -898,7 +910,9 @@ function setupRoutineRangeControls(){
  const label=n=>n===0?'This week':n===-1?'Last week':n<0?Math.abs(n)+' weeks ago':n===1?'Next week':n+' weeks ahead';
  const update=changed=>{
   let a=Number(start.value),b=Number(end.value);
-  if(a>b){if(changed==='start')b=a;else a=b;start.value=a;end.value=b}
+  a=Math.max(-2,Math.min(0,a));
+  b=Math.max(1,Math.min(7,b));
+  start.value=a;end.value=b;
   routineStartWeek=a;routineEndWeek=b;
   $('routineWeeksStartValue').textContent=label(a);
   $('routineWeeksEndValue').textContent=label(b);
@@ -952,11 +966,11 @@ function renderRoutineAvailabilityChart(){
  const weekIndex=weeks.indexOf(thisWeek);
  const todayX=weekIndex<0?null:weekIndex-0.5+(Math.min(dayIndex,4)*0.2+0.05);
  const shapes=todayX===null?[]:[
-  {type:'rect',xref:'x',yref:'paper',x0:-0.5,x1:todayX,y0:0,y1:1,fillcolor:'rgba(128,136,146,0.50)',line:{width:0},layer:'below'},
+  {type:'rect',xref:'x',yref:'paper',x0:-0.5,x1:todayX,y0:0,y1:1,fillcolor:'rgba(128,136,146,0.50)',line:{width:0},layer:'above'},
   {type:'line',xref:'x',yref:'paper',x0:todayX,x1:todayX,y0:0,y1:1,line:{color:'#344355',width:2,dash:'dot'},layer:'above'}
  ];
  for(let i=0;i<weeks.length-1;i++)shapes.push({type:'line',xref:'x',yref:'paper',x0:i+0.5,x1:i+0.5,y0:0,y1:1,line:{color:'#98a2ad',width:1,dash:'dot'},layer:'above'});
- if(todayX!==null)annotations.push({xref:'x',yref:'paper',x:todayX,y:1.02,text:'Today',showarrow:false,xanchor:'left',font:{size:12,color:'#344355'}});
+ if(todayX!==null)annotations.push({xref:'x',yref:'paper',x:todayX,y:0.96,text:'Today',showarrow:false,xanchor:'left',yanchor:'top',xshift:7,font:{size:16,color:'#344355'}});
  const note=$('routineAvailabilityNote');
  if(note)note.textContent=matched?'':"No matching Routine urgency-group appointments found. Check Manage categories → Urgency Group.";
  Plotly.react(target,traces,{

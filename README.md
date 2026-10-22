@@ -253,3 +253,10 @@ Routine Appointment Availability now uses a single dual-handle slider (-2 to +7 
 
 ## Availability range and filter safeguards
 Routine dual slider keeps start within -2 to 0 (This Week) and end within +1 (Next Week) to +7; chart cannot be reduced below two weeks. Both availability charts have larger, lower Today labels and 50%-opacity grey shading above bars. Urgent and Routine availability toggle groups prevent deselecting their last enabled option.
+
+
+### Verified corrective patch
+- Routine dual range: start -2..0, end 1..7 (same 9-step rail), enforced on every drag.
+- Both Today labels 16px inside chart; historical overlay rgba(128,136,146,0.50) with Plotly layer above.
+- Urgent detailed categories, urgent clinician/consult filters and routine clinician/consult filters each retain at least one enabled option.
+- Changed app.js cache-busting URL to v4.
