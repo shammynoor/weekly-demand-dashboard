@@ -249,3 +249,7 @@ Added Clinician Groups (pastel green) and Consult mode (pastel blue) toggle pane
 
 ## Routine availability visual alignment
 Routine Appointment Availability now uses a single dual-handle slider (-2 to +7 weeks, default -1 to +6), the same 155px right sidebar as urgent availability, stacked Clinician Groups and Consult mode toggles (pastel green and blue), and a centred legend below the chart. Booked slots use deeper pastel green #81c6a0. The existing daily-relative Today marker and shading remain.
+
+
+## Availability range and filter safeguards
+Routine dual slider keeps start within -2 to 0 (This Week) and end within +1 (Next Week) to +7; chart cannot be reduced below two weeks. Both availability charts have larger, lower Today labels and 50%-opacity grey shading above bars. Urgent and Routine availability toggle groups prevent deselecting their last enabled option.
