@@ -161,3 +161,7 @@ Manage Categories includes Detailed urgency (existing slot-type assignments) and
 
 ## Urgency Group availability filter
 The appointment availability chart dropdown now lists Urgency Group categories, not detailed urgency categories. Counts include slots whose detailed urgency category is assigned to the selected Urgency Group. The management tab is labelled Urgency Group.
+
+
+## Availability Extras
+The availability chart now shows the detailed urgency category named Extras as a separate purple stack between Held Back and Available (all statuses of Extras are grouped here without double counting). Week annotations use the same normal-weight font styling as x-axis labels.
