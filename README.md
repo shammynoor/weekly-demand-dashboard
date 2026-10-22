@@ -180,3 +180,7 @@ Both panels share the same y-axis range. Their legends are vertically centered o
 
 ## Availability chart refinements
 Weekday abbreviations are now vertical x-axis tick labels; Saturdays and Sundays retain empty spacing with no labels. The week separators remain in the weekend gaps. The Priority chart uses pastel yellow shading before Today, while Reds uses light red. Bars are maximised within their category slots, and the gap between the two charts is reduced.
+
+
+## Chart layout v2
+This version adds a visible Chart layout v2 label on the availability page to confirm that GitHub Pages has served the new HTML. The JavaScript reference is uniquely versioned to avoid old cached code. Day ticks are explicitly blank for weekend dates; labels are short, vertical and on the x-axis. Plot height and surrounding HTML spacing have been reduced to bring the two charts together. Past shading for Priority is pastel yellow.

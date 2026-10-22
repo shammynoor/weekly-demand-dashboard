@@ -616,6 +616,8 @@ function updateAvailabilityUrgencyFilter(){
  select.value=selectedAvailabilityUrgency;
 }
 function renderAvailabilityChart(){
+ const version=$('availabilityVersion');
+ if(version)version.textContent='Chart layout v2 · 22 Oct 2026';
  if($('availabilityPage').classList.contains('hidden')||!window.Plotly)return;
  // Use one shared scale so the two panels can be compared directly.
  const sharedMax=availabilitySharedYMax();
@@ -699,7 +701,7 @@ function renderAvailabilityPanel(targetId,kind,sharedMax){
  }));
  // Week dividers sit between Saturday and Sunday, within the weekend gap.
  const shapes=[0,1,2,3,4,5].map(i=>({type:'line',xref:'x',yref:'paper',
-  x0:i*7+5.5,x1:i*7+5.5,y0:0,y1:1,line:{color:'#a1a9b3',width:1.5}}));
+  x0:i*7+5.5,x1:i*7+5.5,y0:0,y1:1,line:{color:'#9ca6b1',width:1.3}}));
  // 80% transparent light-red overlay to the left of today's marker.
  // Use categorical axis positions to align exactly with the Today line.
  if(dateSet.has(todayLondon))shapes.unshift({type:'rect',xref:'x',yref:'paper',
@@ -730,11 +732,11 @@ function renderAvailabilityPanel(targetId,kind,sharedMax){
  note.textContent=displayedTotal?'':(matchingSlots.length?'No matching appointment availability records in this six-week window.':'No matching detailed urgency assignments found. Check Manage Categories.');
  const width=Math.max(300,Math.floor(target.getBoundingClientRect().width));
  Plotly.react(target,traces,{
-  autosize:true,width,height:530,barmode:'stack',bargap:0,
-  margin:{l:170,r:18,t:95,b:78},paper_bgcolor:'white',plot_bgcolor:'#f1f3f5',
+  autosize:true,width,height:450,barmode:'stack',bargap:0.015,
+  margin:{l:155,r:18,t:66,b:60},paper_bgcolor:'white',plot_bgcolor:'#f1f3f5',
   legend:{orientation:'v',x:-0.095,y:0.5,xanchor:'right',yanchor:'middle',traceorder:'normal',font:{size:12,color:'#444444'},bgcolor:'rgba(255,255,255,0)'},
   xaxis:{type:'category',categoryorder:'array',categoryarray:dates,
-   tickmode:'array',tickvals:weekdayTicks,ticktext:weekdayTickLabels,showticklabels:true,
+   tickmode:'array',tickvals:dates,ticktext:dates.map(date=>weekdays.has(date)?new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'short',timeZone:'UTC'}):''),showticklabels:true,
    tickangle:-90,tickfont:{size:12,color:'#444444',family:'Arial, sans-serif'},showgrid:false,range:[-.5,dates.length-.5],fixedrange:true},
   yaxis:{title:'Appointment slots',range:[0,sharedMax],gridcolor:'#dce2e8'},
   annotations,shapes,hovermode:'closest'
