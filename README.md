@@ -114,3 +114,7 @@ The Filters box has a Shade seasons switch, on by default. Turning it off remove
 
 ## Fix 22 October 2026
 Continuous timeline x-axis range is explicitly constrained to displayed periods so season background rectangles cannot extend the axis. The Shade seasons toggle state is now stored outside refresh() and is not reset to ON during every redraw. Both modes and all three charts use the setting.
+
+
+## Urgent Appointment Availability
+Third navigation page with a daily stacked bar chart, using Appointment Date directly and stacking the CSV Availability values. It includes only slot types assigned to the Urgent category. The fixed six-week window runs Monday two weeks before the current week through Sunday three weeks after. Data refresh updates the chart.
