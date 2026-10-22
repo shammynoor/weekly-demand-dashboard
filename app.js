@@ -617,10 +617,32 @@ function updateAvailabilityUrgencyFilter(){
 }
 function renderAvailabilityChart(){
  if($('availabilityPage').classList.contains('hidden')||!window.Plotly)return;
- renderAvailabilityPanel('availabilityChart','reds');
- renderAvailabilityPanel('availabilityPriorityChart','priority');
+ // Use one shared scale so the two panels can be compared directly.
+ const sharedMax=availabilitySharedYMax();
+ renderAvailabilityPanel('availabilityChart','reds',sharedMax);
+ renderAvailabilityPanel('availabilityPriorityChart','priority',sharedMax);
 }
-function renderAvailabilityPanel(targetId,kind){
+function availabilitySharedYMax(){
+ const start=new Date(thisWeek+'T12:00:00Z');start.setUTCDate(start.getUTCDate()-14);
+ const allowed=new Set();
+ for(let w=0;w<6;w++)for(let d=0;d<5;d++){
+  const day=new Date(start);day.setUTCDate(start.getUTCDate()+w*7+d);
+  allowed.add(day.toISOString().slice(0,10));
+ }
+ const byDay=new Map();
+ for(const r of availabilityRecords){
+  if(!allowed.has(r.date))continue;
+  const category=String(assignments[r.slot]||'').trim().toLowerCase();
+  const kind=category==='priority'?'priority':(['reds','extras'].includes(category)?'reds':null);
+  if(!kind)continue;
+  const status=String(r.availability||'').trim().toLowerCase();
+  if(category!=='extras'&&!['booked','blocked','embargoed','available'].includes(status))continue;
+  const key=kind+'|'+r.date;
+  byDay.set(key,(byDay.get(key)||0)+r.count);
+ }
+ return Math.ceil(Math.max(1,...byDay.values())*1.2/10)*10;
+}
+function renderAvailabilityPanel(targetId,kind,sharedMax){
  const target=$(targetId);
  if(!target)return;
  const monday=new Date(thisWeek+'T12:00:00Z');
@@ -652,10 +674,9 @@ function renderAvailabilityPanel(targetId,kind){
   counts.set(key,(counts.get(key)||0)+r.count);
  }
  const labels=kind==='reds'?['Booked','Held Back','Extras','Available']:['Booked','Held Back','Available'];
- const colourByLabel={'Booked':'#bf7775','Held Back':'#636c76','Extras':'#8e67b6','Available':'#ffffff'};
+ const colourByLabel={'Booked':kind==='priority'?'#e8cd83':'#bf7775','Held Back':'#636c76','Extras':'#8e67b6','Available':'#ffffff'};
  const colours=labels.map(name=>colourByLabel[name]);
  const totals=dates.map(date=>labels.reduce((sum,name)=>sum+(counts.get(JSON.stringify([date,name]))||0),0));
- const maxTotal=Math.max(1,...totals);
  const daySummary=dates.map(date=>{
   const weekday=new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'long',timeZone:'UTC'});
   return weekday+'<br>'+labels.map(name=>name+': '+(counts.get(JSON.stringify([date,name]))||0).toLocaleString('en-GB')).join('<br>')+'<br><b>Total: '+(labels.reduce((sum,name)=>sum+(counts.get(JSON.stringify([date,name]))||0),0)).toLocaleString('en-GB')+'</b>';
@@ -698,22 +719,29 @@ function renderAvailabilityPanel(targetId,kind){
    showarrow:false,font:{size:10,color:'#818b96',family:'Arial, sans-serif'},
    xanchor:'center',yanchor:'bottom',yshift:4});
  });
+ // Full weekday names are printed vertically inside the bars, rather than on the x axis.
+ dates.forEach((date,i)=>{
+  if(!weekdays.has(date))return;
+  const day=new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'long',timeZone:'UTC'});
+  annotations.push({x:date,xref:'x',y:0.012,yref:'paper',text:day,
+   textangle:-90,showarrow:false,font:{size:12,color:'#26323f',family:'Arial, sans-serif'},
+   xanchor:'center',yanchor:'bottom'});
+ });
  const displayedTotal=[...counts.values()].reduce((a,b)=>a+b,0);
  const note=$(kind==='reds'?'availabilityNote':'availabilityPriorityNote');
  const categories=kind==='reds'?['reds','extras']:['priority'];
  const matchingSlots=availabilityRecords.filter(r=>categories.includes(String(assignments[r.slot]||'').trim().toLowerCase()));
- note.textContent=displayedTotal
-  ?('Weekends shown as gaps · Detailed urgency: '+(kind==='reds'?'Reds + Extras':'Priority')+' · Held Back combines Blocked and Embargoed.'+(kind==='reds'?' Extras shown separately in purple.':''))
-  :(matchingSlots.length?'No appointment records with a recognised availability status for '+(kind==='reds'?'Reds / Extras':'Priority')+' in this six-week window.':'No matching slot types found. Assign slot types to the '+(kind==='reds'?'Reds and Extras':'Priority')+' Detailed urgency categories in Manage categories.');
+ // Suppress the explanatory caption; retain a diagnostic only for empty charts.
+ note.textContent=displayedTotal?'':(matchingSlots.length?'No matching appointment availability records in this six-week window.':'No matching detailed urgency assignments found. Check Manage Categories.');
  const width=Math.max(300,Math.floor(target.getBoundingClientRect().width));
  Plotly.react(target,traces,{
   autosize:true,width,height:560,barmode:'stack',bargap:0.01,
-  margin:{l:60,r:18,t:110,b:65},paper_bgcolor:'white',plot_bgcolor:'#f1f3f5',
-  legend:{orientation:'h',x:0,y:1.23,xanchor:'left',yanchor:'bottom',traceorder:'normal',font:{size:12,color:'#444444'}},
+  margin:{l:170,r:18,t:105,b:32},paper_bgcolor:'white',plot_bgcolor:'#f1f3f5',
+  legend:{orientation:'v',x:-0.095,y:0.5,xanchor:'right',yanchor:'middle',traceorder:'normal',font:{size:12,color:'#444444'},bgcolor:'rgba(255,255,255,0)'},
   xaxis:{type:'category',categoryorder:'array',categoryarray:dates,
-   tickmode:'array',tickvals:dates.filter(d=>weekdays.has(d)),ticktext:dates.filter(d=>weekdays.has(d)).map(d=>['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date(d+'T12:00:00Z').getUTCDay()]),
+   showticklabels:false,
    tickangle:0,tickfont:{size:12,color:'#444444',family:'Arial, sans-serif'},showgrid:false,range:[-.5,dates.length-.5],fixedrange:true},
-  yaxis:{title:'Appointment slots',range:[0,Math.ceil(maxTotal*1.2/10)*10],gridcolor:'#dce2e8'},
+  yaxis:{title:'Appointment slots',range:[0,sharedMax],gridcolor:'#dce2e8'},
   annotations,shapes,hovermode:'closest'
  },{responsive:true,displaylogo:false});
 }
