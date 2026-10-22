@@ -165,3 +165,6 @@ The appointment availability chart dropdown now lists Urgency Group categories, 
 
 ## Availability Extras
 The availability chart now shows the detailed urgency category named Extras as a separate purple stack between Held Back and Available (all statuses of Extras are grouped here without double counting). Week annotations use the same normal-weight font styling as x-axis labels.
+
+
+Availability visual update: circular left-aligned legend, lighter Held Back and week separators, fine gaps between stack segments, slightly wider bars, taller plot with y-axis headroom, concise daily tooltips and grey totals above each weekday bar.
