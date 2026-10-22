@@ -176,3 +176,7 @@ The availability page now has two independent, identically styled six-week plots
 
 ## Availability chart refinement
 Both panels share the same y-axis range. Their legends are vertically centered on the left, weekday names appear rotated inside each weekday bar, and explanatory footnotes are removed (diagnostics remain when data is missing). Priority booked slots are pastel yellow.
+
+
+## Availability chart refinements
+Weekday abbreviations are now vertical x-axis tick labels; Saturdays and Sundays retain empty spacing with no labels. The week separators remain in the weekend gaps. The Priority chart uses pastel yellow shading before Today, while Reds uses light red. Bars are maximised within their category slots, and the gap between the two charts is reduced.

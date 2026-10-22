@@ -704,7 +704,7 @@ function renderAvailabilityPanel(targetId,kind,sharedMax){
  // Use categorical axis positions to align exactly with the Today line.
  if(dateSet.has(todayLondon))shapes.unshift({type:'rect',xref:'x',yref:'paper',
   x0:-.5,x1:dates.indexOf(todayLondon),y0:0,y1:1,
-  fillcolor:'rgba(224,117,117,0.20)',line:{width:0},layer:'below'});
+  fillcolor:kind==='priority'?'rgba(242,210,102,0.20)':'rgba(224,117,117,0.20)',line:{width:0},layer:'below'});
  // Today is positioned on the same London-local calendar date used elsewhere in the dashboard.
  if(dateSet.has(todayLondon))shapes.push({type:'line',xref:'x',yref:'paper',
   x0:dates.indexOf(todayLondon),x1:dates.indexOf(todayLondon),y0:0,y1:1,
@@ -719,14 +719,9 @@ function renderAvailabilityPanel(targetId,kind,sharedMax){
    showarrow:false,font:{size:10,color:'#818b96',family:'Arial, sans-serif'},
    xanchor:'center',yanchor:'bottom',yshift:4});
  });
- // Full weekday names are printed vertically inside the bars, rather than on the x axis.
- dates.forEach((date,i)=>{
-  if(!weekdays.has(date))return;
-  const day=new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'long',timeZone:'UTC'});
-  annotations.push({x:date,xref:'x',y:0.012,yref:'paper',text:day,
-   textangle:-90,showarrow:false,font:{size:12,color:'#26323f',family:'Arial, sans-serif'},
-   xanchor:'center',yanchor:'bottom'});
- });
+ // Short weekday names are axis ticks; weekend positions remain blank for spacing.
+ const weekdayTicks=dates.filter(date=>weekdays.has(date));
+ const weekdayTickLabels=weekdayTicks.map(date=>new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'short',timeZone:'UTC'}));
  const displayedTotal=[...counts.values()].reduce((a,b)=>a+b,0);
  const note=$(kind==='reds'?'availabilityNote':'availabilityPriorityNote');
  const categories=kind==='reds'?['reds','extras']:['priority'];
@@ -735,12 +730,12 @@ function renderAvailabilityPanel(targetId,kind,sharedMax){
  note.textContent=displayedTotal?'':(matchingSlots.length?'No matching appointment availability records in this six-week window.':'No matching detailed urgency assignments found. Check Manage Categories.');
  const width=Math.max(300,Math.floor(target.getBoundingClientRect().width));
  Plotly.react(target,traces,{
-  autosize:true,width,height:560,barmode:'stack',bargap:0.01,
-  margin:{l:170,r:18,t:105,b:32},paper_bgcolor:'white',plot_bgcolor:'#f1f3f5',
+  autosize:true,width,height:530,barmode:'stack',bargap:0,
+  margin:{l:170,r:18,t:95,b:78},paper_bgcolor:'white',plot_bgcolor:'#f1f3f5',
   legend:{orientation:'v',x:-0.095,y:0.5,xanchor:'right',yanchor:'middle',traceorder:'normal',font:{size:12,color:'#444444'},bgcolor:'rgba(255,255,255,0)'},
   xaxis:{type:'category',categoryorder:'array',categoryarray:dates,
-   showticklabels:false,
-   tickangle:0,tickfont:{size:12,color:'#444444',family:'Arial, sans-serif'},showgrid:false,range:[-.5,dates.length-.5],fixedrange:true},
+   tickmode:'array',tickvals:weekdayTicks,ticktext:weekdayTickLabels,showticklabels:true,
+   tickangle:-90,tickfont:{size:12,color:'#444444',family:'Arial, sans-serif'},showgrid:false,range:[-.5,dates.length-.5],fixedrange:true},
   yaxis:{title:'Appointment slots',range:[0,sharedMax],gridcolor:'#dce2e8'},
   annotations,shapes,hovermode:'closest'
  },{responsive:true,displaylogo:false});
