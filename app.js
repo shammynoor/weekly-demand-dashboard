@@ -368,12 +368,12 @@ function renderDropEditor(dimension){
     cfg.names[index]=next;
     if(dimension==='clinician'&&Object.prototype.hasOwnProperty.call(clinicianGroupAssignments,name)){clinicianGroupAssignments[next]=clinicianGroupAssignments[name];delete clinicianGroupAssignments[name];}
     if(dimension==='urgency'&&Object.prototype.hasOwnProperty.call(groupUrgencyAssignments,name)){groupUrgencyAssignments[next]=groupUrgencyAssignments[name];delete groupUrgencyAssignments[name];}
-    if(dimension==='clinician'){if(disabledClinicianTypes.delete(name))disabledClinicianTypes.add(next);lastClinicianFilterNames=[];}
+    if(dimension==='clinicianGroup'){if(disabledClinicianTypes.delete(name))disabledClinicianTypes.add(next);lastClinicianFilterNames=[];}
     for(const slot of Object.keys(cfg.assign))if(cfg.assign[slot]===name)cfg.assign[slot]=next;
     // Preserve the selected urgency filter when its category name changes.
     if(dimension==='urgency'){for(const option of slots.options)if(option.value===name)option.value=next;}
     if(dimension==='groupUrgency'&&selectedAvailabilityUrgency===name)selectedAvailabilityUrgency=next;
-    saveCategories();if(dimension==='urgency'){rebuildCategoryFilter();renderGroupUrgencyEditor()}if(dimension==='clinician')renderClinicianGroupEditor();cfg.render();if(dimension==='groupUrgency')renderAvailabilityChart();
+    saveCategories();if(dimension==='urgency'){rebuildCategoryFilter();renderGroupUrgencyEditor()}if(dimension==='clinician')renderClinicianGroupEditor();cfg.render();if(dimension==='groupUrgency')renderAvailabilityChart();if(dimension==='clinicianGroup')updateClinicianChartFilter();
    };
    head.append(rename);
    const del=document.createElement('button');del.type='button';del.className='drop-delete';del.textContent='Delete';
@@ -384,8 +384,8 @@ function renderDropEditor(dimension){
     else if(dimension==='clinician'){clinicianCategoryNames=clinicianCategoryNames.filter(c=>c!==name);for(const t of cfg.items)if(clinicianAssignments[t]===name)clinicianAssignments[t]='Uncategorised';delete clinicianGroupAssignments[name]}
     else if(dimension==='clinicianGroup'){clinicianGroupNames=clinicianGroupNames.filter(c=>c!==name);for(const t of cfg.items)if(clinicianGroupAssignments[t]===name)clinicianGroupAssignments[t]='Uncategorised'}
     else{consultCategoryNames=consultCategoryNames.filter(c=>c!==name);for(const t of cfg.items)if(consultAssignments[t]===name)consultAssignments[t]='Uncategorised'}
-    if(dimension==='clinician'){disabledClinicianTypes.delete(name);lastClinicianFilterNames=[];}
-    saveCategories();if(dimension==='urgency'){rebuildCategoryFilter();renderGroupUrgencyEditor()}if(dimension==='clinician')renderClinicianGroupEditor();cfg.render();if(dimension==='groupUrgency')renderAvailabilityChart();
+    if(dimension==='clinicianGroup'){disabledClinicianTypes.delete(name);lastClinicianFilterNames=[];}
+    saveCategories();if(dimension==='urgency'){rebuildCategoryFilter();renderGroupUrgencyEditor()}if(dimension==='clinician')renderClinicianGroupEditor();cfg.render();if(dimension==='groupUrgency')renderAvailabilityChart();if(dimension==='clinicianGroup')updateClinicianChartFilter();
    };head.append(del);
   }
   zone.append(head);
@@ -452,12 +452,12 @@ const disabledClinicianTypes=new Set();
 let lastClinicianFilterNames=[];
 function updateClinicianChartFilter(){
  const root=$('clinicianChartFilters');if(!root)return;
- const names=[...clinicianCategoryNames];
+ const names=[...clinicianGroupNames];
  // Do not recreate switches during each chart refresh; retain focus and scroll position.
  if(names.length===lastClinicianFilterNames.length&&names.every((n,i)=>n===lastClinicianFilterNames[i]))return;
  lastClinicianFilterNames=names;
  root.replaceChildren();
- if(!names.length){const note=document.createElement('span');note.className='hint';note.textContent='Create clinician types in Manage categories.';root.append(note);return;}
+ if(!names.length){const note=document.createElement('span');note.className='hint';note.textContent='Create clinician groups in Manage categories.';root.append(note);return;}
  for(const name of names){
   const row=document.createElement('label');row.className='filter-row';
   const switchEl=document.createElement('span');switchEl.className='switch';
@@ -470,9 +470,10 @@ function updateClinicianChartFilter(){
  }
 }
 function clinicianMatches(clinician){
- const name=clinicianAssignments[clinician];
- // Uncategorised slots are not displayed as a filter option and are excluded.
- return clinicianCategoryNames.includes(name)&&!disabledClinicianTypes.has(name);
+ const detailed=clinicianAssignments[clinician];
+ const group=clinicianGroupAssignments[detailed];
+ // Only session-holder user types mapped through a detailed category to an enabled group count.
+ return clinicianGroupNames.includes(group)&&!disabledClinicianTypes.has(group);
 }
 const bankHolidayWeeks=new Set(holidayDates.map(mondayOf));let excludeBankHolidays=true;
 document.getElementById('excludeBH').onchange=e=>{excludeBankHolidays=!e.target.checked;refresh()};
@@ -499,6 +500,14 @@ function periodKey(r){return monthlyMode?r.bookedDay?.slice(0,7):r.bookedWeek}
 function includedRecord(r){return r.status==='Booked'&&clinicianMatches(r.clinician)&&(monthlyMode||!excludeBankHolidays||!bankHolidayWeeks.has(r.bookedWeek))}
 function monthOfPeriod(p){return monthlyMode?p+'-01':p}
 function periodIsCurrent(p){return p===(monthlyMode?thisMonth:thisWeek)}
+function weeklyUrgencyMatches(slot,category){
+ const detailed=assignments[slot]||'Uncategorised';
+ if(category==='urgent'){
+  const group=groupUrgencyAssignments[detailed];
+  return typeof group==='string'&&group.trim().toLowerCase()==='urgent';
+ }
+ return detailed.trim().toLowerCase().replace(/[\s-]+/g,'')===category;
+}
 function refresh(){updateClinicianChartFilter();
 const activeWeeks=[...new Set(records.filter(includedRecord).map(periodKey).filter(Boolean))].sort();
 const selectedWeeks=activeWeeks.filter(w=>w>=(monthlyMode?'2025-07':'2025-07-07')&&w<=(monthlyMode?thisMonth:thisWeek)&&(showCurrentWeek||!periodIsCurrent(w)));
@@ -531,7 +540,7 @@ function drawCategoryChart(target,category,palette,sharedMax){
  if(enabled)for(const r of records){
   const key=periodKey(r);if(!totals.has(key))continue;
   if(!includedRecord(r))continue;
-  if((assignments[r.slot]||'Uncategorised').trim().toLowerCase().replace(/[\s-]+/g,'')!==category)continue;
+  if(!weeklyUrgencyMatches(r.slot,category))continue;
   totals.set(key,totals.get(key)+r.count);
  }
  const points=[...totals].map(([date,count])=>({date,count,year:Number(date.slice(0,4)),week:monthlyMode?Number(date.slice(5,7)):isoWeek(date).week}));
@@ -595,7 +604,7 @@ for(const category of ['urgent','routine','followup']){
  for(const r of records){
   const key=periodKey(r);if(!totals.has(key))continue;
   if(!includedRecord(r))continue;
-  if((assignments[r.slot]||'Uncategorised').trim().toLowerCase().replace(/[\s-]+/g,'')!==category)continue;
+  if(!weeklyUrgencyMatches(r.slot,category))continue;
   totals.set(key,totals.get(key)+r.count);
  }
  for(const count of totals.values()){maximum=Math.max(maximum,count);if(category==='followup')followupMaximum=Math.max(followupMaximum,count);}
@@ -628,7 +637,7 @@ function renderClinicianGroupEditor(){renderDropEditor('clinicianGroup')}
 $('addClinicianCategory').onclick=()=>{const el=$('newClinicianCategory');const c=el.value.trim();if(!c)return;if(c.toLowerCase()==='uncategorised'||clinicianCategoryNames.some(x=>x.toLowerCase()===c.toLowerCase())){alert('This clinician category name already exists or is reserved.');return}clinicianCategoryNames.push(c);el.value='';saveCategories();renderClinicianEditor();renderClinicianGroupEditor()};
 $('newClinicianCategory').addEventListener('keydown',e=>{if(e.key==='Enter')$('addClinicianCategory').click()});
 $('clinicianSlotSearch').addEventListener('input',renderClinicianEditor);
-$('addClinicianGroupCategory').onclick=()=>{const el=$('newClinicianGroupCategory');const c=el.value.trim();if(!c)return;if(c.toLowerCase()==='uncategorised'||clinicianGroupNames.some(x=>x.toLowerCase()===c.toLowerCase())){alert('This clinician group name already exists or is reserved.');return}clinicianGroupNames.push(c);el.value='';saveCategories();renderClinicianGroupEditor()};
+$('addClinicianGroupCategory').onclick=()=>{const el=$('newClinicianGroupCategory');const c=el.value.trim();if(!c)return;if(c.toLowerCase()==='uncategorised'||clinicianGroupNames.some(x=>x.toLowerCase()===c.toLowerCase())){alert('This clinician group name already exists or is reserved.');return}clinicianGroupNames.push(c);el.value='';saveCategories();renderClinicianGroupEditor();updateClinicianChartFilter()};
 $('newClinicianGroupCategory').addEventListener('keydown',e=>{if(e.key==='Enter')$('addClinicianGroupCategory').click()});
 $('clinicianGroupSearch').addEventListener('input',renderClinicianGroupEditor);
 function renderConsultEditor(){renderDropEditor('consult')}

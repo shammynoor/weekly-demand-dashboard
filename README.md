@@ -203,3 +203,7 @@ Every non-empty imported CSV row is counted after filling down the seven appoint
 
 ## Clinician categories
 Detailed Clinician Types is based on the filled-down CSV field `User Type of the Session Holder of the Session` (not Slot Type). Clinician Groups groups those detailed categories. Both persist in browser and OneDrive settings. Weekly chart clinician filters use session-holder user type.
+
+
+## Weekly Demand Chart filters
+Urgent appointments use the `Urgent` Urgency Group (Detailed urgency -> Urgency Group); clinician filter switches are from Clinician Groups (CSV session-holder user type -> Detailed Clinician Types -> Clinician Groups). Routine and Follow up remain mapped to their Detailed urgency categories. Unassigned clinician types are excluded.
