@@ -119,3 +119,10 @@ Continuous timeline x-axis range is explicitly constrained to displayed periods 
 ## Urgent Appointment Availability
 Third navigation page with a daily stacked bar chart, using Appointment Date directly and stacking the CSV Availability values. It includes only slot types assigned to the Urgent category. The fixed six-week window runs Monday two weeks before the current week through Sunday three weeks after. Data refresh updates the chart.
 \n\n## Availability chart refinement\nUses only the exact Slot Type 'urgent appts' (case-insensitive). Monday–Friday only. Booked (red) at the base, Held Back = Blocked + Embargoed (dark grey), Available (white) on top. Light grey plot background, weekday-only X labels, six week labels above each group.\n
+
+## Urgent category filter correction
+The availability chart filters by the Urgent category assignments in Manage Categories, rather than an exact slot type name. Booked, Blocked/Embargoed and Available stacks and weekday display are unchanged.
+
+
+## Urgency category selector (22 October 2026)
+Urgent Appointment Availability has a selectable Urgency category filter, populated from user-created urgency categories, defaulting to Urgent. It does not filter on literal slot-type names. All slot types (including those with no booked rows) appear in Manage categories. The availability chart shows an explanation when the selected category has no matching data.

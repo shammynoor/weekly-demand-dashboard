@@ -291,7 +291,7 @@ function renderDropEditor(dimension){
     if(dimension==='clinician'){if(disabledClinicianTypes.delete(name))disabledClinicianTypes.add(next);lastClinicianFilterNames=[];}
     for(const slot of Object.keys(cfg.assign))if(cfg.assign[slot]===name)cfg.assign[slot]=next;
     // Preserve the selected urgency filter when its category name changes.
-    if(dimension==='urgency')for(const option of slots.options)if(option.value===name)option.value=next;
+    if(dimension==='urgency'){if(selectedAvailabilityUrgency===name)selectedAvailabilityUrgency=next;for(const option of slots.options)if(option.value===name)option.value=next;}
     saveCategories();if(dimension==='urgency')rebuildCategoryFilter();cfg.render();
    };
    head.append(rename);
@@ -328,7 +328,7 @@ async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;
  const fingerprint=JSON.stringify(items.map(f=>[f.id,f.lastModifiedDateTime,f.size]));if(!force&&fingerprint===lastFingerprint){showRefreshFeedback('Already up to date');setSync(`No changes detected · ${items.length} CSV files · Checked ${new Date().toLocaleTimeString('en-GB')}`);return}
  const aggregate=new Map(),availabilityAggregate=new Map();let valid=0,skipped=0;for(let i=0;i<items.length;i++){const f=items[i];showRefreshFeedback(`Loading file ${i+1} of ${items.length}…`,true);setSync(`Loading ${i+1} of ${items.length}: ${f.name}`);const detail=await graph(`/me/drive/items/${encodeURIComponent(f.id)}`);const url=detail['@microsoft.graph.downloadUrl'];if(!url)throw Error('OneDrive did not provide a download URL for '+f.name);const response=await fetch(url,{cache:'no-store'});if(!response.ok)throw Error(`Could not download ${f.name}: HTTP ${response.status}`);const stats=aggregateCSV(await response.text(),aggregate,availabilityAggregate);valid+=stats.valid;skipped+=stats.skipped}
  availabilityRecords=[...availabilityAggregate].map(([key,count])=>{const [date,slot,availability]=JSON.parse(key);return {date,slot,availability,count}});
- records=[...aggregate].map(([key,count])=>{const [bookedDay,slot]=JSON.parse(key);const bookedWeek=mondayOf(bookedDay);return {week:bookedWeek,bookedWeek,bookedDay,slot,status:'Booked',count}});weeks=[...new Set(records.map(r=>r.bookedWeek))].sort();types=[...new Set(records.map(r=>r.slot))].sort();statuses=['Booked'];
+ records=[...aggregate].map(([key,count])=>{const [bookedDay,slot]=JSON.parse(key);const bookedWeek=mondayOf(bookedDay);return {week:bookedWeek,bookedWeek,bookedDay,slot,status:'Booked',count}});weeks=[...new Set(records.map(r=>r.bookedWeek))].sort();types=[...new Set([...records.map(r=>r.slot),...availabilityRecords.map(r=>r.slot)])].sort();statuses=['Booked'];
  // Assign obvious names on first encounter; retain any existing manual choices.
  // Do not guess assignments: unknown slot types stay Uncategorised until manually assigned.
 
@@ -509,7 +509,7 @@ const followupMagnitude=Math.pow(10,Math.floor(Math.log10(followupStepRaw)));
 const followupStep=([1,2,5,10].find(v=>v*followupMagnitude>=followupStepRaw)||10)*followupMagnitude;
 drawCategoryChart('followupChart','followup',yearColours.followup,5*followupStep);
 }
-const STORAGE_KEY='appointment-dashboard-categories-v1';let categoryNames=['Urgent','Routine','Follow up'],assignments={};try{const saved=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');categoryNames=Array.isArray(saved.categories)&&saved.categories.length?saved.categories.filter(x=>typeof x==='string'&&x.trim()&&x!=='Uncategorised'):['Urgent','Routine','Follow up'];assignments=saved.assignments&&typeof saved.assignments==='object'?saved.assignments:{};}catch(e){}let clinicianCategoryNames=[],clinicianAssignments={};try{const local=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');if(Array.isArray(local.clinicianCategories))clinicianCategoryNames=validCategoryNames(local.clinicianCategories);if(local.clinicianAssignments)clinicianAssignments=validAssignments(local.clinicianAssignments,clinicianCategoryNames)}catch(e){}let consultCategoryNames=[],consultAssignments={};try{const local=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');if(Array.isArray(local.consultCategories))consultCategoryNames=validCategoryNames(local.consultCategories);if(local.consultAssignments)consultAssignments=validAssignments(local.consultAssignments,consultCategoryNames)}catch(e){}function ensureFollowUpCategory(){if(!categoryNames.some(c=>c.toLowerCase().replace(/[\s-]+/g,'')==='followup'))categoryNames.push('Follow up')}ensureFollowUpCategory();function guessCategory(t){return /RED|YELLOW|AMBER|URGENT|SAME DAY|ACUTE/i.test(t)?'Urgent':/GREEN|FOLLOW UP|ROUTINE/i.test(t)?'Routine':null}function saveCategories(sync=true){try{localStorage.setItem(STORAGE_KEY,JSON.stringify({categories:categoryNames,assignments,clinicianCategories:clinicianCategoryNames,clinicianAssignments,consultCategories:consultCategoryNames,consultAssignments}));}catch(e){alert('Could not save settings in this browser. Please try again.')}if(sync)markCategoryDirty()}function allCategories(){return [...categoryNames,'Uncategorised']}function rebuildCategoryFilter(){const old=new Set([...slots.selectedOptions].map(o=>o.value));slots.replaceChildren();for(const c of allCategories()){const o=document.createElement('option');o.value=c;o.textContent=c;o.selected=old.has(c);slots.append(o)}refresh()}function renderEditor(){renderDropEditor('urgency')}document.getElementById('addCategory').onclick=()=>{const el=document.getElementById('newCategory');const c=el.value.trim();if(!c)return;if(c.toLowerCase()==='uncategorised'||categoryNames.some(x=>x.toLowerCase()===c.toLowerCase())){alert('This category name already exists or is reserved.');return}categoryNames.push(c);el.value='';saveCategories();rebuildCategoryFilter();renderEditor()};document.getElementById('newCategory').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('addCategory').click()});document.getElementById('slotSearch').addEventListener('input',renderEditor);function showPage(which){
+const STORAGE_KEY='appointment-dashboard-categories-v1';let categoryNames=['Urgent','Routine','Follow up'],assignments={};try{const saved=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');categoryNames=Array.isArray(saved.categories)&&saved.categories.length?saved.categories.filter(x=>typeof x==='string'&&x.trim()&&x!=='Uncategorised'):['Urgent','Routine','Follow up'];assignments=saved.assignments&&typeof saved.assignments==='object'?saved.assignments:{};}catch(e){}let clinicianCategoryNames=[],clinicianAssignments={};try{const local=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');if(Array.isArray(local.clinicianCategories))clinicianCategoryNames=validCategoryNames(local.clinicianCategories);if(local.clinicianAssignments)clinicianAssignments=validAssignments(local.clinicianAssignments,clinicianCategoryNames)}catch(e){}let consultCategoryNames=[],consultAssignments={};try{const local=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');if(Array.isArray(local.consultCategories))consultCategoryNames=validCategoryNames(local.consultCategories);if(local.consultAssignments)consultAssignments=validAssignments(local.consultAssignments,consultCategoryNames)}catch(e){}function ensureFollowUpCategory(){if(!categoryNames.some(c=>c.toLowerCase().replace(/[\s-]+/g,'')==='followup'))categoryNames.push('Follow up')}ensureFollowUpCategory();function guessCategory(t){return /RED|YELLOW|AMBER|URGENT|SAME DAY|ACUTE/i.test(t)?'Urgent':/GREEN|FOLLOW UP|ROUTINE/i.test(t)?'Routine':null}function saveCategories(sync=true){try{localStorage.setItem(STORAGE_KEY,JSON.stringify({categories:categoryNames,assignments,clinicianCategories:clinicianCategoryNames,clinicianAssignments,consultCategories:consultCategoryNames,consultAssignments}));}catch(e){alert('Could not save settings in this browser. Please try again.')}if(sync)markCategoryDirty()}function allCategories(){return [...categoryNames,'Uncategorised']}function rebuildCategoryFilter(){const old=new Set([...slots.selectedOptions].map(o=>o.value));slots.replaceChildren();for(const c of allCategories()){const o=document.createElement('option');o.value=c;o.textContent=c;o.selected=old.has(c);slots.append(o)}refresh()}function renderEditor(){renderDropEditor('urgency');updateAvailabilityUrgencyFilter()}document.getElementById('addCategory').onclick=()=>{const el=document.getElementById('newCategory');const c=el.value.trim();if(!c)return;if(c.toLowerCase()==='uncategorised'||categoryNames.some(x=>x.toLowerCase()===c.toLowerCase())){alert('This category name already exists or is reserved.');return}categoryNames.push(c);el.value='';saveCategories();rebuildCategoryFilter();renderEditor()};document.getElementById('newCategory').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('addCategory').click()});document.getElementById('slotSearch').addEventListener('input',renderEditor);function showPage(which){
  for(const [page,nav,name] of [['chartPage','navChart','chart'],['categoryPage','navCategories','categories'],['availabilityPage','navAvailability','availability']]){
   $(page).classList.toggle('hidden',which!==name);$(nav).classList.toggle('active',which===name);
  }
@@ -557,9 +557,20 @@ initAuth();
 })();
 
 
+let selectedAvailabilityUrgency='Urgent';
+function updateAvailabilityUrgencyFilter(){
+ const select=$('availabilityUrgencyFilter');if(!select)return;
+ const names=[...categoryNames];
+ if(!names.includes(selectedAvailabilityUrgency))selectedAvailabilityUrgency=names.find(n=>n.toLowerCase()==='urgent')||names[0]||'';
+ const same=select.options.length===names.length&&names.every((name,i)=>select.options[i].value===name);
+ if(!same){select.replaceChildren();for(const name of names){const opt=document.createElement('option');opt.value=name;opt.textContent=name;select.append(opt)}}
+ select.value=selectedAvailabilityUrgency;
+}
+$('availabilityUrgencyFilter').addEventListener('change',e=>{selectedAvailabilityUrgency=e.target.value;renderAvailabilityChart()});
 function renderAvailabilityChart(){
  const target=$('availabilityChart');
  if(!target||$('availabilityPage').classList.contains('hidden')||!window.Plotly)return;
+ updateAvailabilityUrgencyFilter();
  const monday=new Date(thisWeek+'T12:00:00Z');
  const start=new Date(monday);start.setUTCDate(start.getUTCDate()-14);
  const dates=[],weekStarts=[];
@@ -574,8 +585,8 @@ function renderAvailabilityChart(){
  const dateSet=new Set(dates);
  const counts=new Map();
  for(const r of availabilityRecords){
-  // Use only the exact slot type 'urgent appts', not all urgency-category assignments.
-  if(!dateSet.has(r.date)||r.slot.trim().toLowerCase()!=='urgent appts')continue;
+  // Include slot types assigned to the Urgent category in Manage Categories.
+  if(!dateSet.has(r.date)||assignments[r.slot]!==selectedAvailabilityUrgency)continue;
   const status=r.availability.trim().toLowerCase();
   const label=status==='booked'?'Booked':(status==='blocked'||status==='embargoed')?'Held Back':status==='available'?'Available':null;
   if(!label)continue;
@@ -597,7 +608,9 @@ function renderAvailabilityChart(){
  }));
  const shapes=[1,2,3,4,5].map(i=>({type:'line',xref:'x',yref:'paper',
   x0:i*5-.5,x1:i*5-.5,y0:0,y1:1,line:{color:'#d6dce2',width:1,dash:'dot'}}));
- $('availabilityNote').textContent='Weekdays only · Slot type: urgent appts · Held Back combines Blocked and Embargoed.';
+ const displayedTotal=[...counts.values()].reduce((a,b)=>a+b,0);
+ const matchingSlots=availabilityRecords.filter(r=>assignments[r.slot]===selectedAvailabilityUrgency);
+ $('availabilityNote').textContent=displayedTotal?('Weekdays only · Category: '+selectedAvailabilityUrgency+' · Held Back combines Blocked and Embargoed.'):('No appointments found for '+selectedAvailabilityUrgency+' in this six-week window. '+(matchingSlots.length?'Matching category slots exist, but no Booked, Blocked, Embargoed or Available records fall within the selected dates.':'Check that slot types have been assigned to this urgency category under Manage categories.'));
  const width=Math.max(300,Math.floor(target.getBoundingClientRect().width));
  Plotly.react(target,traces,{
   autosize:true,width,height:490,barmode:'stack',bargap:0.2,
