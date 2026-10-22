@@ -187,3 +187,7 @@ This version adds a visible Chart layout v2 label on the availability page to co
 
 ## Availability status breakdown
 Both availability charts now show Blocked and Embargoed as separate stacked segments and legend entries, with dark and light grey colours respectively. Extras remain a separate purple category regardless of availability status. The total number of slots and shared Y-axis scaling are unchanged.
+
+
+## CSV continuation-row fix (22 October 2026)
+Rows with blank Slot Type inherit the most recent nonblank Slot Type within the same Appointment Date. Rows without a recognised Availability (Booked, Available, Blocked, Embargoed) are not counted as slots. Date changes reset inherited slot type and time. Both the daily availability charts and weekly booking aggregation use the corrected slot type. This may change counts; verify against your export and category assignments.

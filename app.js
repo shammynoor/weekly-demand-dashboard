@@ -248,15 +248,47 @@ async function showFolderPicker(){$('onedrivePanel').classList.remove('hidden');
 async function showFolderContents(){try{$('pickerPath').textContent=[...folderView.trail.map(x=>x.name),folderView.name].join(' / ');$('pickerEntries').textContent='Loading folders…';const folders=(await children(folderView.id)).filter(x=>x.folder).sort((a,b)=>a.name.localeCompare(b.name));$('pickerEntries').replaceChildren();if(!folders.length)$('pickerEntries').textContent='No subfolders. You can select this folder.';for(const f of folders){const btn=document.createElement('button');btn.className='folder-entry';btn.textContent='📁 '+f.name;btn.onclick=async()=>{folderView={id:f.id,name:f.name,trail:[...folderView.trail,{id:folderView.id,name:folderView.name}]};await showFolderContents()};$('pickerEntries').append(btn)}}catch(e){$('pickerEntries').textContent='Could not list folders: '+e.message}}
 function weekMonday(d){const x=new Date(d);x.setUTCHours(12,0,0,0);x.setUTCDate(x.getUTCDate()-((x.getUTCDay()+6)%7));return x.toISOString().slice(0,10)}
 function parseDate(s){const m=/^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/.exec((s||'').trim());if(!m)return null;const mi=['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'].indexOf(m[2].toLowerCase());if(mi<0)return null;const d=new Date(Date.UTC(Number(m[3]),mi,Number(m[1])));return d.getUTCMonth()===mi&&d.getUTCDate()===Number(m[1])?d:null}
-function aggregateCSV(csv,aggregated,availabilityAggregate){const parsed=Papa.parse(csv,{header:true,skipEmptyLines:'greedy'});const fields=parsed.meta.fields||[];for(const required of ['Appointment Date','Appointment Time','Booked Time to Slot Time','Slot Type','Availability'])if(!fields.includes(required))throw Error('Missing column: '+required);let day='',time='',valid=0,skipped=0;for(const r of parsed.data){if(r['Appointment Date']?.trim())day=r['Appointment Date'].trim();if(r['Appointment Time']?.trim())time=r['Appointment Time'].trim();const appointmentDay=parseDate(day);
- const availability=(r['Availability']||'').trim()||'Unknown';
- const slotType=(r['Slot Type']||'').trim()||'Unknown';
- if(appointmentDay){
+function aggregateCSV(csv,aggregated,availabilityAggregate){
+ const parsed=Papa.parse(csv,{header:true,skipEmptyLines:'greedy'});
+ const fields=parsed.meta.fields||[];
+ for(const required of ['Appointment Date','Appointment Time','Booked Time to Slot Time','Slot Type','Availability'])if(!fields.includes(required))throw Error('Missing column: '+required);
+ let day='',time='',lastSlot='',valid=0,skipped=0;
+ const recognized=new Set(['booked','available','blocked','embargoed']);
+ for(const r of parsed.data){
+  const rawDay=(r['Appointment Date']||'').trim();
+  if(rawDay){day=rawDay;time='';lastSlot='';}
+  const rawTime=(r['Appointment Time']||'').trim();
+  if(rawTime)time=rawTime;
+  const explicitSlot=(r['Slot Type']||'').trim();
+  if(explicitSlot)lastSlot=explicitSlot;
+  const availability=(r['Availability']||'').trim();
+  const status=availability.toLowerCase();
+  // Continuation rows without a recognised appointment status are not slots.
+  // Blank Slot Type inherits the most recent explicit type within this appointment date.
+  if(!recognized.has(status)||!lastSlot)continue;
+  const slotType=explicitSlot||lastSlot;
+  const appointmentDay=parseDate(day);
+  if(!appointmentDay)continue;
   const date=appointmentDay.toISOString().slice(0,10);
   const akey=JSON.stringify([date,slotType,availability]);
   availabilityAggregate.set(akey,(availabilityAggregate.get(akey)||0)+1);
+  if(status!=='booked')continue;
+  const leadRaw=(r['Booked Time to Slot Time']||'').trim();
+  const lead=Number(leadRaw.replace(/,/g,''));
+  const tm=/^(\d{1,2}):(\d{2})/.exec(time);
+  if(!tm||!leadRaw||!Number.isFinite(lead)){skipped++;continue;}
+  const dt=new Date(appointmentDay.getTime());
+  dt.setUTCHours(Number(tm[1]),Number(tm[2]),0,0);
+  const booked=new Date(dt.getTime()-lead*60000);
+  if(!Number.isFinite(booked.getTime())){skipped++;continue;}
+  const w=weekMonday(booked);
+  if(w<'2025-07-07')continue;
+  const bookedDay=booked.toISOString().slice(0,10);
+  const key=JSON.stringify([bookedDay,slotType]);
+  aggregated.set(key,(aggregated.get(key)||0)+1);valid++;
  }
- if(availability.toLowerCase()!=='booked')continue;const lead=Number((r['Booked Time to Slot Time']||'').replace(/,/g,''));const dt=parseDate(day);const tm=/^(\d{1,2}):(\d{2})/.exec(time);if(!dt||!tm||!Number.isFinite(lead)||!(r['Booked Time to Slot Time']||'').trim()){skipped++;continue}dt.setUTCHours(Number(tm[1]),Number(tm[2]),0,0);const booked=new Date(dt.getTime()-lead*60000);if(!Number.isFinite(booked.getTime())){skipped++;continue}const w=weekMonday(booked),slot=(r['Slot Type']||'').trim()||'Unknown';if(w<'2025-07-07')continue;const bookedDay=booked.toISOString().slice(0,10);const key=JSON.stringify([bookedDay,slot]);aggregated.set(key,(aggregated.get(key)||0)+1);valid++}return {valid,skipped}}
+ return {valid,skipped};
+}
 // Drag-and-drop category editor. Existing OneDrive JSON schema remains unchanged.
 let pickedSlot=null;
 function renderDropEditor(dimension){
