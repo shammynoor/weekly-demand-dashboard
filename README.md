@@ -146,3 +146,7 @@ The dashboard's visible signed-in state now survives unexpected page reloads in 
 
 ## Fix: startup crash
 Initialise `selectedAvailabilityUrgency` before the initial call to `renderEditor()`; previously it was declared afterwards, causing a temporal-dead-zone ReferenceError and preventing normal dashboard startup. Updated app.js cache version.
+
+
+## Availability chart spacing
+Six weeks are shown with Saturday and Sunday as blank spacing columns (no weekend tick labels or bars). Solid dark grey lines mark each new week. A vertical dotted dark grey line marks today's London-local date. The urgency category dropdown remains in place.

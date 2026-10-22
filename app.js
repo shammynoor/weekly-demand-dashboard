@@ -609,16 +609,17 @@ function renderAvailabilityChart(){
  for(let week=0;week<6;week++){
   const weekStart=new Date(start);weekStart.setUTCDate(start.getUTCDate()+week*7);
   weekStarts.push(weekStart.toISOString().slice(0,10));
-  for(let day=0;day<5;day++){
+  for(let day=0;day<7;day++){
    const d=new Date(weekStart);d.setUTCDate(weekStart.getUTCDate()+day);
    dates.push(d.toISOString().slice(0,10));
   }
  }
  const dateSet=new Set(dates);
+ const weekdays=new Set(dates.filter(d=>{const n=new Date(d+'T12:00:00Z').getUTCDay();return n!==0&&n!==6}));
  const counts=new Map();
  for(const r of availabilityRecords){
   // Include slot types assigned to the Urgent category in Manage Categories.
-  if(!dateSet.has(r.date)||assignments[r.slot]!==selectedAvailabilityUrgency)continue;
+  if(!weekdays.has(r.date)||assignments[r.slot]!==selectedAvailabilityUrgency)continue;
   const status=r.availability.trim().toLowerCase();
   const label=status==='booked'?'Booked':(status==='blocked'||status==='embargoed')?'Held Back':status==='available'?'Available':null;
   if(!label)continue;
@@ -628,28 +629,35 @@ function renderAvailabilityChart(){
  const labels=['Booked','Held Back','Available'];
  const colours=['#d9534f','#414850','#ffffff'];
  const traces=labels.map((name,i)=>({
-  type:'bar',name,x:dates,y:dates.map(date=>counts.get(JSON.stringify([date,name]))||0),
+  type:'bar',name,x:dates,y:dates.map(date=>weekdays.has(date)?(counts.get(JSON.stringify([date,name]))||0):null),
   marker:{color:colours[i],line:{color:i===2?'#c1c8cf':colours[i],width:i===2?1:0}},
   hovertemplate:'%{customdata}<br>'+name+': %{y:,}<extra></extra>',
   customdata:dates.map(d=>new Date(d+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'short',year:'numeric',timeZone:'UTC'}))
  }));
  const weekLabels=['2 weeks ago','Last Week','This Week','Next Week','2 weeks','3 weeks'];
  const annotations=weekLabels.map((label,i)=>({
-  x:dates[i*5+2],xref:'x',y:1.045,yref:'paper',text:'<b>'+label+'</b>',
+  x:dates[i*7+2],xref:'x',y:1.045,yref:'paper',text:'<b>'+label+'</b>',
   showarrow:false,font:{size:12,color:'#53667a'},xanchor:'center',yanchor:'bottom'
  }));
  const shapes=[1,2,3,4,5].map(i=>({type:'line',xref:'x',yref:'paper',
-  x0:i*5-.5,x1:i*5-.5,y0:0,y1:1,line:{color:'#d6dce2',width:1,dash:'dot'}}));
+  x0:i*7-.5,x1:i*7-.5,y0:0,y1:1,line:{color:'#414850',width:2}}));
+ // Today is positioned on the same London-local calendar date used elsewhere in the dashboard.
+ if(dateSet.has(todayLondon))shapes.push({type:'line',xref:'x',yref:'paper',
+  x0:todayLondon,x1:todayLondon,y0:0,y1:1,
+  line:{color:'#4b5563',width:2,dash:'dot'}});
+ const todayAnnotations=dateSet.has(todayLondon)?[{x:todayLondon,xref:'x',y:1.005,yref:'paper',
+  text:'Today',showarrow:false,font:{size:11,color:'#374151'},xanchor:'left',yanchor:'bottom',xshift:5}]:[];
+ annotations.push(...todayAnnotations);
  const displayedTotal=[...counts.values()].reduce((a,b)=>a+b,0);
  const matchingSlots=availabilityRecords.filter(r=>assignments[r.slot]===selectedAvailabilityUrgency);
- $('availabilityNote').textContent=displayedTotal?('Weekdays only · Category: '+selectedAvailabilityUrgency+' · Held Back combines Blocked and Embargoed.'):('No appointments found for '+selectedAvailabilityUrgency+' in this six-week window. '+(matchingSlots.length?'Matching category slots exist, but no Booked, Blocked, Embargoed or Available records fall within the selected dates.':'Check that slot types have been assigned to this urgency category under Manage categories.'));
+ $('availabilityNote').textContent=displayedTotal?('Weekends shown as gaps · Category: '+selectedAvailabilityUrgency+' · Held Back combines Blocked and Embargoed.'):('No appointments found for '+selectedAvailabilityUrgency+' in this six-week window. '+(matchingSlots.length?'Matching category slots exist, but no Booked, Blocked, Embargoed or Available records fall within the selected dates.':'Check that slot types have been assigned to this urgency category under Manage categories.'));
  const width=Math.max(300,Math.floor(target.getBoundingClientRect().width));
  Plotly.react(target,traces,{
   autosize:true,width,height:490,barmode:'stack',bargap:0.2,
   margin:{l:60,r:18,t:110,b:65},paper_bgcolor:'white',plot_bgcolor:'#f1f3f5',
   legend:{title:{text:'Availability'},orientation:'h',x:0,y:1.29,traceorder:'normal'},
   xaxis:{type:'category',categoryorder:'array',categoryarray:dates,
-   tickmode:'array',tickvals:dates,ticktext:dates.map(d=>['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date(d+'T12:00:00Z').getUTCDay()]),
+   tickmode:'array',tickvals:dates.filter(d=>weekdays.has(d)),ticktext:dates.filter(d=>weekdays.has(d)).map(d=>['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date(d+'T12:00:00Z').getUTCDay()]),
    tickangle:0,showgrid:false,range:[-.5,dates.length-.5],fixedrange:true},
   yaxis:{title:'Appointment slots',rangemode:'tozero',gridcolor:'#dce2e8'},
   annotations,shapes,hovermode:'x'
