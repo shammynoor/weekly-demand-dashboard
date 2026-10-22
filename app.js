@@ -726,14 +726,24 @@ let urgentWeeksBack=1,urgentWeeksForward=3;
 function setupUrgentRangeControls(){
  const back=$('urgentWeeksBack'),forward=$('urgentWeeksForward');
  if(!back||!forward)return;
- back.value=urgentWeeksBack;forward.value=urgentWeeksForward;
- const update=()=>{
-  urgentWeeksBack=Number(back.value);urgentWeeksForward=Number(forward.value);
-  $('urgentWeeksBackValue').textContent=urgentWeeksBack===0?'This week':urgentWeeksBack===1?'1 week':urgentWeeksBack+' weeks';
-  $('urgentWeeksForwardValue').textContent=urgentWeeksForward===0?'This week':urgentWeeksForward===1?'1 week':urgentWeeksForward+' weeks';
+ back.value=-urgentWeeksBack;forward.value=urgentWeeksForward;
+ const label=offset=>offset===0?'This week':offset===-1?'Last week':offset<0?Math.abs(offset)+' weeks ago':offset===1?'Next week':offset+' weeks ahead';
+ const update=(moved)=>{
+  let start=Number(back.value),end=Number(forward.value);
+  // Always include this week and prevent handles crossing.
+  if(moved==='start')start=Math.min(start,0,end);
+  if(moved==='end')end=Math.max(end,0,start);
+  back.value=start;forward.value=end;
+  urgentWeeksBack=-start;urgentWeeksForward=end;
+  $('urgentWeeksBackValue').textContent=label(start);
+  $('urgentWeeksForwardValue').textContent=label(end);
+  const rail=$('urgentRangeActive');
+  if(rail){rail.style.left=((start+3)/7*100)+'%';rail.style.width=((end-start)/7*100)+'%'}
   renderAvailabilityChart();
  };
- back.addEventListener('input',update);forward.addEventListener('input',update);
+ back.addEventListener('input',()=>update('start'));
+ forward.addEventListener('input',()=>update('end'));
+ update();
 }
 function urgentCategoryNames(){
  return categoryNames.filter(name=>String(groupUrgencyAssignments[name]||'').trim().toLowerCase()==='urgent');

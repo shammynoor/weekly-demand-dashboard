@@ -237,3 +237,7 @@ The previous Reds & Extras / Priority panels are replaced by one chart and right
 
 ## Urgent chart display update
 Compact urgency toggle panel with category-coloured switches; circular availability/category legend centred beneath the plot; darker plot background and outline-free Available bars. Independent range sliders choose 0–3 weeks before and 0–4 weeks after the current week (defaults: 1 week back, 3 weeks ahead).
+
+
+## Single dual-handle week range slider
+Urgent Availability now uses one shared range track with two independently draggable handles for start (-3 to 0 weeks) and end (0 to +4 weeks), defaulting to last week through three weeks ahead. The highlighted track shows the selected interval.
