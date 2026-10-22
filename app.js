@@ -847,7 +847,7 @@ function renderAvailabilityChart(){
  for(const name of labels)traces.push({type:'scatter',mode:'markers',name,x:[null],y:[null],marker:{symbol:'circle',size:14,color:colours[name],line:{color:name==='Available'?'#aeb8c3':colours[name],width:name==='Available'?1.5:0}},hoverinfo:'skip',showlegend:true});
  const weekLabels=Array.from({length:weekCount},(_,i)=>{const offset=i-urgentWeeksBack;return offset===0?'This Week':offset===-1?'Last Week':offset<0?Math.abs(offset)+' weeks ago':offset===1?'Next Week':offset+' weeks'});
  const annotations=weekLabels.map((text,i)=>({x:dates[i*7+2],xref:'x',y:1.045,yref:'paper',text,showarrow:false,font:{size:12,color:'#444444'},xanchor:'center',yanchor:'bottom'}));
- const shapes=Array.from({length:weekCount},(_,i)=>({type:'line',xref:'x',yref:'paper',x0:i*7+5.5,x1:i*7+5.5,y0:0,y1:1,line:{color:'#9ca6b1',width:1.3}}));
+ const shapes=Array.from({length:weekCount},(_,i)=>({type:'line',xref:'x',yref:'paper',x0:i*7+5.5,x1:i*7+5.5,y0:0,y1:1,line:{color:'#9ca6b1',width:1.3,dash:'dot'}}));
  if(dateSet.has(todayLondon)){
   const x=dates.indexOf(todayLondon);
   shapes.unshift({type:'rect',xref:'x',yref:'paper',x0:-.5,x1:x,y0:0,y1:1,fillcolor:'rgba(128,136,146,0.50)',line:{width:0},layer:'above'});
@@ -904,6 +904,14 @@ function routineConsultMatches(slot){
  return consultCategoryNames.includes(mode)&&!routineDisabledConsultModes.has(mode);
 }
 let routineStartWeek=-1,routineEndWeek=6;
+let routineAvailabilityGranularity='week';
+function setRoutineAvailabilityGranularity(mode){
+ routineAvailabilityGranularity=mode==='day'?'day':'week';
+ document.querySelectorAll('[data-routine-granularity]').forEach(btn=>{const selected=btn.dataset.routineGranularity===routineAvailabilityGranularity;btn.classList.toggle('active',selected);btn.setAttribute('aria-pressed',String(selected));});
+ renderRoutineAvailabilityChart();
+}
+document.querySelectorAll('[data-routine-granularity]').forEach(btn=>btn.addEventListener('click',()=>setRoutineAvailabilityGranularity(btn.dataset.routineGranularity)));
+
 function setupRoutineRangeControls(){
  const start=$('routineWeeksStart'),end=$('routineWeeksEnd');
  if(!start||!end)return;
@@ -928,56 +936,60 @@ function renderRoutineAvailabilityChart(){
  const target=$('routineAvailabilityChart');
  if(!target||$('routineAvailabilityPage').classList.contains('hidden')||!window.Plotly)return;
  renderRoutineAvailabilityFilters();
- // Selected range from two weeks ago through seven weeks ahead.
+ const isDaily=routineAvailabilityGranularity==='day';
  const start=new Date(thisWeek+'T12:00:00Z');start.setUTCDate(start.getUTCDate()+7*routineStartWeek);
  const weeks=[];
  for(let i=0;i<=routineEndWeek-routineStartWeek;i++){const d=new Date(start);d.setUTCDate(start.getUTCDate()+7*i);weeks.push(d.toISOString().slice(0,10));}
- const byWeek=new Map();
+ const dates=[];
+ if(isDaily){
+  for(const w of weeks)for(let d=0;d<7;d++){const dt=new Date(w+'T12:00:00Z');dt.setUTCDate(dt.getUTCDate()+d);dates.push(dt.toISOString().slice(0,10));}
+ }else dates.push(...weeks);
+ const byBucket=new Map();
  let matched=0;
+ const bucketSet=new Set(dates);
  for(const r of availabilityRecords){
   const detailed=String(assignments[r.slot]||'').trim();
   const group=String(groupUrgencyAssignments[detailed]||'').trim();
   if(group.toLowerCase()!=='routine'||!routineClinicianMatches(r.clinician)||!routineConsultMatches(r.slot))continue;
-  const week=mondayOf(r.date);
-  if(!weeks.includes(week))continue;
+  const bucket=isDaily?r.date:mondayOf(r.date);
+  if(!bucketSet.has(bucket))continue;
   const status=String(r.availability||'').trim().toLowerCase();
   const label=({booked:'Booked',blocked:'Blocked',embargoed:'Embargoed',available:'Available'})[status];
   if(!label)continue;
   matched+=r.count;
-  const key=JSON.stringify([week,label]);byWeek.set(key,(byWeek.get(key)||0)+r.count);
+  const key=JSON.stringify([bucket,label]);byBucket.set(key,(byBucket.get(key)||0)+r.count);
  }
  const labels=['Booked','Blocked','Embargoed','Available'];
  const colours={'Booked':'#81c6a0','Blocked':'#59636e','Embargoed':'#aab2bb','Available':'#ffffff'};
  const dateText=d=>new Date(d+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',timeZone:'UTC'});
- const weekLabels=weeks.map(w=>dateText(w));
- const summaries=weeks.map((week,i)=>'<b>Week commencing '+dateText(week)+'</b><br>'+labels.map(label=>label+': '+(byWeek.get(JSON.stringify([week,label]))||0).toLocaleString('en-GB')).join('<br>')+'<br><b>Total: '+labels.reduce((sum,label)=>sum+(byWeek.get(JSON.stringify([week,label]))||0),0).toLocaleString('en-GB')+'</b>');
+ const summaries=dates.map(date=>{
+  const heading=isDaily?new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'short',timeZone:'UTC'}):'Week commencing '+dateText(date);
+  return '<b>'+heading+'</b><br>'+labels.map(label=>label+': '+(byBucket.get(JSON.stringify([date,label]))||0).toLocaleString('en-GB')).join('<br>')+'<br><b>Total: '+labels.reduce((sum,label)=>sum+(byBucket.get(JSON.stringify([date,label]))||0),0).toLocaleString('en-GB')+'</b>';
+ });
  const plotBackground='#e0e4e8';
- const traces=labels.map(label=>({type:'bar',name:label,showlegend:false,x:weekLabels,y:weeks.map(w=>byWeek.get(JSON.stringify([w,label]))||0),marker:{color:colours[label],line:{color:label==='Available'?'rgba(0,0,0,0)':plotBackground,width:label==='Available'?0:1.5}},customdata:summaries,hovertemplate:'%{customdata}<extra></extra>'}));
- // Scatter traces provide circular legend symbols instead of Plotly bar squares.
+ const traces=labels.map(label=>({type:'bar',name:label,showlegend:false,x:dates,y:dates.map(date=>byBucket.get(JSON.stringify([date,label]))||0),marker:{color:colours[label],line:{color:label==='Available'?'rgba(0,0,0,0)':plotBackground,width:label==='Available'?0:0.8}},customdata:summaries,hovertemplate:'%{customdata}<extra></extra>'}));
  for(const label of labels)traces.push({type:'scatter',mode:'markers',name:label,x:[null],y:[null],marker:{symbol:'circle',size:14,color:colours[label],line:{color:label==='Available'?'#9ba7b2':colours[label],width:label==='Available'?1.5:0}},showlegend:true,hoverinfo:'skip'});
- const totals=weeks.map(w=>labels.reduce((sum,label)=>sum+(byWeek.get(JSON.stringify([w,label]))||0),0));
+ const totals=dates.map(date=>labels.reduce((sum,label)=>sum+(byBucket.get(JSON.stringify([date,label]))||0),0));
  const max=Math.max(1,...totals);
- const annotations=totals.flatMap((total,i)=>total?[{x:weekLabels[i],y:total,text:total.toLocaleString('en-GB'),showarrow:false,yshift:5,font:{size:11,color:'#768392'}}]:[]);
+ const annotations=totals.flatMap((total,i)=>total?[{xref:'x',x:i,y:total,text:total.toLocaleString('en-GB'),showarrow:false,yshift:5,font:{size:isDaily?9:11,color:'#768392'}}]:[]);
  const weekTitles=weeks.map((_,i)=>{const offset=routineStartWeek+i;return offset===0?'This Week':offset===-1?'Last Week':offset<0?Math.abs(offset)+' weeks ago':offset===1?'Next Week':offset+' weeks'});
- for(let i=0;i<weeks.length;i++)annotations.push({xref:'x',yref:'paper',x:i,y:1.105,text:weekTitles[i],showarrow:false,font:{family:'Arial',size:12,color:'#384858'}});
- // Each category occupies a full week from x=index-0.5 to x=index+0.5.
- // Place Today at 5%, 25%, 45%, 65% or 85% of its week for Mon–Fri.
+ for(let i=0;i<weeks.length;i++)annotations.push({xref:'x',yref:'paper',x:isDaily?i*7+3:i,y:1.105,text:weekTitles[i],showarrow:false,font:{family:'Arial',size:12,color:'#384858'}});
  const dayIndex=(new Date(todayLondon+'T12:00:00Z').getUTCDay()+6)%7;
  const weekIndex=weeks.indexOf(thisWeek);
- const todayX=weekIndex<0?null:weekIndex-0.5+(Math.min(dayIndex,4)*0.2+0.05);
+ const todayX=weekIndex<0?null:isDaily?dates.indexOf(todayLondon):weekIndex-0.5+(Math.min(dayIndex,4)*0.2+0.05);
  const shapes=todayX===null?[]:[
   {type:'rect',xref:'x',yref:'paper',x0:-0.5,x1:todayX,y0:0,y1:1,fillcolor:'rgba(128,136,146,0.50)',line:{width:0},layer:'above'},
   {type:'line',xref:'x',yref:'paper',x0:todayX,x1:todayX,y0:0,y1:1,line:{color:'#344355',width:2,dash:'dot'},layer:'above'}
  ];
- for(let i=0;i<weeks.length-1;i++)shapes.push({type:'line',xref:'x',yref:'paper',x0:i+0.5,x1:i+0.5,y0:0,y1:1,line:{color:'#98a2ad',width:1,dash:'dot'},layer:'above'});
+ for(let i=0;i<weeks.length-1;i++){const boundary=isDaily?(i+1)*7-0.5:i+0.5;shapes.push({type:'line',xref:'x',yref:'paper',x0:boundary,x1:boundary,y0:0,y1:1,line:{color:'#98a2ad',width:1,dash:'dot'},layer:'above'});}
  if(todayX!==null)annotations.push({xref:'x',yref:'paper',x:todayX,y:0.96,text:'Today',showarrow:false,xanchor:'left',yanchor:'top',xshift:7,font:{size:16,color:'#344355'}});
  const note=$('routineAvailabilityNote');
  if(note)note.textContent=matched?'':"No matching Routine urgency-group appointments found. Check Manage categories → Urgency Group.";
  Plotly.react(target,traces,{
-  height:510,autosize:true,barmode:'stack',bargap:0.12,
+  height:510,autosize:true,barmode:'stack',bargap:isDaily?0.06:0.025,
   margin:{l:65,r:12,t:85,b:100},paper_bgcolor:'#fff',plot_bgcolor:plotBackground,
   legend:{orientation:'h',x:0.5,y:-0.20,xanchor:'center',yanchor:'top',font:{size:13,color:'#344355'},traceorder:'normal'},
-  xaxis:{type:'category',categoryorder:'array',categoryarray:weekLabels,showticklabels:false,showgrid:false,showline:true,linecolor:'#374350',linewidth:3,zeroline:false},
+  xaxis:{type:'category',categoryorder:'array',categoryarray:dates,range:[-0.5,dates.length-0.5],tickmode:'array',tickvals:dates,ticktext:isDaily?dates.map(date=>new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'short',timeZone:'UTC'})):dates.map(()=>''),tickangle:-90,tickfont:{size:10},showticklabels:isDaily,showgrid:false,showline:true,linecolor:'#374350',linewidth:3,zeroline:false,fixedrange:true},
   yaxis:{title:'Appointment slots',range:[0,Math.ceil(max*1.18/10)*10],gridcolor:'#dce2e8'},
   annotations,shapes,hovermode:'closest'
  },{responsive:true,displaylogo:false});

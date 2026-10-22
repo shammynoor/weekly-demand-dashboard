@@ -260,3 +260,4 @@ Routine dual slider keeps start within -2 to 0 (This Week) and end within +1 (Ne
 - Both Today labels 16px inside chart; historical overlay rgba(128,136,146,0.50) with Plotly layer above.
 - Urgent detailed categories, urgent clinician/consult filters and routine clinician/consult filters each retain at least one enabled option.
 - Changed app.js cache-busting URL to v4.
+\n\nRoutine chart: Weeks/Days segmented switch beside range slider, daily bars use appointment dates and preserve all status and side filters. Weekly bars widened. Urgent weekly separators dotted.\n
