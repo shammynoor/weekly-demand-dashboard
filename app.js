@@ -1569,21 +1569,32 @@ function urgentGradientStops(hex){
 // positions, totals, tooltip targets, Today marker or historical shading.
 // Shared flat visual treatment; saved type colours remain the source of truth.
 function applyFlatAvailabilityBars(target){
- target.querySelectorAll('.barlayer .trace.bars .point path').forEach(path=>{
-  let height=0;
-  try{height=path.getBBox().height}catch(_){}
-  if(height<0.6){
-   path.style.setProperty('fill','none','important');
-   path.style.setProperty('stroke','none','important');
-   return;
-  }
-  path.style.removeProperty('fill');
-  path.style.setProperty('stroke','rgba(255,255,255,0.86)','important');
-  path.style.setProperty('stroke-width','0.7px','important');
-  path.style.setProperty('stroke-linejoin','round','important');
+ // Plotly SVG paths need an explicit fill: removing their fill renders them black.
+ // Read each bar trace's actual marker colour, including custom colours from Slot settings.
+ const barTraces=(target.data||[]).filter(trace=>trace.type==='bar');
+ const rendered=target.querySelectorAll('.barlayer .trace.bars');
+ rendered.forEach((traceElement,i)=>{
+  const marker=barTraces[i]?.marker||{};
+  const baseColour=typeof marker.color==='string'?marker.color:'#c2cdd5';
+  traceElement.querySelectorAll('.point path').forEach((path,j)=>{
+   let height=0;
+   try{height=path.getBBox().height}catch(_){}
+   if(height<0.6){
+    path.style.setProperty('fill','none','important');
+    path.style.setProperty('stroke','none','important');
+    return;
+   }
+   const colour=Array.isArray(marker.color)?marker.color[j]||baseColour:baseColour;
+   path.style.setProperty('fill',colour,'important');
+   path.style.setProperty('fill-opacity','1','important');
+   path.style.setProperty('stroke','rgba(255,255,255,0.85)','important');
+   path.style.setProperty('stroke-width','0.65px','important');
+   path.style.setProperty('stroke-linejoin','round','important');
+  });
  });
  target.querySelectorAll('.urgent-whole-bar-outlines').forEach(el=>el.remove());
 }
+
 function renderAvailabilityChart(){
  const target=$('availabilityChart');
  if($('availabilityPage').classList.contains('hidden')||!window.Plotly||!target)return;
