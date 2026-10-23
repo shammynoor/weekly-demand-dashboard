@@ -1356,10 +1356,48 @@ function applyUrgentBarGlass(target,names,colours){
    try{height=path.getBBox().height}catch(_){height=0}
    if(height<0.6){path.style.setProperty('stroke','none','important');path.style.setProperty('fill','none','important');return}
    path.style.setProperty('fill','url(#'+id+')','important');
-   path.style.setProperty('stroke',name==='Available'?'#8fa9bc':name==='Embargoed'?'#b3c2cd':'rgba(255,255,255,0.30)','important');
-   path.style.setProperty('stroke-width',name==='Available'?'1.15px':name==='Embargoed'?'0.35px':'0.4px','important');
+   // No individual section outline: one fine border is drawn around the entire stack below.
+   path.style.setProperty('stroke','none','important');
   });
  });
+ // Draw one hairline outline around the *whole* stacked bar, including the
+ // white Available cap. Never draw a line across an individual section.
+ // Plotly's bar paths are in trace-local coordinates, so transform each
+ // segment's bounding box into the shared SVG bar-layer coordinate space.
+ const layer=target.querySelector('.barlayer');
+ if(!layer)return;
+ layer.querySelectorAll('.urgent-whole-bar-outlines').forEach(el=>el.remove());
+ const layerCTM=layer.getScreenCTM();
+ if(!layerCTM)return;
+ const inverse=layerCTM.inverse();
+ const stacks=new Map();
+ traces.forEach(trace=>trace.querySelectorAll('.point path').forEach(path=>{
+  let box,ctm;
+  try{box=path.getBBox();ctm=path.getScreenCTM()}catch(_){return}
+  if(!ctm||box.height<0.6||box.width<0.6)return;
+  const matrix=inverse.multiply(ctm);
+  const corners=[[box.x,box.y],[box.x+box.width,box.y],[box.x,box.y+box.height],[box.x+box.width,box.y+box.height]]
+   .map(([x,y])=>({x:matrix.a*x+matrix.c*y+matrix.e,y:matrix.b*x+matrix.d*y+matrix.f}));
+  const left=Math.min(...corners.map(p=>p.x)),right=Math.max(...corners.map(p=>p.x));
+  const top=Math.min(...corners.map(p=>p.y)),bottom=Math.max(...corners.map(p=>p.y));
+  // All segments in the same day/week share an x-position.
+  const key=Math.round((left+right)/2*10)/10;
+  const prev=stacks.get(key);
+  if(prev){prev.left=Math.min(prev.left,left);prev.right=Math.max(prev.right,right);prev.top=Math.min(prev.top,top);prev.bottom=Math.max(prev.bottom,bottom)}
+  else stacks.set(key,{left,right,top,bottom});
+ }));
+ const outlines=document.createElementNS(ns,'g');outlines.setAttribute('class','urgent-whole-bar-outlines');
+ outlines.setAttribute('pointer-events','none');
+ for(const {left,right,top,bottom} of stacks.values()){
+  const rect=document.createElementNS(ns,'rect');
+  rect.setAttribute('x',left);rect.setAttribute('y',top);
+  rect.setAttribute('width',Math.max(0,right-left));rect.setAttribute('height',Math.max(0,bottom-top));
+  rect.setAttribute('rx','2.5');rect.setAttribute('ry','2.5');
+  rect.setAttribute('fill','none');rect.setAttribute('stroke','#c3d1dc');
+  rect.setAttribute('stroke-width','0.55');rect.setAttribute('vector-effect','non-scaling-stroke');
+  outlines.append(rect);
+ }
+ layer.append(outlines);
 }
 function renderAvailabilityChart(){
  const target=$('availabilityChart');
@@ -1400,7 +1438,7 @@ function renderAvailabilityChart(){
   const weekday=weekly?'Week commencing '+date:new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'long',timeZone:'UTC'});
   return weekday+'<br>'+labels.map(n=>n+': '+(counts.get(JSON.stringify([date,n]))||0).toLocaleString('en-GB')).join('<br>')+'<br><b>Total: '+totals[buckets.indexOf(date)].toLocaleString('en-GB')+'</b>';
  });
- const traces=labels.map(name=>({type:'bar',name,showlegend:false,x:buckets,y:buckets.map(date=>(weekly||weekdays.has(date))?counts.get(JSON.stringify([date,name]))||0:null),marker:{color:colours[name],line:{color:name==='Available'?'#8fa9bc':'rgba(255,255,255,0.5)',width:name==='Available'?1.15:0.4}},customdata:daySummary,hovertemplate:'%{customdata}<extra></extra>'}));
+ const traces=labels.map(name=>({type:'bar',name,showlegend:false,x:buckets,y:buckets.map(date=>(weekly||weekdays.has(date))?counts.get(JSON.stringify([date,name]))||0:null),marker:{color:colours[name],line:{width:0}},customdata:daySummary,hovertemplate:'%{customdata}<extra></extra>'}));
  for(const name of labels)traces.push({type:'scatter',mode:'markers',name,x:[null],y:[null],marker:{symbol:'circle',size:14,color:colours[name],line:{color:name==='Available'?'#aeb8c3':colours[name],width:name==='Available'?1.5:0}},hoverinfo:'skip',showlegend:true});
  const weekLabels=Array.from({length:weekCount},(_,i)=>{const offset=i-urgentWeeksBack;return offset===0?'This Week':offset===-1?'Last Week':offset<0?Math.abs(offset)+' weeks ago':offset===1?'Next Week':offset+' weeks'});
  const annotations=weekLabels.map((text,i)=>({x:weekly?buckets[i]:dates[i*7+2],xref:'x',y:1.045,yref:'paper',text,showarrow:false,font:{size:13,color:'#344b60'},xanchor:'center',yanchor:'bottom'}));

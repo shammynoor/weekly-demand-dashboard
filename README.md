@@ -333,3 +333,7 @@ Urgent Appointment Availability uses richer category colours, matching the Routi
 
 ## Urgent bar contrast refinements
 Hide zero-height Plotly bar path strokes (which appeared as stray horizontal lines), flatten Embargoed grey gradients, add a clearer blue-grey outline to positive-height white Available sections, subtly darken the plot background and reduce bar top corner radius from 7 to 3. Does not change appointment counts, chart date alignment, or settings.
+
+
+## Urgent whole-bar outlines
+Removed the dark outline on individual white Available sections and all internal segment borders. A single fine pale blue-grey SVG outline now traces the full height of each stacked bar, preserving its white top cap and existing gradients, totals and Today line.
