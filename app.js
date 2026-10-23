@@ -1077,15 +1077,15 @@ function updateClinicianChartFilter(){
  const root=$('clinicianChartFilters');if(!root)return;
  const names=[...clinicianGroupNames];
  // Do not recreate switches during each chart refresh; retain focus and scroll position.
- if(names.length===lastClinicianFilterNames.length&&names.every((n,i)=>n===lastClinicianFilterNames[i]))return;
+ if(names.length===lastClinicianFilterNames.length&&names.every((n,i)=>n===lastClinicianFilterNames[i])){root.querySelectorAll('input[data-filter-name]').forEach(input=>input.nextElementSibling?.style.setProperty('--switch-on',clinicianGroupColour(input.dataset.filterName)));return;}
  lastClinicianFilterNames=names;
  root.replaceChildren();
  if(!names.length){const note=document.createElement('span');note.className='hint';note.textContent='Create clinician groups in Manage categories.';root.append(note);return;}
  for(const name of names){
   const row=document.createElement('label');row.className='filter-row';
   const switchEl=document.createElement('span');switchEl.className='switch';
-  const input=document.createElement('input');input.type='checkbox';input.setAttribute('role','switch');input.checked=!disabledClinicianTypes.has(name);input.setAttribute('aria-label','Include '+name);
-  const track=document.createElement('span');track.className='switch-track';
+  const input=document.createElement('input');input.type='checkbox';input.setAttribute('role','switch');input.checked=!disabledClinicianTypes.has(name);input.dataset.filterName=name;input.setAttribute('aria-label','Include '+name);
+  const track=document.createElement('span');track.className='switch-track';track.style.setProperty('--switch-on',clinicianGroupColour(name));
   switchEl.append(input,track);
   const title=document.createElement('span');title.textContent=name;
   row.append(switchEl,title);root.append(row);
@@ -1116,7 +1116,7 @@ function updateConsultChartFilter(){
   const row=document.createElement('label');row.className='filter-row';
   const switchEl=document.createElement('span');switchEl.className='switch';
   const input=document.createElement('input');input.type='checkbox';input.setAttribute('role','switch');input.checked=!disabledConsultModes.has(name);input.setAttribute('aria-label','Include '+name);
-  const track=document.createElement('span');track.className='switch-track';
+  const track=document.createElement('span');track.className='switch-track';track.style.setProperty('--switch-on','#596675');
   switchEl.append(input,track);
   const title=document.createElement('span');title.textContent=name;
   row.append(switchEl,title);root.append(row);
@@ -1509,7 +1509,7 @@ function renderUrgentCategoryToggles(){
  const root=$('urgentCategoryToggles');if(!root)return;
  const names=urgentCategoryNames();
  const current=[...root.querySelectorAll('input[data-filter-name]')].map(x=>x.dataset.filterName);
- if(current.length===names.length&&current.every((x,i)=>x===names[i]))return;
+ if(current.length===names.length&&current.every((x,i)=>x===names[i])){root.querySelectorAll('input[data-filter-name]').forEach(input=>input.nextElementSibling?.style.setProperty('--switch-on',urgentColour(input.dataset.filterName)));return;}
  root.replaceChildren();
  if(!names.length){root.textContent='Assign Detailed urgency categories to the Urgent group in Manage categories.';return}
  for(const name of names){
@@ -1849,7 +1849,7 @@ const bookingTimesDisabledConsult=new Set();
 function bookingTimesTogglePanel(id,names,disabled){
  const root=$(id);if(!root)return;
  const current=[...root.querySelectorAll('input[data-filter-name]')].map(input=>input.dataset.filterName);
- if(current.length===names.length&&current.every((name,i)=>name===names[i]))return;
+ if(current.length===names.length&&current.every((name,i)=>name===names[i])){root.querySelectorAll('input[data-filter-name]').forEach(input=>{const colour=id==='bookingTimesUrgencyFilters'?urgencyGroupColour(input.dataset.filterName):id==='bookingTimesClinicianFilters'?clinicianGroupColour(input.dataset.filterName):'#596675';input.nextElementSibling?.style.setProperty('--switch-on',colour)});return;}
  root.replaceChildren();
  if(!names.length){const span=document.createElement('span');span.className='hint';span.textContent='Set up categories in Manage categories.';root.append(span);return}
  for(const name of names){
@@ -1858,7 +1858,7 @@ function bookingTimesTogglePanel(id,names,disabled){
   const input=document.createElement('input');input.type='checkbox';input.setAttribute('role','switch');
   input.dataset.filterName=name;input.checked=!disabled.has(name);input.setAttribute('aria-label','Include '+name);
   const track=document.createElement('span');track.className='switch-track';
-  if(id==='bookingTimesUrgencyFilters')track.style.setProperty('--switch-on',urgencyGroupColour(name));else if(id==='bookingTimesClinicianFilters')track.style.setProperty('--switch-on',clinicianGroupColour(name));
+  if(id==='bookingTimesUrgencyFilters')track.style.setProperty('--switch-on',urgencyGroupColour(name));else if(id==='bookingTimesClinicianFilters')track.style.setProperty('--switch-on',clinicianGroupColour(name));else track.style.setProperty('--switch-on','#596675');
   const caption=document.createElement('span');caption.textContent=name;
   switchWrap.append(input,track);label.append(switchWrap,caption);root.append(label);
   input.addEventListener('change',()=>{if(input.checked)disabled.delete(name);else disabled.add(name);renderBookingTimesChart()});
