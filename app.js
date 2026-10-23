@@ -1849,6 +1849,10 @@ function urgentGradientStops(hex){
 // positions, totals, tooltip targets, Today marker or historical shading.
 // Shared flat visual treatment; saved type colours remain the source of truth.
 function applyFlatAvailabilityBars(target){
+ // Apply one medium bottom-right shadow to the composited stacked bars,
+ // rather than to each coloured segment (which would create internal seams).
+ const barLayer=target.querySelector('.barlayer');
+ if(barLayer)barLayer.style.filter='drop-shadow(4px 5px 3px rgba(25,45,65,0.22))';
  // Plotly SVG paths need an explicit fill: removing their fill renders them black.
  // Read each bar trace's actual marker colour, including custom colours from Slot settings.
  const barTraces=(target.data||[]).filter(trace=>trace.type==='bar');
