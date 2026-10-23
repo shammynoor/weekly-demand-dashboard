@@ -723,32 +723,55 @@ function updateAvailabilityUrgencyFilter(){
 }
 const urgentClinicianDisabled=new Set();
 const urgentConsultDisabled=new Set();
-function availabilityOptionHasData(page,kind,name){
+// Eligibility must be independent of currently selected switches: otherwise
+// disabling one dimension can cascade and lock every other dimension off.
+function availabilityRecordsInRange(page){
  const urgent=page==='urgent';
  const from=urgent?-urgentWeeksBack:routineStartWeek;
  const to=urgent?urgentWeeksForward:routineEndWeek;
  const start=new Date(thisWeek+'T12:00:00Z');start.setUTCDate(start.getUTCDate()+from*7);
  const finish=new Date(thisWeek+'T12:00:00Z');finish.setUTCDate(finish.getUTCDate()+(to+1)*7);
- const startDay=start.toISOString().slice(0,10),endDay=finish.toISOString().slice(0,10);
- return availabilityRecords.some(r=>{
-  if(!(r.count>0)||r.date<startDay||r.date>=endDay)return false;
+ const first=start.toISOString().slice(0,10),last=finish.toISOString().slice(0,10);
+ return availabilityRecords.filter(r=>{
+  if(!(r.count>0)||r.date<first||r.date>=last)return false;
   const category=String(assignments[r.slot]||'').trim();
-  const group=String(groupUrgencyAssignments[category]||'').trim().toLowerCase();
-  if(group!==(urgent?'urgent':'routine'))return false;
-  const clinician=clinicianGroupAssignments[clinicianAssignments[r.clinician]];
-  const consult=consultAssignments[r.slot];
-  if(urgent){
-   if(kind==='category'?category!==name:urgentCategoryDisabled.has(category))return false;
-   if(kind==='clinician'?clinician!==name:urgentClinicianDisabled.has(clinician))return false;
-   if(kind==='consult'?consult!==name:urgentConsultDisabled.has(consult))return false;
-   const weekday=new Date(r.date+'T12:00:00Z').getUTCDay();
-   if(weekday===0||weekday===6)return false;
-  }else{
-   if(kind==='clinician'?clinician!==name:routineDisabledClinicianGroups.has(clinician))return false;
-   if(kind==='consult'?consult!==name:routineDisabledConsultModes.has(consult))return false;
-  }
+  if(String(groupUrgencyAssignments[category]||'').trim().toLowerCase()!==page)return false;
+  if(urgent){const day=new Date(r.date+'T12:00:00Z').getUTCDay();if(day===0||day===6)return false;}
   return true;
  });
+}
+function availabilityOptionHasData(page,kind,name){
+ return availabilityRecordsInRange(page).some(r=>{
+  const category=String(assignments[r.slot]||'').trim();
+  const clinician=clinicianGroupAssignments[clinicianAssignments[r.clinician]];
+  const consult=consultAssignments[r.slot];
+  return kind==='category'?category===name:kind==='clinician'?clinician===name:consult===name;
+ });
+}
+function availabilityHasVisibleRecords(page){
+ return availabilityRecordsInRange(page).some(r=>{
+  const category=String(assignments[r.slot]||'').trim();
+  const clinician=clinicianGroupAssignments[clinicianAssignments[r.clinician]];
+  const consult=consultAssignments[r.slot];
+  return page==='urgent'?
+   !urgentCategoryDisabled.has(category)&&urgentCategoryNames().includes(category)&&
+   clinicianGroupNames.includes(clinician)&&!urgentClinicianDisabled.has(clinician)&&
+   consultCategoryNames.includes(consult)&&!urgentConsultDisabled.has(consult):
+   clinicianGroupNames.includes(clinician)&&!routineDisabledClinicianGroups.has(clinician)&&
+   consultCategoryNames.includes(consult)&&!routineDisabledConsultModes.has(consult);
+ });
+}
+function changeAvailabilityFilter(page,disabled,name,checked,checkbox){
+ const previouslyOff=disabled.has(name);
+ if(checked)disabled.delete(name);else disabled.add(name);
+ // Reject any change that would remove every appointment from the chart.
+ // If source data itself has no matches, do not block filter changes.
+ if(availabilityRecordsInRange(page).length&&!availabilityHasVisibleRecords(page)){
+  if(previouslyOff)disabled.add(name);else disabled.delete(name);
+  checkbox.checked=!previouslyOff;
+  return;
+ }
+ (page==='urgent'?renderAvailabilityChart:renderRoutineAvailabilityChart)();
 }
 function refreshAvailabilityOptionStates(page){
  const configs=page==='urgent'?
@@ -759,11 +782,21 @@ function refreshAvailabilityOptionStates(page){
   for(const input of root.querySelectorAll('input[data-filter-name]')){
    const name=input.dataset.filterName;
    const possible=availabilityOptionHasData(page,kind,name);
+   // Restore options disabled only by an earlier buggy eligibility pass.
    if(!possible)disabled.add(name);
-   input.checked=possible&&!disabled.has(name);
    input.disabled=!possible;
+   input.checked=possible&&!disabled.has(name);
    input.closest('.filter-row')?.classList.toggle('availability-option-unavailable',!possible);
-   input.title=possible?'':'No matching appointments in the selected date range and other filters';
+   input.title=possible?'':'No source appointments for this option in the selected date range';
+  }
+ }
+ // Recover from stale all-off state caused by earlier versions of this logic.
+ if(availabilityRecordsInRange(page).length&&!availabilityHasVisibleRecords(page)){
+  for(const [id,kind,disabled] of configs){
+   const root=$(id);if(!root)continue;
+   for(const input of root.querySelectorAll('input[data-filter-name]')){
+    if(!input.disabled){disabled.delete(input.dataset.filterName);input.checked=true;}
+   }
   }
  }
 }
@@ -782,9 +815,7 @@ function renderUrgentSideFilters(){
    const caption=document.createElement('span');caption.textContent=name;
    sw.append(input,track);row.append(sw,caption);root.append(row);
    input.addEventListener('change',()=>{
-    if(!input.checked&&names.filter(n=>!disabled.has(n)&&availabilityOptionHasData(id.startsWith('urgent')?'urgent':'routine',id.toLowerCase().includes('clinician')?'clinician':'consult',n)).length<=1){input.checked=true;return;}
-    if(input.checked)disabled.delete(name);else disabled.add(name);
-    renderAvailabilityChart();
+    changeAvailabilityFilter('urgent',disabled,name,input.checked,input);
    });
   }
  };
@@ -853,9 +884,7 @@ function renderUrgentCategoryToggles(){
   const colour=urgentColour(name);track.style.setProperty('--switch-on',colour);
   sw.append(input,track);row.append(sw,title);root.append(row);
   input.addEventListener('change',()=>{
-   if(!input.checked&&names.filter(n=>!urgentCategoryDisabled.has(n)&&availabilityOptionHasData('urgent','category',n)).length<=1){input.checked=true;return;}
-   if(input.checked)urgentCategoryDisabled.delete(name);else urgentCategoryDisabled.add(name);
-   renderAvailabilityChart();
+   changeAvailabilityFilter('urgent',urgentCategoryDisabled,name,input.checked,input);
   });
  }
 }
@@ -949,9 +978,7 @@ function renderRoutineAvailabilityFilters(){
    const title=document.createElement('span');title.textContent=name;
    switchEl.append(input,track);row.append(switchEl,title);root.append(row);
    input.addEventListener('change',()=>{
-    if(!input.checked&&names.filter(n=>!disabled.has(n)&&availabilityOptionHasData('routine',id==='routineClinicianFilters'?'clinician':'consult',n)).length<=1){input.checked=true;return;}
-    if(input.checked)disabled.delete(name);else disabled.add(name);
-    renderRoutineAvailabilityChart();
+    changeAvailabilityFilter('routine',disabled,name,input.checked,input);
    });
   }
  };
