@@ -315,3 +315,6 @@ Removed the Detailed Clinician Types and Clinician Groups tabs and editors from 
 
 ## Weekly Demand chart performance
 Reduced repeated CSV scans and person lookup overhead. A named-person → user-type map avoids repeated `peopleRecords.find` searches; clinician and filter results are cached per chart refresh; urgency category totals for all three charts are calculated in one pass rather than repeated scans. Rapid switch changes are coalesced into one animation-frame refresh. Chart definitions and appointment-counting rules are unchanged.
+
+
+Navigation: chart tabs are left aligned; Slot settings and People settings are right aligned in a muted lavender-grey style, with responsive wrapping. The page IDs and chart logic are unchanged.
