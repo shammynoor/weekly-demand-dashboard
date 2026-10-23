@@ -22,6 +22,13 @@ document.getElementById('navSettingsCog')?.addEventListener('click',event=>{even
 document.addEventListener('click',event=>{if(!event.target.closest('.nav-settings-menu'))closeSettingsMenu();});
 document.addEventListener('keydown',event=>{if(event.key==='Escape')closeSettingsMenu();});
 for(const id of ['navCategories','navPeople'])document.getElementById(id)?.addEventListener('click',closeSettingsMenu);
+const availabilityNavMenu=document.querySelector('.nav-availability-menu');
+const availabilityNavTrigger=document.getElementById('navAvailabilityMenu');
+function closeAvailabilityNavMenu(){availabilityNavMenu?.classList.remove('open');availabilityNavTrigger?.setAttribute('aria-expanded','false');}
+availabilityNavTrigger?.addEventListener('click',event=>{event.stopPropagation();const open=availabilityNavMenu.classList.toggle('open');availabilityNavTrigger.setAttribute('aria-expanded',String(open));});
+document.addEventListener('click',event=>{if(!event.target.closest('.nav-availability-menu'))closeAvailabilityNavMenu();});
+document.addEventListener('keydown',event=>{if(event.key==='Escape')closeAvailabilityNavMenu();});
+for(const id of ['navAvailability','navRoutineAvailability'])document.getElementById(id)?.addEventListener('click',closeAvailabilityNavMenu);
 function applyAccessMode(){
  document.body.classList.toggle('viewer-mode',!isOwner);
  for(const id of ['navCategories','navPeople','chooseFolder','sourceSetup']){const el=document.getElementById(id);if(el)el.hidden=!isOwner}
