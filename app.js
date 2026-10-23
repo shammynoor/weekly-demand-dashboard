@@ -1065,6 +1065,19 @@ function validateReplacementCSV(text){
  if(!parsed.data.length)throw Error('CSV has no appointment rows.');
  return {columns,previewRows:parsed.data.length};
 }
+function validateSignpostingReplacementCSV(text){
+ const parsed=Papa.parse(text,{header:true,preview:15,skipEmptyLines:'greedy',bom:true});
+ if(parsed.errors?.length)throw Error('Signposting CSV parsing failed: '+parsed.errors[0].message);
+ const columns=(parsed.meta.fields||[]).map(x=>String(x||'').replace(/^\\uFEFF/,'').trim());
+ const required=['Anonymised Identifier','Age','Gender','Date',"Consultation Details' Time",'Code Term'];
+ const missing=required.filter(x=>!columns.includes(x));
+ if(missing.length)throw Error('Signposting CSV is incompatible. Missing column(s): '+missing.join(', '));
+ if(!parsed.data.length)throw Error('Signposting CSV has no data rows.');
+ return {columns,previewRows:parsed.data.length};
+}
+function validateCSVForReplacement(text,filename){
+ return isSignpostingFile(filename)?validateSignpostingReplacementCSV(text):validateReplacementCSV(text);
+}
 function awaitCSVConfirmation(fileName,match){
  return new Promise(resolve=>{
   const modal=$('csvUploadModal'),confirm=$('csvUploadConfirm'),cancel=$('csvUploadCancel');
@@ -1092,7 +1105,7 @@ async function replaceExistingCSV(file){
   if(matches.length!==1)throw Error('Rejected: no existing CSV with exactly this filename in the selected OneDrive folder.');
   const match=matches[0];
   const text=await file.text();
-  validateReplacementCSV(text);
+  validateCSVForReplacement(text,match.name);
   // Check the original export's columns as well, so incompatible replacements
   // cannot silently change the source schema.
   const detail=await graph('/me/drive/items/'+encodeURIComponent(match.id));
@@ -1103,8 +1116,8 @@ async function replaceExistingCSV(file){
   const originalResponse=await fetch(originalUrl,{cache:'no-store'});
   if(!originalResponse.ok)throw Error('Could not check the original CSV.');
   const originalText=await originalResponse.text();
-  const originalSchema=validateReplacementCSV(originalText).columns;
-  const newSchema=validateReplacementCSV(text).columns;
+  const originalSchema=validateCSVForReplacement(originalText,match.name).columns;
+  const newSchema=validateCSVForReplacement(text,match.name).columns;
   if(originalSchema.length!==newSchema.length||originalSchema.some((column,i)=>column!==newSchema[i]))
    throw Error('Rejected: the CSV column headings or their order do not match the existing OneDrive file.');
   csvDropStatus('Validated '+file.name+'. Waiting for confirmation…');
