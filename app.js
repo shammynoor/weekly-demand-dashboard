@@ -1629,11 +1629,11 @@ function refreshAvailabilityOptionStates(page){
   for(const input of root.querySelectorAll('input[data-filter-name]')){
    const name=input.dataset.filterName;
    const possible=availabilityOptionHasData(page,kind,name);
-   // Restore options disabled only by an earlier buggy eligibility pass.
-   if(!possible)disabled.add(name);
+   // Keep user choices intact when an option temporarily has no data.
    input.disabled=!possible;
    input.checked=possible&&!disabled.has(name);
-   input.closest('.filter-row')?.classList.toggle('availability-option-unavailable',!possible);
+   const row=input.closest('.filter-row');
+   if(row)row.hidden=!possible;
    input.title=possible?'':'No source appointments for this option in the selected date range';
   }
  }
@@ -1658,7 +1658,8 @@ function selectedClinicianTypes(page){
 function renderClinicianTypeFilters(page){
  const root=$(page+'ClinicianTypeFilters');if(!root)return;
  const disabled=page==='urgent'?urgentDisabledClinicianTypes:routineDisabledClinicianTypes;
- const names=selectedClinicianTypes(page);
+ const presentTypes=new Set(availabilityRecordsInRange(page).map(r=>effectiveClinicianType(r.clinician,r.person)));
+ const names=selectedClinicianTypes(page).filter(name=>presentTypes.has(name));
  const existing=[...root.querySelectorAll('input[data-filter-name]')].map(input=>input.dataset.filterName);
  if(existing.length!==names.length||names.some((name,i)=>name!==existing[i])){
   root.replaceChildren();
@@ -1933,7 +1934,7 @@ function renderAvailabilityChart(){
  buckets.forEach((date,i)=>{if((weekly||weekdays.has(date))&&totals[i])annotations.push({x:date,xref:'x',y:totals[i],yref:'y',text:String(totals[i]),showarrow:false,font:{size:weekly?13:10,color:'#425b70'},yshift:15,yanchor:'bottom'})});
  const note=$('availabilityNote');if(note)note.textContent=names.length?'':'Select an Urgent detailed urgency category to display appointments.';
  Plotly.react(target,traces,{
-  autosize:true,height:555,barmode:'stack',barcornerradius:3,bargap:weekly?0.11:0.13,margin:{l:62,r:18,t:85,b:100},paper_bgcolor:'white',plot_bgcolor:'#e1eaf1',
+  autosize:true,height:640,barmode:'stack',barcornerradius:3,bargap:weekly?0.11:0.13,margin:{l:62,r:18,t:85,b:100},paper_bgcolor:'white',plot_bgcolor:'#e1eaf1',
   legend:{orientation:'h',x:0.5,y:-0.23,xanchor:'center',yanchor:'top',font:{size:13,color:'#42576a'},bgcolor:'rgba(255,255,255,0)'},
   xaxis:{type:'category',categoryorder:'array',categoryarray:buckets,tickmode:'array',tickvals:buckets,ticktext:buckets.map(date=>weekly?'':weekdays.has(date)?new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'short',timeZone:'UTC'}):''),tickangle:-90,tickfont:{size:12,color:'#444444'},showgrid:false,range:[-.5,buckets.length-.5],fixedrange:true},
   yaxis:{title:{text:'Appointment slots',font:{size:12,color:'#708397'}},tickfont:{size:12,color:'#52677b'},range:[0,max],gridcolor:'#e0e8ef',gridwidth:1,zeroline:false,showline:false},annotations,shapes,hovermode:'closest',hoverlabel:{bgcolor:'#ffffff',bordercolor:'#dce5ed',font:{family:'Arial',size:12,color:'#182b3b'},align:'left',namelength:0}
@@ -2101,7 +2102,7 @@ function renderRoutineAvailabilityChart(){
  const note=$('routineAvailabilityNote');
  if(note)note.textContent=matched?'':"No matching Routine urgency-group appointments found. Check Manage categories → Urgency Group.";
  Plotly.react(target,traces,{
-  height:555,autosize:true,barmode:'stack',barcornerradius:3,bargap:isDaily?0.13:0.11,
+  height:640,autosize:true,barmode:'stack',barcornerradius:3,bargap:isDaily?0.13:0.11,
   margin:{l:62,r:18,t:85,b:100},paper_bgcolor:'#fff',plot_bgcolor:plotBackground,
   legend:{orientation:'h',x:0.5,y:-0.20,xanchor:'center',yanchor:'top',font:{size:13,color:'#42576a'},traceorder:'normal'},
   xaxis:{type:'category',categoryorder:'array',categoryarray:dates,range:[-0.5,dates.length-0.5],tickmode:'array',tickvals:dates,ticktext:isDaily?dates.map(date=>new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'short',timeZone:'UTC'})):dates.map(()=>''),tickangle:-90,tickfont:{size:10},showticklabels:isDaily,showgrid:false,showline:true,linecolor:'#a9b9c7',linewidth:1.5,zeroline:false,fixedrange:true},
