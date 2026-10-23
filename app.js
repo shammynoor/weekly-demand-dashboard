@@ -2159,6 +2159,8 @@ window.addEventListener('error',event=>{
 
 // Booking Times: independently switchable Urgency Groups, Clinician Groups and Consult modes.
 const bookingTimesDisabledUrgency=new Set();
+let bookingTimesUrgencyInitialised=false;
+function bookingTimeAmPm(time){const [hour,minute]=time.split(':').map(Number);return String(hour%12||12)+(minute?':'+String(minute).padStart(2,'0'):'')+(hour>=12?'pm':'am');}
 const bookingTimesDisabledClinician=new Set();
 const bookingTimesDisabledConsult=new Set();
 function bookingTimesTogglePanel(id,names,disabled){
@@ -2183,6 +2185,7 @@ function bookingTimesTogglePanel(id,names,disabled){
 function renderBookingTimesChart(){
  const chart=$('bookingTimesChart');
  if(!chart||$('bookingTimesPage').classList.contains('hidden')||!window.Plotly)return;
+ if(!bookingTimesUrgencyInitialised&&groupUrgencyNames.length){for(const name of groupUrgencyNames)if(name.trim().toLowerCase()!=='urgent')bookingTimesDisabledUrgency.add(name);bookingTimesUrgencyInitialised=true;}
  bookingTimesTogglePanel('bookingTimesUrgencyFilters',groupUrgencyNames,bookingTimesDisabledUrgency);
  bookingTimesTogglePanel('bookingTimesClinicianFilters',clinicianGroupNames,bookingTimesDisabledClinician);
  bookingTimesTogglePanel('bookingTimesConsultFilters',consultCategoryNames,bookingTimesDisabledConsult);
@@ -2219,9 +2222,9 @@ function renderBookingTimesChart(){
  // Place labels in the open area above the percentile intersection, rather
  // than on top of the cumulative line. Separate the two labels vertically.
  const annotations=percentileMarkers.map(({percent,time,colour})=>({
-  xref:'x',yref:'y2',x:time,y:percent,text:'<b>'+percent+'% · '+time+'</b>',
+  xref:'x',yref:'y2',x:time,y:percent,text:'<b>'+percent+'% · '+bookingTimeAmPm(time)+'</b>',
   showarrow:false,xanchor:'center',yanchor:'bottom',yshift:percent===50?24:28,
-  font:{size:16,color:colour},bgcolor:'rgba(255,255,255,0.92)',bordercolor:'rgba(208,219,229,0.9)',borderwidth:1,borderpad:5
+  font:{size:15,color:'#28445c'},bgcolor:'#eef4f9',bordercolor:'#d3e1ec',borderwidth:1,borderpad:5
  }));
  const traces=[
   {type:'bar',name:'Bookings per 15 minutes',x:visibleTimes,y:visibleBins,marker:{color:'#8fb4d3',line:{width:0}},hovertemplate:'%{x}–15 min later<br>%{y:,} bookings<extra></extra>',yaxis:'y'},
@@ -2231,7 +2234,7 @@ function renderBookingTimesChart(){
   height:540,autosize:true,margin:{l:90,r:95,t:75,b:85},
   paper_bgcolor:'#fff',plot_bgcolor:'#f1f3f5',bargap:0.04,
   legend:{orientation:'h',x:0,y:1.13,xanchor:'left',yanchor:'bottom'},
-  xaxis:{type:'category',categoryorder:'array',categoryarray:visibleTimes,tickmode:'array',tickvals,ticktext:tickvals,title:{text:'Booking time',font:{size:16,color:'#28445c'},standoff:18},showgrid:false,showline:true,linecolor:'#536b80',linewidth:3,ticks:'outside',tickcolor:'#536b80',tickwidth:2,ticklen:6},
+  xaxis:{type:'category',categoryorder:'array',categoryarray:visibleTimes,tickmode:'array',tickvals,ticktext:tickvals.map(bookingTimeAmPm),title:{text:'Booking time',font:{size:16,color:'#28445c'},standoff:18},showgrid:false,showline:true,linecolor:'#536b80',linewidth:3,ticks:'outside',tickcolor:'#536b80',tickwidth:2,ticklen:6},
   yaxis:{title:{text:'Number of bookings',font:{size:16,color:'#28445c'},standoff:14},visible:true,showticklabels:true,rangemode:'tozero',showgrid:false,zeroline:false,showline:true,linecolor:'#536b80',linewidth:3,ticks:'outside',tickcolor:'#536b80',tickwidth:2,ticklen:6},
   yaxis2:{title:'Cumulative bookings (%)',overlaying:'y',side:'right',range:[0,100],ticksuffix:'%',showgrid:true,gridcolor:'#d9e1e8',zeroline:false,showline:true,linecolor:'#536b80',linewidth:3},
   shapes,annotations,hovermode:'x unified'
