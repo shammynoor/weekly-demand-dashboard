@@ -1058,7 +1058,7 @@ function drawCategoryChart(target,category,palette,sharedMax){
  const continuousRange=visibleDates.length?[visibleDates[0],visibleDates[visibleDates.length-1]]:null;
  const chartEl=$(target);
  const chartWidth=Math.max(280,Math.floor(chartEl.parentElement.getBoundingClientRect().width)-2);
- Plotly.react(target,traces,{autosize:true,width:chartWidth,margin:{l:58,r:12,t:32,b:65},paper_bgcolor:'white',plot_bgcolor:'white',shapes:shadeSeasons?seasonBackgroundShapes(selectedWeeks):[],legend:{orientation:'h',y:1.17,x:0},xaxis:continuousMode?{type:'date',title:monthlyMode?'Booking month':'Booking date',tickformat:'%b %Y',gridcolor:'#edf1f5',...(continuousRange?{range:continuousRange}: {})}:axis,yaxis:{title:'Appointments',range:[0,sharedMax],dtick:sharedMax/5,gridcolor:'#edf1f5'},hovermode:'closest',annotations:!hasAppointments&&category==='followup'?[{text:'No follow-up appointments found. In Manage Categories, assign slot types to Follow up and click Save.',xref:'paper',yref:'paper',x:.5,y:.55,showarrow:false,align:'center',font:{size:13,color:'#286cb8'}}]:[]},{responsive:true,displaylogo:false});
+ Plotly.react(target,traces,{autosize:true,width:chartWidth,margin:{l:58,r:12,t:32,b:65},paper_bgcolor:'white',plot_bgcolor:'white',shapes:shadeSeasons?seasonBackgroundShapes(selectedWeeks):[],legend:{orientation:'h',y:1.17,x:0},xaxis:continuousMode?{type:'date',title:monthlyMode?'Booking month':'Booking date',tickformat:'%b %Y',gridcolor:'#edf1f5',...(continuousRange?{range:continuousRange}: {})}:axis,yaxis:{title:'Appointments',range:[0,sharedMax],dtick:sharedMax/5,gridcolor:'#edf1f5'},hovermode:'closest',annotations:!hasAppointments&&category==='followup'?[{text:'No follow-up appointments found. In Manage Categories, assign slot types to Follow up and click Save.',xref:'paper',yref:'paper',x:.5,y:.55,showarrow:false,align:'center',font:{size:13,color:'#286cb8'}}]:[]},{responsive:true,displaylogo:false,displayModeBar:false});
 }
 let maximum=0;
 let followupMaximum=0;
@@ -1287,7 +1287,7 @@ function setupUrgentRangeControls(){
   $('urgentWeeksBackValue').textContent=label(start);
   $('urgentWeeksForwardValue').textContent=label(end);
   const rail=$('urgentRangeActive');
-  if(rail){rail.style.left=((start+3)/7*100)+'%';rail.style.width=((end-start)/7*100)+'%'}
+  if(rail){rail.style.setProperty('--range-start',String((start+3)/7));rail.style.setProperty('--range-span',String((end-start)/7))}
   renderAvailabilityChart();
  };
  back.addEventListener('input',()=>update('start'));
@@ -1452,11 +1452,11 @@ function renderAvailabilityChart(){
  buckets.forEach((date,i)=>{if((weekly||weekdays.has(date))&&totals[i])annotations.push({x:date,xref:'x',y:totals[i],yref:'y',text:String(totals[i]),showarrow:false,font:{size:weekly?13:10,color:'#425b70'},yshift:15,yanchor:'bottom'})});
  const note=$('availabilityNote');if(note)note.textContent=names.length?'':'Select an Urgent detailed urgency category to display appointments.';
  Plotly.react(target,traces,{
-  autosize:true,height:510,barmode:'stack',barcornerradius:3,bargap:weekly?0.11:0.13,margin:{l:62,r:18,t:85,b:100},paper_bgcolor:'white',plot_bgcolor:'#eaf1f6',
+  autosize:true,height:555,barmode:'stack',barcornerradius:3,bargap:weekly?0.11:0.13,margin:{l:62,r:18,t:85,b:100},paper_bgcolor:'white',plot_bgcolor:'#eaf1f6',
   legend:{orientation:'h',x:0.5,y:-0.23,xanchor:'center',yanchor:'top',font:{size:13,color:'#42576a'},bgcolor:'rgba(255,255,255,0)'},
   xaxis:{type:'category',categoryorder:'array',categoryarray:buckets,tickmode:'array',tickvals:buckets,ticktext:buckets.map(date=>weekly?'':weekdays.has(date)?new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'short',timeZone:'UTC'}):''),tickangle:-90,tickfont:{size:12,color:'#444444'},showgrid:false,range:[-.5,buckets.length-.5],fixedrange:true},
   yaxis:{title:{text:'Appointment slots',font:{size:12,color:'#708397'}},tickfont:{size:12,color:'#52677b'},range:[0,max],gridcolor:'#e0e8ef',gridwidth:1,zeroline:false,showline:false},annotations,shapes,hovermode:'closest'
- },{responsive:true,displaylogo:false}).then(()=>applyUrgentBarGlass(target,names,colours));
+ },{responsive:true,displaylogo:false,displayModeBar:false}).then(()=>applyUrgentBarGlass(target,names,colours));
 }
 window.addEventListener('resize',()=>{if(!$('availabilityPage').classList.contains('hidden'))renderAvailabilityChart()});
 setupUrgentRangeControls();
@@ -1521,7 +1521,7 @@ function setupRoutineRangeControls(){
   $('routineWeeksStartValue').textContent=label(a);
   $('routineWeeksEndValue').textContent=label(b);
   const left=(a+2)/9*100,right=(b+2)/9*100;
-  const active=$('routineRangeActive');active.style.left=left+'%';active.style.width=(right-left)+'%';
+  const active=$('routineRangeActive');active.style.left='calc(12px + (100% - 24px)*'+(left/100)+')';active.style.width='calc((100% - 24px)*'+((right-left)/100)+')';
   renderRoutineAvailabilityChart();
  };
  start.addEventListener('input',()=>update('start'));
@@ -1617,13 +1617,13 @@ function renderRoutineAvailabilityChart(){
  const note=$('routineAvailabilityNote');
  if(note)note.textContent=matched?'':"No matching Routine urgency-group appointments found. Check Manage categories → Urgency Group.";
  Plotly.react(target,traces,{
-  height:510,autosize:true,barmode:'stack',barcornerradius:7,bargap:isDaily?0.13:0.11,
+  height:555,autosize:true,barmode:'stack',barcornerradius:7,bargap:isDaily?0.13:0.11,
   margin:{l:62,r:18,t:85,b:100},paper_bgcolor:'#fff',plot_bgcolor:plotBackground,
   legend:{orientation:'h',x:0.5,y:-0.20,xanchor:'center',yanchor:'top',font:{size:13,color:'#42576a'},traceorder:'normal'},
   xaxis:{type:'category',categoryorder:'array',categoryarray:dates,range:[-0.5,dates.length-0.5],tickmode:'array',tickvals:dates,ticktext:isDaily?dates.map(date=>new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'short',timeZone:'UTC'})):dates.map(()=>''),tickangle:-90,tickfont:{size:10},showticklabels:isDaily,showgrid:false,showline:true,linecolor:'#a9b9c7',linewidth:1.5,zeroline:false,fixedrange:true},
   yaxis:{title:{text:'Appointment slots',font:{size:12,color:'#708397'}},tickfont:{size:12,color:'#52677b'},range:[0,Math.ceil(max*1.18/10)*10],gridcolor:'#e0e8ef',gridwidth:1,zeroline:false,showline:false},
   annotations,shapes,hovermode:'closest'
- },{responsive:true,displaylogo:false}).then(()=>applyRoutineBarGlass(target));
+ },{responsive:true,displaylogo:false,displayModeBar:false}).then(()=>applyRoutineBarGlass(target));
 }
 window.addEventListener('resize',()=>{if(!$('routineAvailabilityPage').classList.contains('hidden'))renderRoutineAvailabilityChart()});
 setupRoutineRangeControls();
@@ -1711,7 +1711,7 @@ function renderBookingTimesChart(){
   yaxis:{visible:false,rangemode:'tozero',showgrid:false,zeroline:false},
   yaxis2:{title:'Cumulative bookings (%)',overlaying:'y',side:'right',range:[0,100],ticksuffix:'%',showgrid:true,gridcolor:'#d9e1e8',zeroline:false},
   shapes,annotations,hovermode:'x unified'
- },{responsive:true,displaylogo:false});
+ },{responsive:true,displaylogo:false,displayModeBar:false});
  const note=$('bookingTimesNote');
  if(note)note.textContent=count?count.toLocaleString('en-GB')+' booked appointments across the loaded CSV files and selected categories.':'No bookings match these filters. Check category assignments in Manage categories.';
 }

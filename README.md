@@ -337,3 +337,10 @@ Hide zero-height Plotly bar path strokes (which appeared as stray horizontal lin
 
 ## Urgent whole-bar outlines
 Removed the dark outline on individual white Available sections and all internal segment borders. A single fine pale blue-grey SVG outline now traces the full height of each stacked bar, preserving its white top cap and existing gradients, totals and Today line.
+
+
+Urgent date range toolbar compacted: From and To labels on either side of the single dual-handle slider, scale labels and outer outline removed, rail/handles aligned using thumb-centre offsets. Urgent plot increased from 510px to 555px. Routine slider unchanged.
+
+
+## Routine range / chart controls
+Routine Appointment Availability now uses a compact, borderless dual-handle range with From/To labels beside the rail and no scale captions. The active selection track uses the same 12px thumb-centre offset as the rail to align with the handles. The Routine chart is 555px high. Plotly's modebar (zoom, pan, download PNG, autoscale etc.) is disabled on all charts; mouse hover and dashboard filters remain available.
