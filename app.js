@@ -1717,6 +1717,8 @@ function installAvailabilityCardTooltip(target){
   for(const part of parts.slice(1)){
    const row=document.createElement('div');row.className='availability-tooltip-line';
    const text=plain(part);
+   // Hide zero-count categories while retaining the total row.
+   if(!part.startsWith('<b>') && /:\s*0(?:\.0+)?\s*$/.test(text))continue;
    if(part.startsWith('<b>'))row.classList.add('availability-tooltip-total');
    else {
     const separator=text.lastIndexOf(': ');
