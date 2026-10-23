@@ -344,3 +344,7 @@ Urgent date range toolbar compacted: From and To labels on either side of the si
 
 ## Routine range / chart controls
 Routine Appointment Availability now uses a compact, borderless dual-handle range with From/To labels beside the rail and no scale captions. The active selection track uses the same 12px thumb-centre offset as the rail to align with the handles. The Routine chart is 555px high. Plotly's modebar (zoom, pan, download PNG, autoscale etc.) is disabled on all charts; mouse hover and dashboard filters remain available.
+
+
+## Slot settings: urgency group cards
+Slot settings now has the same compact group-card organiser as People settings. Each Urgency Group has a larger editable colour dot, rename and delete controls, and contains draggable Detailed urgency types with their own rename/delete controls and Add type. A final Add Group button reveals its text input on click. An Unassigned card appears when needed and accepts dropped types. Existing slot-to-detailed-urgency assignments are preserved and updated on rename/delete; the original assignment editors remain hidden for compatibility. Consult mode settings remain available. Group colours are saved locally and in the existing OneDrive settings JSON under `urgencyGroupColours`. No CSV data is changed.
