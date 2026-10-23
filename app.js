@@ -1347,12 +1347,17 @@ function applyUrgentBarGlass(target,names,colours){
   if(!gradient){gradient=document.createElementNS(ns,'linearGradient');gradient.id=id;defs.append(gradient)}
   gradient.setAttribute('x1','0');gradient.setAttribute('x2','0');gradient.setAttribute('y1','0');gradient.setAttribute('y2','1');
   gradient.replaceChildren();
-  const stops=name==='Available'?[['0%','#ffffff'],['24%','#ffffff'],['70%','#fdfefe'],['100%','#edf3f8']]:urgentGradientStops(colours[name]);
+  const stops=name==='Available'?[['0%','#ffffff'],['75%','#ffffff'],['100%','#f3f8fc']]:name==='Embargoed'?[['0%','#c6d1d9'],['100%','#c0ccd5']]:urgentGradientStops(colours[name]);
   for(const [offset,color] of stops){const stop=document.createElementNS(ns,'stop');stop.setAttribute('offset',offset);stop.setAttribute('stop-color',color);gradient.append(stop)}
   trace.querySelectorAll('.point path').forEach(path=>{
+   // Plotly creates a flat path for zero-height stacked segments. A stroke
+   // turns it into a stray horizontal line; hide only the zero-height shape.
+   let height=0;
+   try{height=path.getBBox().height}catch(_){height=0}
+   if(height<0.6){path.style.setProperty('stroke','none','important');path.style.setProperty('fill','none','important');return}
    path.style.setProperty('fill','url(#'+id+')','important');
-   path.style.setProperty('stroke',name==='Available'?'#dce7ee':'rgba(255,255,255,0.48)');
-   path.style.setProperty('stroke-width',name==='Available'?'0.85px':'0.55px');
+   path.style.setProperty('stroke',name==='Available'?'#8fa9bc':name==='Embargoed'?'#b3c2cd':'rgba(255,255,255,0.30)','important');
+   path.style.setProperty('stroke-width',name==='Available'?'1.15px':name==='Embargoed'?'0.35px':'0.4px','important');
   });
  });
 }
@@ -1388,14 +1393,14 @@ function renderAvailabilityChart(){
  }
  const labels=[...names,'Blocked','Embargoed','Available'];
  const colours=Object.fromEntries(names.map(n=>[n,urgentColour(n)]));
- Object.assign(colours,{Blocked:'#435569',Embargoed:'#b7c7d1',Available:'#ffffff'});
+ Object.assign(colours,{Blocked:'#435569',Embargoed:'#c2cdd5',Available:'#ffffff'});
  const totals=buckets.map(date=>labels.reduce((a,n)=>a+(counts.get(JSON.stringify([date,n]))||0),0));
  const max=Math.ceil(Math.max(1,...totals)*1.2/10)*10;
  const daySummary=buckets.map(date=>{
   const weekday=weekly?'Week commencing '+date:new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'long',timeZone:'UTC'});
   return weekday+'<br>'+labels.map(n=>n+': '+(counts.get(JSON.stringify([date,n]))||0).toLocaleString('en-GB')).join('<br>')+'<br><b>Total: '+totals[buckets.indexOf(date)].toLocaleString('en-GB')+'</b>';
  });
- const traces=labels.map(name=>({type:'bar',name,showlegend:false,x:buckets,y:buckets.map(date=>(weekly||weekdays.has(date))?counts.get(JSON.stringify([date,name]))||0:null),marker:{color:colours[name],line:{color:name==='Available'?'#d9e3eb':'rgba(255,255,255,0.8)',width:name==='Available'?1:0.7}},customdata:daySummary,hovertemplate:'%{customdata}<extra></extra>'}));
+ const traces=labels.map(name=>({type:'bar',name,showlegend:false,x:buckets,y:buckets.map(date=>(weekly||weekdays.has(date))?counts.get(JSON.stringify([date,name]))||0:null),marker:{color:colours[name],line:{color:name==='Available'?'#8fa9bc':'rgba(255,255,255,0.5)',width:name==='Available'?1.15:0.4}},customdata:daySummary,hovertemplate:'%{customdata}<extra></extra>'}));
  for(const name of labels)traces.push({type:'scatter',mode:'markers',name,x:[null],y:[null],marker:{symbol:'circle',size:14,color:colours[name],line:{color:name==='Available'?'#aeb8c3':colours[name],width:name==='Available'?1.5:0}},hoverinfo:'skip',showlegend:true});
  const weekLabels=Array.from({length:weekCount},(_,i)=>{const offset=i-urgentWeeksBack;return offset===0?'This Week':offset===-1?'Last Week':offset<0?Math.abs(offset)+' weeks ago':offset===1?'Next Week':offset+' weeks'});
  const annotations=weekLabels.map((text,i)=>({x:weekly?buckets[i]:dates[i*7+2],xref:'x',y:1.045,yref:'paper',text,showarrow:false,font:{size:13,color:'#344b60'},xanchor:'center',yanchor:'bottom'}));
@@ -1409,7 +1414,7 @@ function renderAvailabilityChart(){
  buckets.forEach((date,i)=>{if((weekly||weekdays.has(date))&&totals[i])annotations.push({x:date,xref:'x',y:totals[i],yref:'y',text:String(totals[i]),showarrow:false,font:{size:weekly?13:10,color:'#425b70'},yshift:15,yanchor:'bottom'})});
  const note=$('availabilityNote');if(note)note.textContent=names.length?'':'Select an Urgent detailed urgency category to display appointments.';
  Plotly.react(target,traces,{
-  autosize:true,height:510,barmode:'stack',barcornerradius:7,bargap:weekly?0.11:0.13,margin:{l:62,r:18,t:85,b:100},paper_bgcolor:'white',plot_bgcolor:'#f4f8fb',
+  autosize:true,height:510,barmode:'stack',barcornerradius:3,bargap:weekly?0.11:0.13,margin:{l:62,r:18,t:85,b:100},paper_bgcolor:'white',plot_bgcolor:'#eaf1f6',
   legend:{orientation:'h',x:0.5,y:-0.23,xanchor:'center',yanchor:'top',font:{size:13,color:'#42576a'},bgcolor:'rgba(255,255,255,0)'},
   xaxis:{type:'category',categoryorder:'array',categoryarray:buckets,tickmode:'array',tickvals:buckets,ticktext:buckets.map(date=>weekly?'':weekdays.has(date)?new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'short',timeZone:'UTC'}):''),tickangle:-90,tickfont:{size:12,color:'#444444'},showgrid:false,range:[-.5,buckets.length-.5],fixedrange:true},
   yaxis:{title:{text:'Appointment slots',font:{size:12,color:'#708397'}},tickfont:{size:12,color:'#52677b'},range:[0,max],gridcolor:'#e0e8ef',gridwidth:1,zeroline:false,showline:false},annotations,shapes,hovermode:'closest'

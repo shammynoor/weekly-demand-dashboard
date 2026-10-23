@@ -330,3 +330,6 @@ Rounded top corners (Plotly barcornerradius), subtle status-specific SVG linear 
 
 ## Urgent chart facelift
 Urgent Appointment Availability uses richer category colours, matching the Routine chart's light plot background, stacked-bar rounded top corners, subtle SVG gradient/bevel treatment, cleaner axes and gridlines, higher totals, and blue Today marker. The historical overlay is 20% opacity (80% transparent). Existing day/week positions, filters, totals and settings are unchanged. The Days/Weeks selector has slightly squarer corners on both pages.
+
+## Urgent bar contrast refinements
+Hide zero-height Plotly bar path strokes (which appeared as stray horizontal lines), flatten Embargoed grey gradients, add a clearer blue-grey outline to positive-height white Available sections, subtly darken the plot background and reduce bar top corner radius from 7 to 3. Does not change appointment counts, chart date alignment, or settings.
