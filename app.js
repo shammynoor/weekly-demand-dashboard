@@ -15,11 +15,37 @@ let peopleClinicianType={};
 let clinicianGroupColours={};
 let clinicianTypeColours={};
 let urgencyTypeColours={};
+
+// Curated 18-colour spectrum: cohesive, deep pastel shades rather than unrestricted RGB.
+const DASHBOARD_COLOUR_PALETTE=['#bd5473','#c75b65','#c9775a','#c98d4d','#c5a34a','#b4ad55','#8ea65c','#68a37a','#52a48f','#4e9e9e','#4e9eae','#568fb7','#6583bb','#7977b8','#9272b4','#aa70a8','#b86d93','#a75b80'];
+function showDashboardColourPalette(anchor,input){
+ document.querySelectorAll('.dashboard-colour-popover').forEach(el=>el.remove());
+ const popup=document.createElement('div');popup.className='dashboard-colour-popover';popup.setAttribute('role','group');popup.setAttribute('aria-label','Choose from 18 coordinated colours');
+ DASHBOARD_COLOUR_PALETTE.forEach((hex,i)=>{
+  const b=document.createElement('button');b.type='button';b.className='dashboard-colour-swatch';b.style.backgroundColor=hex;b.title='Colour '+(i+1);b.setAttribute('aria-label','Select colour '+(i+1));
+  if(input.value.toLowerCase()===hex)b.classList.add('selected');
+  b.addEventListener('click',event=>{event.stopPropagation();input.value=hex;input.dispatchEvent(new Event('change',{bubbles:true}));popup.remove()});popup.append(b);
+ });
+ document.body.append(popup);
+ const rect=anchor.getBoundingClientRect();const width=popup.offsetWidth;
+ popup.style.left=Math.max(8,Math.min(window.innerWidth-width-8,rect.left))+'px';
+ popup.style.top=(rect.bottom+popup.offsetHeight+10<window.innerHeight?rect.bottom+7:Math.max(8,rect.top-popup.offsetHeight-7))+'px';
+ const dismiss=event=>{if(!popup.contains(event.target)&&!anchor.contains(event.target)){popup.remove();document.removeEventListener('pointerdown',dismiss,true)}};
+ setTimeout(()=>document.addEventListener('pointerdown',dismiss,true),0);
+}
+function installDashboardColourPicker(wrap,input){
+ // Keep the existing input/change handlers and saved-settings flow; replace native picker UI only.
+ input.tabIndex=-1;input.setAttribute('aria-hidden','true');
+ wrap.setAttribute('role','button');wrap.tabIndex=0;
+ wrap.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();showDashboardColourPalette(wrap,input)});
+ wrap.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();showDashboardColourPalette(wrap,input)}});
+}
+
 const TYPE_PALETTE=['#d4777e','#9978c8','#e4b94f','#72a9d5','#6eaea6','#cf8eb7','#82b789','#c79c70'];
 function typeColour(name,overrides){if(/^#[0-9a-f]{6}$/i.test(overrides[name]||''))return overrides[name];let hash=0;for(const c of String(name).toLowerCase())hash=(hash*31+c.charCodeAt(0))>>>0;return TYPE_PALETTE[hash%TYPE_PALETTE.length]}
 function urgencyTypeColour(name){return typeColour(name,urgencyTypeColours)}
 function clinicianTypeColour(name){return typeColour(name,clinicianTypeColours)}
-function typeColourPicker(type,kind,onChanged){const colour=kind==='urgency'?urgencyTypeColours:clinicianTypeColours;const current=kind==='urgency'?urgencyTypeColour(type):clinicianTypeColour(type);const wrap=document.createElement('label');wrap.className='people-colour-control people-type-colour-control';wrap.title='Change colour for '+type;wrap.draggable=false;const dot=document.createElement('span');dot.className='clinician-colour-dot';dot.style.backgroundColor=current;const input=document.createElement('input');input.className='people-colour-picker';input.type='color';input.value=current;input.setAttribute('aria-label','Choose colour for '+type);input.addEventListener('change',()=>{colour[type]=input.value;onChanged()});wrap.append(dot,input);return wrap}
+function typeColourPicker(type,kind,onChanged){const colour=kind==='urgency'?urgencyTypeColours:clinicianTypeColours;const current=kind==='urgency'?urgencyTypeColour(type):clinicianTypeColour(type);const wrap=document.createElement('label');wrap.className='people-colour-control people-type-colour-control';wrap.title='Change colour for '+type;wrap.draggable=false;const dot=document.createElement('span');dot.className='clinician-colour-dot';dot.style.backgroundColor=current;const input=document.createElement('input');input.className='people-colour-picker';input.type='color';input.value=current;input.setAttribute('aria-label','Choose colour for '+type);input.addEventListener('change',()=>{colour[type]=input.value;onChanged()});wrap.append(dot,input);installDashboardColourPicker(wrap,input);return wrap}
 
 const CLINICIAN_GROUP_PALETTE=['#78a9d1','#85bb99','#b49bd3','#dea37e','#80bdbf','#d493b0','#b8ae75','#8badd1','#b1a0ca','#c89e80'];
 function clinicianGroupColour(group){
@@ -140,7 +166,7 @@ function renderSlotGroupBoxes(){
    const picker=make('input','people-colour-picker');picker.type='color';picker.value=urgencyGroupColour(group);
    picker.setAttribute('aria-label','Choose colour for urgency group '+group);
    picker.addEventListener('change',()=>{urgencyGroupColours[group]=picker.value;changed()});
-   colour.append(dot,picker);header.append(colour);
+   colour.append(dot,picker);installDashboardColourPicker(colour,picker);header.append(colour);
   }
   header.append(title,count);
   if(!isUnassigned){
@@ -295,7 +321,7 @@ function renderPeopleGroups(){
    saveCategories();renderPeopleGroups();renderPeople();
    renderUrgentSideFilters();renderRoutineAvailabilityFilters();refreshClinicianCharts();
   });
-  colourWrap.append(dot,picker);
+  colourWrap.append(dot,picker);installDashboardColourPicker(colourWrap,picker);
   header.append(colourWrap,title,count,actions);
   card.append(header);
   const list=el('div','people-group-types');
