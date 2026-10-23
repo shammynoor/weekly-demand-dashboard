@@ -1107,6 +1107,8 @@ function initCSVDragDrop(){
   if(!csvDragDepth)csvDropOverlay(false);
  });
  window.addEventListener('drop',event=>{
+  // Internal group/type drags carry text data, not files. Never intercept them.
+  if(!csvFileDrag(event))return;
   event.preventDefault();csvDragDepth=0;csvDropOverlay(false);
   const files=[...(event.dataTransfer?.files||[])];
   if(files.length!==1){csvDropStatus('Rejected: drop exactly one CSV file at a time.',true);return}
