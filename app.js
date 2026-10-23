@@ -10,7 +10,7 @@ let records=[],weeks=[],types=[],statuses=[],clinicianTypes=[],bookingTimeRecord
 let availabilityRecords=[];
 let peopleRecords=[];
 let peopleLocum={};
-function normalisePersonName(value){return String(value??'').trim().replace(/\\s+/g,' ')}
+function normalisePersonName(value){return String(value??'').trim().replace(/\s+/g,' ')}
 function renderPeople(){
  const body=$('peopleTableBody'),count=$('peopleCount');if(!body)return;
  const query=String($('peopleSearch')?.value||'').trim().toLowerCase();
@@ -323,7 +323,7 @@ function aggregateCSV(csv,aggregated,availabilityAggregate,bookingTimeAggregate,
   const date=appointmentDay.toISOString().slice(0,10);
   const clinician=String(r['User Type of the Session Holder of the Session']??'').trim()||'Unknown clinician';
   const person=normalisePersonName(r['Full Name of the Session Holder of the Session']);
-  if(person&&peopleAggregate)peopleAggregate.set(JSON.stringify([person,clinician]),true);
+  if(person&&peopleAggregate){const key=JSON.stringify([person,clinician]);peopleAggregate.set(key,(peopleAggregate.get(key)||0)+1)}
   const akey=JSON.stringify([date,slotType,availability,clinician]);
   availabilityAggregate.set(akey,(availabilityAggregate.get(akey)||0)+1);
   if(status!=='booked')continue;
@@ -445,8 +445,16 @@ function renderDropEditor(dimension){
 async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;setButtons();showRefreshFeedback('Refreshing data…',true);setSync('Checking OneDrive CSV files…');try{
  const items=(await children(selectedFolder.id)).filter(f=>f.file&&/\.csv$/i.test(f.name)).sort((a,b)=>a.name.localeCompare(b.name));if(!items.length)throw Error('No CSV files found directly inside this folder.');
  const fingerprint=JSON.stringify(items.map(f=>[f.id,f.lastModifiedDateTime,f.size]));if(!force&&fingerprint===lastFingerprint){showRefreshFeedback('Already up to date');setSync(`No changes detected · ${items.length} CSV files · Checked ${new Date().toLocaleTimeString('en-GB')}`);return}
- const aggregate=new Map(),availabilityAggregate=new Map(),bookingTimeAggregate=new Map();let valid=0,skipped=0;for(let i=0;i<items.length;i++){const f=items[i];showRefreshFeedback(`Loading file ${i+1} of ${items.length}…`,true);setSync(`Loading ${i+1} of ${items.length}: ${f.name}`);const detail=await graph(`/me/drive/items/${encodeURIComponent(f.id)}`);const url=detail['@microsoft.graph.downloadUrl'];if(!url)throw Error('OneDrive did not provide a download URL for '+f.name);const response=await fetch(url,{cache:'no-store'});if(!response.ok)throw Error(`Could not download ${f.name}: HTTP ${response.status}`);const stats=aggregateCSV(await response.text(),aggregate,availabilityAggregate,bookingTimeAggregate,peopleAggregate);valid+=stats.valid;skipped+=stats.skipped}
- peopleRecords=[...peopleAggregate].map(([key])=>{const [name,type]=JSON.parse(key);return {name,type}}).sort((a,b)=>a.name.localeCompare(b.name)||a.type.localeCompare(b.type));
+ const aggregate=new Map(),availabilityAggregate=new Map(),bookingTimeAggregate=new Map(),peopleAggregate=new Map();let valid=0,skipped=0;for(let i=0;i<items.length;i++){const f=items[i];showRefreshFeedback(`Loading file ${i+1} of ${items.length}…`,true);setSync(`Loading ${i+1} of ${items.length}: ${f.name}`);const detail=await graph(`/me/drive/items/${encodeURIComponent(f.id)}`);const url=detail['@microsoft.graph.downloadUrl'];if(!url)throw Error('OneDrive did not provide a download URL for '+f.name);const response=await fetch(url,{cache:'no-store'});if(!response.ok)throw Error(`Could not download ${f.name}: HTTP ${response.status}`);const stats=aggregateCSV(await response.text(),aggregate,availabilityAggregate,bookingTimeAggregate,peopleAggregate);valid+=stats.valid;skipped+=stats.skipped}
+ const peopleByName=new Map();
+ for(const [key,count] of peopleAggregate){
+  const [name,type]=JSON.parse(key);
+  const id=name.toLocaleLowerCase('en-GB');
+  const entry=peopleByName.get(id)||{name,types:new Map()};
+  entry.types.set(type,(entry.types.get(type)||0)+count);
+  peopleByName.set(id,entry);
+ }
+ peopleRecords=[...peopleByName.values()].map(({name,types})=>({name,type:[...types].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]))[0][0]})).sort((a,b)=>a.name.localeCompare(b.name));
  renderPeople();
  bookingTimeRecords=[...bookingTimeAggregate].map(([key,count])=>{const [bookedDay,minute,slot,clinician]=JSON.parse(key);return {bookedDay,minute,slot,clinician,count}});
  availabilityRecords=[...availabilityAggregate].map(([key,count])=>{const [date,slot,availability,clinician]=JSON.parse(key);return {date,slot,availability,clinician,count}});

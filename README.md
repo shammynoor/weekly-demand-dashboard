@@ -274,3 +274,7 @@ Source-data eligibility is evaluated independently for each filter group, not ag
 \n\n## Manage people\nNew navigation tab listing distinct CSV Full Name of the Session Holder of the Session values, with User Type of the Session Holder of the Session and a Locum Yes/No selector (default No). Records are deduplicated by name + user type, sorted by name, and searchable. Locum selections are stored locally and synced to the existing private OneDrive settings JSON using Save to OneDrive. No changes to appointment counts or filtering.\n
 
 Fix: declare peopleAggregate in loadFolder before passing it to aggregateCSV. People are now collected from every parsed CSV row after fill-down, deduplicated case-insensitively by full name; user type is the most frequent recorded type for that name. Existing appointment count logic is unchanged.
+
+
+### 2026-10-23 critical refresh repair
+Declare peopleAggregate in loadFolder before CSV aggregation, count occurrences per person/type, and deduplicate by person name (case-insensitive) selecting the most frequently observed user type. Correct name whitespace normalisation. This fixes ReferenceError: peopleAggregate is not defined.
