@@ -2163,32 +2163,62 @@ let bookingTimesUrgencyInitialised=false;
 function bookingTimeAmPm(time){const [hour,minute]=time.split(':').map(Number);return String(hour%12||12)+(minute?':'+String(minute).padStart(2,'0'):'')+(hour>=12?'pm':'am');}
 const bookingTimesDisabledClinician=new Set();
 const bookingTimesDisabledConsult=new Set();
-function bookingTimesTogglePanel(id,names,disabled){
+function bookingTimesRecordGroups(r){return {urgency:groupUrgencyAssignments[assignments[r.slot]],clinician:clinicianGroupAssignments[effectiveClinicianType(r.clinician,r.person)],consult:consultAssignments[r.slot]};}
+function bookingTimesHasData(overrides={}){
+ const u=overrides.urgency||bookingTimesDisabledUrgency,c=overrides.clinician||bookingTimesDisabledClinician,m=overrides.consult||bookingTimesDisabledConsult;
+ return bookingTimeRecords.some(r=>{if(!(r.count>0&&Number.isFinite(r.minute)&&r.minute>=0&&r.minute<1440))return false;const g=bookingTimesRecordGroups(r);return groupUrgencyNames.includes(g.urgency)&&!u.has(g.urgency)&&clinicianGroupNames.includes(g.clinician)&&!c.has(g.clinician)&&consultCategoryNames.includes(g.consult)&&!m.has(g.consult)});
+}
+function bookingTimesAvailableNames(dimension,names){
+ return names.filter(name=>bookingTimeRecords.some(r=>{
+  if(!(r.count>0&&Number.isFinite(r.minute)&&r.minute>=0&&r.minute<1440))return false;
+  const g=bookingTimesRecordGroups(r);
+  if(g[dimension]!==name)return false;
+  return (dimension==='urgency'||!bookingTimesDisabledUrgency.has(g.urgency))&&(dimension==='clinician'||!bookingTimesDisabledClinician.has(g.clinician))&&(dimension==='consult'||!bookingTimesDisabledConsult.has(g.consult));
+ }));
+}
+function bookingTimesTogglePanel(id,names,disabled,dimension){
  const root=$(id);if(!root)return;
  const current=[...root.querySelectorAll('input[data-filter-name]')].map(input=>input.dataset.filterName);
- if(current.length===names.length&&current.every((name,i)=>name===names[i])){root.querySelectorAll('input[data-filter-name]').forEach(input=>{const colour=id==='bookingTimesUrgencyFilters'?urgencyGroupColour(input.dataset.filterName):id==='bookingTimesClinicianFilters'?clinicianGroupColour(input.dataset.filterName):'#596675';input.nextElementSibling?.style.setProperty('--switch-on',colour)});updateCollapsedFilterSummaries();return;}
+ if(current.length===names.length&&current.every((name,i)=>name===names[i])){updateCollapsedFilterSummaries();return;}
  root.replaceChildren();
- if(!names.length){const span=document.createElement('span');span.className='hint';span.textContent='Set up categories in Manage categories.';root.append(span);updateCollapsedFilterSummaries();return}
+ if(!names.length){const span=document.createElement('span');span.className='hint';span.textContent='No data for these filters';root.append(span);updateCollapsedFilterSummaries();return;}
  for(const name of names){
   const label=document.createElement('label');label.className='filter-row';
   const switchWrap=document.createElement('span');switchWrap.className='switch';
-  const input=document.createElement('input');input.type='checkbox';input.setAttribute('role','switch');
-  input.dataset.filterName=name;input.checked=!disabled.has(name);input.setAttribute('aria-label','Include '+name);
+  const input=document.createElement('input');input.type='checkbox';input.setAttribute('role',dimension==='urgency'?'radio':'switch');
+  input.dataset.filterName=name;input.checked=!disabled.has(name);input.setAttribute('aria-label',(dimension==='urgency'?'Select ':'Include ')+name);
   const track=document.createElement('span');track.className='switch-track';
-  if(id==='bookingTimesUrgencyFilters')track.style.setProperty('--switch-on',urgencyGroupColour(name));else if(id==='bookingTimesClinicianFilters')track.style.setProperty('--switch-on',clinicianGroupColour(name));else track.style.setProperty('--switch-on','#596675');
+  track.style.setProperty('--switch-on',dimension==='urgency'?urgencyGroupColour(name):dimension==='clinician'?clinicianGroupColour(name):'#638fac');
   const caption=document.createElement('span');caption.textContent=name;
   switchWrap.append(input,track);label.append(switchWrap,caption);root.append(label);
-  input.addEventListener('change',()=>{if(input.checked)disabled.delete(name);else disabled.add(name);renderBookingTimesChart()});
+  input.addEventListener('change',()=>{
+   if(dimension==='urgency'){
+    // Urgency is single-select; clicking the selected group cannot clear it.
+    if(disabled.has(name)){const proposed=new Set(groupUrgencyNames.filter(group=>group!==name));if(bookingTimesHasData({urgency:proposed})){disabled.clear();for(const group of proposed)disabled.add(group)}}
+   }else{
+    const proposed=new Set(disabled);if(input.checked)proposed.delete(name);else proposed.add(name);
+    if(bookingTimesHasData({[dimension]:proposed})){disabled.clear();for(const group of proposed)disabled.add(group)}
+   }
+   renderBookingTimesChart();
+  });
  }
  updateCollapsedFilterSummaries();
 }
+function roundBookingTimesLabels(chart){chart.querySelectorAll('.annotation .bg').forEach(rect=>{rect.setAttribute('rx','9');rect.setAttribute('ry','9');rect.style.fill='#ffffff';rect.style.stroke='#dce4ec';});}
 function renderBookingTimesChart(){
  const chart=$('bookingTimesChart');
  if(!chart||$('bookingTimesPage').classList.contains('hidden')||!window.Plotly)return;
- if(!bookingTimesUrgencyInitialised&&groupUrgencyNames.length){for(const name of groupUrgencyNames)if(name.trim().toLowerCase()!=='urgent')bookingTimesDisabledUrgency.add(name);bookingTimesUrgencyInitialised=true;}
- bookingTimesTogglePanel('bookingTimesUrgencyFilters',groupUrgencyNames,bookingTimesDisabledUrgency);
- bookingTimesTogglePanel('bookingTimesClinicianFilters',clinicianGroupNames,bookingTimesDisabledClinician);
- bookingTimesTogglePanel('bookingTimesConsultFilters',consultCategoryNames,bookingTimesDisabledConsult);
+ if(!bookingTimesUrgencyInitialised&&bookingTimeRecords.length&&groupUrgencyNames.length){
+  const available=bookingTimesAvailableNames('urgency',groupUrgencyNames);
+  const preferred=available.find(name=>name.trim().toLowerCase()==='urgent')||available[0];
+  if(preferred){bookingTimesDisabledUrgency.clear();for(const name of groupUrgencyNames)if(name!==preferred)bookingTimesDisabledUrgency.add(name);bookingTimesUrgencyInitialised=true;}
+ }
+ const availableUrgency=bookingTimesAvailableNames('urgency',groupUrgencyNames);
+ const selectedUrgency=availableUrgency.find(name=>!bookingTimesDisabledUrgency.has(name));
+ if(!selectedUrgency&&availableUrgency.length){const fallback=availableUrgency[0];bookingTimesDisabledUrgency.clear();for(const name of groupUrgencyNames)if(name!==fallback)bookingTimesDisabledUrgency.add(name);}
+ bookingTimesTogglePanel('bookingTimesUrgencyFilters',availableUrgency,bookingTimesDisabledUrgency,'urgency');
+ bookingTimesTogglePanel('bookingTimesClinicianFilters',bookingTimesAvailableNames('clinician',clinicianGroupNames),bookingTimesDisabledClinician,'clinician');
+ bookingTimesTogglePanel('bookingTimesConsultFilters',bookingTimesAvailableNames('consult',consultCategoryNames),bookingTimesDisabledConsult,'consult');
  const bins=Array(96).fill(0);
  let count=0;
  for(const r of bookingTimeRecords){
@@ -2224,7 +2254,7 @@ function renderBookingTimesChart(){
  const annotations=percentileMarkers.map(({percent,time,colour})=>({
   xref:'x',yref:'y2',x:time,y:percent,text:'<b>'+percent+'% · '+bookingTimeAmPm(time)+'</b>',
   showarrow:false,xanchor:'center',yanchor:'bottom',yshift:percent===50?24:28,
-  font:{size:15,color:'#28445c'},bgcolor:'#eef4f9',bordercolor:'#d3e1ec',borderwidth:1,borderpad:5
+  font:{size:15,color:'#28445c'},bgcolor:'#ffffff',bordercolor:'#dce4ec',borderwidth:1,borderpad:5
  }));
  const traces=[
   {type:'bar',name:'Bookings per 15 minutes',x:visibleTimes,y:visibleBins,marker:{color:'#8fb4d3',line:{width:0}},hovertemplate:'%{x}–15 min later<br>%{y:,} bookings<extra></extra>',yaxis:'y'},
@@ -2238,7 +2268,7 @@ function renderBookingTimesChart(){
   yaxis:{title:{text:'Number of bookings',font:{size:16,color:'#28445c'},standoff:14},visible:true,showticklabels:true,rangemode:'tozero',showgrid:false,zeroline:false,showline:true,linecolor:'#536b80',linewidth:3,ticks:'outside',tickcolor:'#536b80',tickwidth:2,ticklen:6},
   yaxis2:{title:'Cumulative bookings (%)',overlaying:'y',side:'right',range:[0,100],ticksuffix:'%',showgrid:true,gridcolor:'#d9e1e8',zeroline:false,showline:true,linecolor:'#536b80',linewidth:3},
   shapes,annotations,hovermode:'x unified'
- },{responsive:true,displaylogo:false,displayModeBar:false,scrollZoom:false});
+ },{responsive:true,displaylogo:false,displayModeBar:false,scrollZoom:false}).then(()=>roundBookingTimesLabels(chart));
  const note=$('bookingTimesNote');
  if(note)note.textContent=count?count.toLocaleString('en-GB')+' booked appointments across the loaded CSV files and selected categories.':'No bookings match these filters. Check category assignments in Manage categories.';
 }
