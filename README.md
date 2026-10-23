@@ -285,3 +285,7 @@ Declare peopleAggregate in loadFolder before CSV aggregation, count occurrences 
 - Preselects from the existing User Type → Detailed Clinician Types assignments, falling back to exact name matches; otherwise Unassigned.
 - Fourth column is Locum Yes/No. Conservatively suggests Yes only for explicit 'locum', 'agency', 'bank', or 'temporary' in user type; otherwise No. These are guesses, not verified employment statuses.
 - Both selections are saved to browser storage and to the existing private OneDrive settings on Save. Explicit selections override guesses.
+
+
+## Person-specific clinician categorisation
+All charts now use the named session holder's Assigned Clinician Type from Manage people as their detailed clinician category. This takes priority over the CSV User Type field. The original CSV user type remains visible in Manage people and is used as fallback when no valid person-specific category exists. The person name is retained in each aggregated appointment record to prevent different clinicians from being merged before filtering. Changing a person's category updates visible charts without reimporting CSVs.

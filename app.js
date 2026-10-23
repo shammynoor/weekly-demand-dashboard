@@ -23,6 +23,27 @@ function suggestedClinicianType(type){
  const exact=clinicianCategoryNames.find(n=>n.toLocaleLowerCase('en-GB')===String(type||'').trim().toLocaleLowerCase('en-GB'));
  return exact||'';
 }
+function effectiveClinicianType(clinician,person){
+ const key=personKey(person);
+ if(key){
+  const explicit=peopleClinicianType[key];
+  if(explicit!==undefined){
+   // Explicit Unassigned means use the original CSV user-type mapping.
+   if(explicit&&clinicianCategoryNames.includes(explicit))return explicit;
+  }else{
+   const entry=peopleRecords.find(p=>personKey(p.name)===key);
+   const suggested=suggestedClinicianType(entry?.type||clinician);
+   if(suggested)return suggested;
+  }
+ }
+ return clinicianAssignments[clinician]||'';
+}
+function refreshClinicianCharts(){
+ if(!$('chartPage')?.classList.contains('hidden'))refresh();
+ if(!$('availabilityPage')?.classList.contains('hidden'))renderAvailabilityChart();
+ if(!$('routineAvailabilityPage')?.classList.contains('hidden'))renderRoutineAvailabilityChart();
+ if(!$('bookingTimesPage')?.classList.contains('hidden'))renderBookingTimesChart();
+}
 function renderPeople(){
  const body=$('peopleTableBody'),count=$('peopleCount');if(!body)return;
  const query=String($('peopleSearch')?.value||'').trim().toLowerCase();
@@ -46,6 +67,7 @@ function renderPeople(){
   assigned.addEventListener('change',()=>{
    peopleClinicianType[key]=assigned.value;
    saveCategories();
+   refreshClinicianCharts();
    const status=$('peopleSaveStatus');if(status)status.textContent='Changes saved in this browser — click Save to OneDrive to synchronise.';
   });
   assignedCell.append(assigned);
@@ -355,7 +377,7 @@ function aggregateCSV(csv,aggregated,availabilityAggregate,bookingTimeAggregate,
   const clinician=String(r['User Type of the Session Holder of the Session']??'').trim()||'Unknown clinician';
   const person=normalisePersonName(r['Full Name of the Session Holder of the Session']);
   if(person&&peopleAggregate){const key=JSON.stringify([person,clinician]);peopleAggregate.set(key,(peopleAggregate.get(key)||0)+1)}
-  const akey=JSON.stringify([date,slotType,availability,clinician]);
+  const akey=JSON.stringify([date,slotType,availability,clinician,person]);
   availabilityAggregate.set(akey,(availabilityAggregate.get(akey)||0)+1);
   if(status!=='booked')continue;
   const lead=Number(leadRaw.replace(/,/g,''));
@@ -370,9 +392,9 @@ function aggregateCSV(csv,aggregated,availabilityAggregate,bookingTimeAggregate,
   const bookedDay=booked.toISOString().slice(0,10);
   // Booking clock time, calculated using the same lead-time arithmetic as the demand charts.
   const bookedMinute=booked.getUTCHours()*60+booked.getUTCMinutes();
-  const timeKey=JSON.stringify([bookedDay,bookedMinute,slotType,clinician]);
+  const timeKey=JSON.stringify([bookedDay,bookedMinute,slotType,clinician,person]);
   bookingTimeAggregate.set(timeKey,(bookingTimeAggregate.get(timeKey)||0)+1);
-  const key=JSON.stringify([bookedDay,slotType,clinician]);
+  const key=JSON.stringify([bookedDay,slotType,clinician,person]);
   aggregated.set(key,(aggregated.get(key)||0)+1);valid++;
  }
  return {valid,skipped};
@@ -487,9 +509,9 @@ async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;
  }
  peopleRecords=[...peopleByName.values()].map(({name,types})=>({name,type:[...types].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]))[0][0]})).sort((a,b)=>a.type.localeCompare(b.type)||a.name.localeCompare(b.name));
  renderPeople();
- bookingTimeRecords=[...bookingTimeAggregate].map(([key,count])=>{const [bookedDay,minute,slot,clinician]=JSON.parse(key);return {bookedDay,minute,slot,clinician,count}});
- availabilityRecords=[...availabilityAggregate].map(([key,count])=>{const [date,slot,availability,clinician]=JSON.parse(key);return {date,slot,availability,clinician,count}});
- records=[...aggregate].map(([key,count])=>{const [bookedDay,slot,clinician]=JSON.parse(key);const bookedWeek=mondayOf(bookedDay);return {week:bookedWeek,bookedWeek,bookedDay,slot,clinician,status:'Booked',count}});weeks=[...new Set(records.map(r=>r.bookedWeek))].sort();types=[...new Set([...records.map(r=>r.slot),...availabilityRecords.map(r=>r.slot)])].sort();statuses=['Booked'];clinicianTypes=[...new Set([...records.map(r=>r.clinician),...availabilityRecords.map(r=>r.clinician)])].filter(Boolean).sort();
+ bookingTimeRecords=[...bookingTimeAggregate].map(([key,count])=>{const [bookedDay,minute,slot,clinician,person]=JSON.parse(key);return {bookedDay,minute,slot,clinician,person,count}});
+ availabilityRecords=[...availabilityAggregate].map(([key,count])=>{const [date,slot,availability,clinician,person]=JSON.parse(key);return {date,slot,availability,clinician,person,count}});
+ records=[...aggregate].map(([key,count])=>{const [bookedDay,slot,clinician,person]=JSON.parse(key);const bookedWeek=mondayOf(bookedDay);return {week:bookedWeek,bookedWeek,bookedDay,slot,clinician,person,status:'Booked',count}});weeks=[...new Set(records.map(r=>r.bookedWeek))].sort();types=[...new Set([...records.map(r=>r.slot),...availabilityRecords.map(r=>r.slot)])].sort();statuses=['Booked'];clinicianTypes=[...new Set([...records.map(r=>r.clinician),...availabilityRecords.map(r=>r.clinician)])].filter(Boolean).sort();
  // Assign obvious names on first encounter; retain any existing manual choices.
  // Do not guess assignments: unknown slot types stay Uncategorised until manually assigned.
 
@@ -549,8 +571,8 @@ function updateClinicianChartFilter(){
   input.addEventListener('change',()=>{if(input.checked)disabledClinicianTypes.delete(name);else disabledClinicianTypes.add(name);refresh()});
  }
 }
-function clinicianMatches(clinician){
- const detailed=clinicianAssignments[clinician];
+function clinicianMatches(clinician,person){
+ const detailed=effectiveClinicianType(clinician,person);
  const group=clinicianGroupAssignments[detailed];
  // Only session-holder user types mapped through a detailed category to an enabled group count.
  return clinicianGroupNames.includes(group)&&!disabledClinicianTypes.has(group);
@@ -602,7 +624,7 @@ document.getElementById('periodMode').onchange=e=>{
 document.getElementById('currentWeekToggle').onchange=e=>{showCurrentWeek=e.target.checked;refresh()};
 document.getElementById('displayMode').onchange=e=>{continuousMode=e.target.checked;document.getElementById('timelineValue').textContent=continuousMode?'Continuous':'Superimposed';refresh()};
 function periodKey(r){return monthlyMode?r.bookedDay?.slice(0,7):r.bookedWeek}
-function includedRecord(r){return r.status==='Booked'&&clinicianMatches(r.clinician)&&consultMatches(r.slot)&&(monthlyMode||!excludeBankHolidays||!bankHolidayWeeks.has(r.bookedWeek))}
+function includedRecord(r){return r.status==='Booked'&&clinicianMatches(r.clinician,r.person)&&consultMatches(r.slot)&&(monthlyMode||!excludeBankHolidays||!bankHolidayWeeks.has(r.bookedWeek))}
 function monthOfPeriod(p){return monthlyMode?p+'-01':p}
 function periodIsCurrent(p){return p===(monthlyMode?thisMonth:thisWeek)}
 function weeklyUrgencyMatches(slot,category){
@@ -818,7 +840,7 @@ function availabilityRecordsInRange(page){
 function availabilityOptionHasData(page,kind,name){
  return availabilityRecordsInRange(page).some(r=>{
   const category=String(assignments[r.slot]||'').trim();
-  const clinician=clinicianGroupAssignments[clinicianAssignments[r.clinician]];
+  const clinician=clinicianGroupAssignments[effectiveClinicianType(r.clinician,r.person)];
   const consult=consultAssignments[r.slot];
   return kind==='category'?category===name:kind==='clinician'?clinician===name:consult===name;
  });
@@ -826,7 +848,7 @@ function availabilityOptionHasData(page,kind,name){
 function availabilityHasVisibleRecords(page){
  return availabilityRecordsInRange(page).some(r=>{
   const category=String(assignments[r.slot]||'').trim();
-  const clinician=clinicianGroupAssignments[clinicianAssignments[r.clinician]];
+  const clinician=clinicianGroupAssignments[effectiveClinicianType(r.clinician,r.person)];
   const consult=consultAssignments[r.slot];
   return page==='urgent'?
    !urgentCategoryDisabled.has(category)&&urgentCategoryNames().includes(category)&&
@@ -897,8 +919,8 @@ function renderUrgentSideFilters(){
  build('urgentClinicianToggles',clinicianGroupNames,urgentClinicianDisabled,'#a6d6b2');
  build('urgentConsultToggles',consultCategoryNames,urgentConsultDisabled,'#a1c8e8');
 }
-function urgentClinicianMatches(clinician){
- const detailed=clinicianAssignments[clinician];const group=clinicianGroupAssignments[detailed];
+function urgentClinicianMatches(clinician,person){
+ const detailed=effectiveClinicianType(clinician,person);const group=clinicianGroupAssignments[detailed];
  return clinicianGroupNames.includes(group)&&!urgentClinicianDisabled.has(group);
 }
 function urgentConsultMatches(slot){
@@ -988,7 +1010,7 @@ function renderAvailabilityChart(){
  for(const r of availabilityRecords){
   if(!weekdays.has(r.date))continue;
   const category=String(assignments[r.slot]||'').trim();
-  if(!names.includes(category)||!urgentClinicianMatches(r.clinician)||!urgentConsultMatches(r.slot))continue;
+  if(!names.includes(category)||!urgentClinicianMatches(r.clinician,r.person)||!urgentConsultMatches(r.slot))continue;
   const status=String(r.availability||'').trim().toLowerCase();
   const label=status==='booked'?category:status==='blocked'?'Blocked':status==='embargoed'?'Embargoed':status==='available'?'Available':null;
   if(!label)continue;
@@ -1060,8 +1082,8 @@ function renderRoutineAvailabilityFilters(){
  build('routineClinicianFilters',clinicianGroupNames,routineDisabledClinicianGroups,'Create clinician groups in Manage categories.');
  build('routineConsultFilters',consultCategoryNames,routineDisabledConsultModes,'Create consult modes in Manage categories.');
 }
-function routineClinicianMatches(clinician){
- const detailed=clinicianAssignments[clinician];
+function routineClinicianMatches(clinician,person){
+ const detailed=effectiveClinicianType(clinician,person);
  const group=clinicianGroupAssignments[detailed];
  return clinicianGroupNames.includes(group)&&!routineDisabledClinicianGroups.has(group);
 }
@@ -1120,7 +1142,7 @@ function renderRoutineAvailabilityChart(){
  for(const r of availabilityRecords){
   const detailed=String(assignments[r.slot]||'').trim();
   const group=String(groupUrgencyAssignments[detailed]||'').trim();
-  if(group.toLowerCase()!=='routine'||!routineClinicianMatches(r.clinician)||!routineConsultMatches(r.slot))continue;
+  if(group.toLowerCase()!=='routine'||!routineClinicianMatches(r.clinician,r.person)||!routineConsultMatches(r.slot))continue;
   const bucket=isDaily?r.date:mondayOf(r.date);
   if(!bucketSet.has(bucket))continue;
   const status=String(r.availability||'').trim().toLowerCase();
@@ -1214,7 +1236,7 @@ function renderBookingTimesChart(){
  for(const r of bookingTimeRecords){
   const detailedUrgency=assignments[r.slot];
   const urgency=groupUrgencyAssignments[detailedUrgency];
-  const detailedClinician=clinicianAssignments[r.clinician];
+  const detailedClinician=effectiveClinicianType(r.clinician,r.person);
   const clinician=clinicianGroupAssignments[detailedClinician];
   const consult=consultAssignments[r.slot];
   if(!groupUrgencyNames.includes(urgency)||bookingTimesDisabledUrgency.has(urgency))continue;
