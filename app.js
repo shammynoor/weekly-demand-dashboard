@@ -16,6 +16,12 @@ let isOwner=false,sharedDriveId='',sharedFolderId='';
 let folderAccessVerified=false,folderAccessDenied=false;
 function sharedPath(){return '/shares/'+SHARED_TOKEN+'/driveItem'}
 function sourceItemUrl(id){return isOwner?'/me/drive/items/'+encodeURIComponent(id):'/drives/'+encodeURIComponent(sharedDriveId)+'/items/'+encodeURIComponent(id)}
+const settingsMenu=()=>document.querySelector('.nav-settings-menu');
+function closeSettingsMenu(){const menu=settingsMenu();menu?.classList.remove('open');document.getElementById('navSettingsCog')?.setAttribute('aria-expanded','false');}
+document.getElementById('navSettingsCog')?.addEventListener('click',event=>{event.stopPropagation();const menu=settingsMenu();const open=menu.classList.toggle('open');event.currentTarget.setAttribute('aria-expanded',String(open));});
+document.addEventListener('click',event=>{if(!event.target.closest('.nav-settings-menu'))closeSettingsMenu();});
+document.addEventListener('keydown',event=>{if(event.key==='Escape')closeSettingsMenu();});
+for(const id of ['navCategories','navPeople'])document.getElementById(id)?.addEventListener('click',closeSettingsMenu);
 function applyAccessMode(){
  document.body.classList.toggle('viewer-mode',!isOwner);
  for(const id of ['navCategories','navPeople','chooseFolder','sourceSetup']){const el=document.getElementById(id);if(el)el.hidden=!isOwner}
