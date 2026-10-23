@@ -2179,7 +2179,7 @@ function bookingTimesAvailableNames(dimension,names){
 function bookingTimesTogglePanel(id,names,disabled,dimension){
  const root=$(id);if(!root)return;
  const current=[...root.querySelectorAll('input[data-filter-name]')].map(input=>input.dataset.filterName);
- if(current.length===names.length&&current.every((name,i)=>name===names[i])){updateCollapsedFilterSummaries();return;}
+ if(current.length===names.length&&current.every((name,i)=>name===names[i])){root.querySelectorAll('input[data-filter-name]').forEach(input=>{input.checked=!disabled.has(input.dataset.filterName)});updateCollapsedFilterSummaries();return;}
  root.replaceChildren();
  if(!names.length){const span=document.createElement('span');span.className='hint';span.textContent='No data for these filters';root.append(span);updateCollapsedFilterSummaries();return;}
  for(const name of names){
