@@ -66,10 +66,10 @@ let clinicianTypeColours={};
 let urgencyTypeColours={};
 
 // Curated 18-colour spectrum: cohesive, deep pastel shades rather than unrestricted RGB.
-const DASHBOARD_COLOUR_PALETTE=['#bd5473','#c75b65','#c9775a','#c98d4d','#c5a34a','#b4ad55','#8ea65c','#68a37a','#52a48f','#4e9e9e','#4e9eae','#568fb7','#6583bb','#7977b8','#9272b4','#aa70a8','#b86d93','#a75b80'];
+const DASHBOARD_COLOUR_PALETTE=['#b74f6b','#c45d5d','#c46b52','#c77f50','#c5914b','#c4a24e','#b3a34e','#9ca452','#83a45c','#67a36d','#50a07c','#469d90','#4a9a9b','#4d94a8','#548db5','#6283b7','#737bb8','#8475b4','#9872b2','#a96ea8','#b76b9c','#ae6388','#8b607c','#7c7899','#697e99','#608f8d','#8b9869','#a58a70','#a87772','#887fa5'];
 function showDashboardColourPalette(anchor,input){
  document.querySelectorAll('.dashboard-colour-popover').forEach(el=>el.remove());
- const popup=document.createElement('div');popup.className='dashboard-colour-popover';popup.setAttribute('role','group');popup.setAttribute('aria-label','Choose from 18 coordinated colours');
+ const popup=document.createElement('div');popup.className='dashboard-colour-popover';popup.setAttribute('role','group');popup.setAttribute('aria-label','Choose from 30 coordinated colours');
  DASHBOARD_COLOUR_PALETTE.forEach((hex,i)=>{
   const b=document.createElement('button');b.type='button';b.className='dashboard-colour-swatch';b.style.backgroundColor=hex;b.title='Colour '+(i+1);b.setAttribute('aria-label','Select colour '+(i+1));
   if(input.value.toLowerCase()===hex)b.classList.add('selected');
@@ -1692,6 +1692,34 @@ document.querySelectorAll('.collapse-filter-button').forEach(button=>{
   updateCollapsedFilterSummaries();
  });
 });
+function installAvailabilityCardTooltip(target){
+ if(!target||typeof target.on!=='function')return;
+ const previous=target.querySelector('.availability-tooltip-card');if(previous)previous.remove();
+ const card=document.createElement('div');card.className='availability-tooltip-card';card.hidden=true;
+ target.appendChild(card);
+ if(typeof target.removeAllListeners==='function'){
+  target.removeAllListeners('plotly_hover');target.removeAllListeners('plotly_unhover');
+ }
+ target.on('plotly_hover',data=>{
+  const point=data.points?.find(p=>typeof p.customdata==='string'&&p.customdata.includes('<br>'));
+  if(!point){card.hidden=true;return}
+  const parts=point.customdata.split('<br>');card.replaceChildren();
+  const plain=html=>{const el=document.createElement('span');el.innerHTML=html;return el.textContent||''};
+  const heading=document.createElement('div');heading.className='availability-tooltip-heading';heading.textContent=plain(parts[0]);card.appendChild(heading);
+  for(const part of parts.slice(1)){
+   const row=document.createElement('div');row.className='availability-tooltip-line';
+   row.textContent=plain(part);if(part.startsWith('<b>'))row.classList.add('availability-tooltip-total');card.appendChild(row);
+  }
+  card.hidden=false;
+  const rect=target.getBoundingClientRect(),event=data.event;
+  const x=event?.clientX!=null?event.clientX-rect.left:rect.width/2;
+  const y=event?.clientY!=null?event.clientY-rect.top:rect.height/2;
+  const left=Math.max(8,Math.min(rect.width-card.offsetWidth-8,x+18));
+  const top=y+card.offsetHeight+18>rect.height?y-card.offsetHeight-16:y+14;
+  card.style.left=left+'px';card.style.top=Math.max(8,top)+'px';
+ });
+ target.on('plotly_unhover',()=>{card.hidden=true});
+}
 function simpleAvailabilityHover(heading,labels,values,total){
  return '<b>'+heading+'</b><br>'+labels.map((label,i)=>label+': '+Number(values[i]||0).toLocaleString('en-GB')).join('<br>')+'<br><b>Total: '+total.toLocaleString('en-GB')+'</b>';
 }
@@ -1887,7 +1915,7 @@ function renderAvailabilityChart(){
   legend:{orientation:'h',x:0.5,y:-0.23,xanchor:'center',yanchor:'top',font:{size:13,color:'#42576a'},bgcolor:'rgba(255,255,255,0)'},
   xaxis:{type:'category',categoryorder:'array',categoryarray:buckets,tickmode:'array',tickvals:buckets,ticktext:buckets.map(date=>weekly?'':weekdays.has(date)?new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'short',timeZone:'UTC'}):''),tickangle:-90,tickfont:{size:12,color:'#444444'},showgrid:false,range:[-.5,buckets.length-.5],fixedrange:true},
   yaxis:{title:{text:'Appointment slots',font:{size:12,color:'#708397'}},tickfont:{size:12,color:'#52677b'},range:[0,max],gridcolor:'#e0e8ef',gridwidth:1,zeroline:false,showline:false},annotations,shapes,hovermode:'closest',hoverlabel:{bgcolor:'#ffffff',bordercolor:'#dce5ed',font:{family:'Arial',size:12,color:'#182b3b'},align:'left',namelength:0}
- },{responsive:true,displaylogo:false,displayModeBar:false}).then(()=>applyFlatAvailabilityBars(target));
+ },{responsive:true,displaylogo:false,displayModeBar:false}).then(()=>{applyFlatAvailabilityBars(target);installAvailabilityCardTooltip(target)});
 }
 window.addEventListener('resize',()=>{if(!$('availabilityPage').classList.contains('hidden'))renderAvailabilityChart()});
 setupUrgentRangeControls();
@@ -2057,7 +2085,7 @@ function renderRoutineAvailabilityChart(){
   xaxis:{type:'category',categoryorder:'array',categoryarray:dates,range:[-0.5,dates.length-0.5],tickmode:'array',tickvals:dates,ticktext:isDaily?dates.map(date=>new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'short',timeZone:'UTC'})):dates.map(()=>''),tickangle:-90,tickfont:{size:10},showticklabels:isDaily,showgrid:false,showline:true,linecolor:'#a9b9c7',linewidth:1.5,zeroline:false,fixedrange:true},
   yaxis:{title:{text:'Appointment slots',font:{size:12,color:'#708397'}},tickfont:{size:12,color:'#52677b'},range:[0,Math.ceil(max*1.18/10)*10],gridcolor:'#e0e8ef',gridwidth:1,zeroline:false,showline:false},
   annotations,shapes,hovermode:'closest',hoverlabel:{bgcolor:'#ffffff',bordercolor:'#dce5ed',font:{family:'Arial',size:12,color:'#182b3b'},align:'left',namelength:0}
- },{responsive:true,displaylogo:false,displayModeBar:false}).then(()=>applyFlatAvailabilityBars(target));
+ },{responsive:true,displaylogo:false,displayModeBar:false}).then(()=>{applyFlatAvailabilityBars(target);installAvailabilityCardTooltip(target)});
 }
 window.addEventListener('resize',()=>{if(!$('routineAvailabilityPage').classList.contains('hidden'))renderRoutineAvailabilityChart()});
 setupRoutineRangeControls();

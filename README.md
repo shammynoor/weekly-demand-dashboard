@@ -397,3 +397,6 @@ are overwritten. The viewer sees the shared mappings after refresh.
 
 ## Signposting availability filter correction
 Signposting events do not have a session-holder clinician or consult mode. They therefore bypass clinician and consult-mode filters on Urgent and Routine Availability, while continuing to respect the slot type's assigned urgency category, chart date range and weekday rules.
+
+
+Updated: 30 compact coordinated colour swatches; Urgent and Routine availability tooltips use a custom white rounded card with padded date heading and category rows.
