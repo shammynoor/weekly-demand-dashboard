@@ -373,3 +373,7 @@ Days/Weeks selection on Urgent and Routine availability uses the same secondary-
 - Microsoft Graph shared-folder support is subject to personal OneDrive Graph API behaviour and Microsoft consent. Live cross-account testing is required.
 - To remove a colleague, revoke access to the shared folder in OneDrive.
 - Do not use patient-identifiable information on public hosting without an appropriate security and information governance review.
+
+
+### Shared settings loading fix
+Viewer accounts now locate weekly-demand-categories.json through the shared folder item listing and download its content by item ID. Missing or empty slot assignments produce a clear sign-in error. Refresh status shows assigned slot type count.

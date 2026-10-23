@@ -34,11 +34,23 @@ async function locateSharedFolder(){
  return {id:sharedFolderId,name:root.name||'Shared dashboard folder',shared:true};
 }
 async function readSharedSettings(){
- const bearer=await token();
- const response=await fetch(GRAPH+sharedPath()+':/'+encodeURIComponent(SHARED_SETTINGS_FILE)+':/content',{headers:{Authorization:'Bearer '+bearer},redirect:'follow'});
- if(response.status===404)return null;
- if(!response.ok)throw Error('Shared settings read failed (HTTP '+response.status+')');
- return response.json();
+ // Resolve the file from the folder's children, which works with shared personal OneDrive.
+ // A sharing-link path followed by :/filename:/content is not consistently supported.
+ const folder=await locateSharedFolder();
+ const files=await children(folder.id);
+ const settings=files.find(item=>item.file&&item.name.toLowerCase()===SHARED_SETTINGS_FILE.toLowerCase());
+ if(!settings)return null;
+ const detail=await graph(sourceItemUrl(settings.id));
+ const downloadUrl=detail['@microsoft.graph.downloadUrl'];
+ if(!downloadUrl)throw Error('Microsoft did not provide a download link for shared settings.');
+ const response=await fetch(downloadUrl,{cache:'no-store'});
+ if(!response.ok)throw Error('Shared settings download failed (HTTP '+response.status+')');
+ const data=await response.json();
+ if(!data||!Array.isArray(data.categories)||!data.assignments||typeof data.assignments!=='object')
+  throw Error('Shared settings JSON does not contain valid categories and slot assignments.');
+ if(!Object.keys(data.assignments).length)
+  throw Error('Shared settings file contains no slot type assignments. Ask the administrator to check Slot settings.');
+ return data;
 }
 
 let records=[],weeks=[],types=[],statuses=[],clinicianTypes=[],bookingTimeRecords=[];
@@ -791,7 +803,7 @@ async function initAuth(){
     selectedFolder=await locateSharedFolder();
    }
    await loadCloudCategories();
-   if(!isOwner&&!cloudReady)throw Error('Shared settings could not be loaded. Ask the owner to publish them.');
+   if(!isOwner&&!cloudReady)throw Error('Shared settings could not be loaded. '+($('cloudCategoryStatus')?.textContent||'Ask the owner to publish them.'));
    // Existing browser migrates its chosen folder to OneDrive settings once.
    if(isOwner){if(cloudFolder){selectedFolder=cloudFolder;localStorage.setItem(FOLDER_KEY,JSON.stringify(selectedFolder))}
    else if(selectedFolder&&cloudReady){cloudFolder=selectedFolder;await saveCloudCategories()}
@@ -1139,8 +1151,8 @@ const drawingErrors=[];
  ]){
   try{draw()}catch(error){drawingErrors.push(label+': '+(error?.message||String(error)));console.error('Dashboard rendering error in '+label,error)}
  }
- showRefreshFeedback(drawingErrors.length?'Data loaded; chart issue: '+drawingErrors.join('; '):'Data refreshed successfully');
- scheduleChartResize();setSync(`${items.length} CSV files · ${valid.toLocaleString('en-GB')} booked rows counted · ${skipped.toLocaleString('en-GB')} skipped · Updated ${new Date().toLocaleString('en-GB')}`)
+ showRefreshFeedback(drawingErrors.length?'Data loaded; chart issue: '+drawingErrors.join('; '):(!isOwner?'Data refreshed · shared slot assignments: '+Object.keys(assignments).length:'Data refreshed successfully'));
+ scheduleChartResize();setSync(`${items.length} CSV files · ${valid.toLocaleString('en-GB')} booked rows counted · ${skipped.toLocaleString('en-GB')} skipped · ${Object.keys(assignments).length} assigned slot types · Updated ${new Date().toLocaleString('en-GB')}`)
  }catch(e){
  const message=e?.message||String(e);
  console.error('OneDrive refresh error',e);
