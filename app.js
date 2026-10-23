@@ -1595,6 +1595,15 @@ function applyFlatAvailabilityBars(target){
  target.querySelectorAll('.urgent-whole-bar-outlines').forEach(el=>el.remove());
 }
 
+let urgentGroupWithheld=false;
+let routineGroupWithheld=false;
+for(const [id,update] of [
+ ['urgentGroupWithheld',checked=>{urgentGroupWithheld=checked;renderAvailabilityChart()}],
+ ['routineGroupWithheld',checked=>{routineGroupWithheld=checked;renderRoutineAvailabilityChart()}]
+]){
+ const input=$(id);
+ if(input)input.addEventListener('change',()=>update(input.checked));
+}
 function renderAvailabilityChart(){
  const target=$('availabilityChart');
  if($('availabilityPage').classList.contains('hidden')||!window.Plotly||!target)return;
@@ -1613,7 +1622,10 @@ function renderAvailabilityChart(){
   const category=String(assignments[r.slot]||'').trim();
   if(!names.includes(category)||!urgentClinicianMatches(r.clinician,r.person)||!urgentConsultMatches(r.slot))continue;
   const status=String(r.availability||'').trim().toLowerCase();
-  const label=status==='booked'?category:status==='blocked'?'Blocked':status==='embargoed'?'Embargoed':status==='available'?'Available':null;
+  const label=status==='booked'?category:
+   status==='blocked'?(urgentGroupWithheld?'Held Back':'Blocked'):
+   status==='embargoed'?(urgentGroupWithheld?'Held Back':'Embargoed'):
+   status==='available'?'Available':null;
   if(!label)continue;
   const key=JSON.stringify([r.date,label]);counts.set(key,(counts.get(key)||0)+r.count);
  }
@@ -1625,9 +1637,9 @@ function renderAvailabilityChart(){
   for(const [key,count] of counts){const [date,label]=JSON.parse(key);const k=JSON.stringify([bucketFor(date),label]);aggregated.set(k,(aggregated.get(k)||0)+count);}
   counts.clear();for(const [key,count] of aggregated)counts.set(key,count);
  }
- const labels=[...names,'Blocked','Embargoed','Available'];
+ const labels=[...names,...(urgentGroupWithheld?['Held Back']:['Blocked','Embargoed']),'Available'];
  const colours=Object.fromEntries(names.map(n=>[n,urgentColour(n)]));
- Object.assign(colours,{Blocked:'#435569',Embargoed:'#c2cdd5',Available:'#ffffff'});
+ Object.assign(colours,{Blocked:'#435569',Embargoed:'#667382','Held Back':'#485563',Available:'#ffffff'});
  const totals=buckets.map(date=>labels.reduce((a,n)=>a+(counts.get(JSON.stringify([date,n]))||0),0));
  const max=Math.ceil(Math.max(1,...totals)*1.2/10)*10;
  const daySummary=buckets.map(date=>{
@@ -1778,14 +1790,15 @@ function renderRoutineAvailabilityChart(){
   const bucket=isDaily?r.date:mondayOf(r.date);
   if(!bucketSet.has(bucket))continue;
   const status=String(r.availability||'').trim().toLowerCase();
-  const label=({booked:'Booked',blocked:'Blocked',embargoed:'Embargoed',available:'Available'})[status];
+  const label=({booked:'Booked',blocked:routineGroupWithheld?'Held Back':'Blocked',
+   embargoed:routineGroupWithheld?'Held Back':'Embargoed',available:'Available'})[status];
   if(!label)continue;
   matched+=r.count;
   const key=JSON.stringify([bucket,label]);byBucket.set(key,(byBucket.get(key)||0)+r.count);
   if(label==='Booked'){const typeKey=JSON.stringify([bucket,'Booked',detailed]);byBucket.set(typeKey,(byBucket.get(typeKey)||0)+r.count);}
  }
- const labels=['Booked','Blocked','Embargoed','Available'];
- const colours={'Booked':'#5fc18a','Blocked':'#435569','Embargoed':'#b7c7d1','Available':'#ffffff'};
+ const labels=['Booked',...(routineGroupWithheld?['Held Back']:['Blocked','Embargoed']),'Available'];
+ const colours={'Booked':'#5fc18a','Blocked':'#435569','Embargoed':'#667382','Held Back':'#485563','Available':'#ffffff'};
  const dateText=d=>new Date(d+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',timeZone:'UTC'});
  const summaries=dates.map(date=>{
   const heading=isDaily?new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'short',timeZone:'UTC'}):'Week commencing '+dateText(date);
