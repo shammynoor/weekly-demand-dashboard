@@ -1135,7 +1135,7 @@ function initCSVDragDrop(){
 }
 initCSVDragDrop();
 
-let signpostingRecords=[],signpostingFileCount=0;
+let signpostingRecords=[],signpostingFileCount=0;let signpostingSlotNames=new Set();
 function isSignpostingFile(name){return /signposting[\s_-]*auto[\s_-]*report/i.test(String(name||''))&&/\.csv$/i.test(name)}
 function parseSignpostingDate(raw){
  const value=String(raw||'').trim();
@@ -1201,7 +1201,7 @@ async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;
  if(!/slot[\s_-]*report/i.test(f.name))continue;
  newSlotFiles++;
  const stats=aggregateCSV(csvText,aggregate,availabilityAggregate,bookingTimeAggregate,peopleAggregate);valid+=stats.valid;skipped+=stats.skipped}
- signpostingRecords=newSignposting;signpostingFileCount=newSignpostingFiles;
+ signpostingRecords=newSignposting;signpostingFileCount=newSignpostingFiles;signpostingSlotNames=new Set(newSignposting.map(event=>event.destination));
  // Each dated signposting event is also a booked appointment for the main
  // demand/availability calculations. Its destination is its Slot Type.
  // Keep the dedicated Signposting page sourced from the original event list.
@@ -1718,10 +1718,12 @@ function renderUrgentSideFilters(){
  build('urgentConsultToggles',consultCategoryNames,urgentConsultDisabled,'#a1c8e8');
 }
 function urgentClinicianMatches(clinician,person){
+ if(clinician==='Signposting (no clinician recorded)')return true;
  const detailed=effectiveClinicianType(clinician,person);const group=clinicianGroupAssignments[detailed];
  return clinicianGroupNames.includes(group)&&!urgentClinicianDisabled.has(group)&&!urgentDisabledClinicianTypes.has(detailed);
 }
 function urgentConsultMatches(slot){
+ if(signpostingSlotNames.has(slot))return true;
  const mode=consultAssignments[slot];
  return consultCategoryNames.includes(mode)&&!urgentConsultDisabled.has(mode);
 }
@@ -1945,11 +1947,13 @@ function renderRoutineAvailabilityFilters(){
  build('routineConsultFilters',consultCategoryNames,routineDisabledConsultModes,'Create consult modes in Manage categories.');
 }
 function routineClinicianMatches(clinician,person){
+ if(clinician==='Signposting (no clinician recorded)')return true;
  const detailed=effectiveClinicianType(clinician,person);
  const group=clinicianGroupAssignments[detailed];
  return clinicianGroupNames.includes(group)&&!routineDisabledClinicianGroups.has(group)&&!routineDisabledClinicianTypes.has(detailed);
 }
 function routineConsultMatches(slot){
+ if(signpostingSlotNames.has(slot))return true;
  const mode=consultAssignments[slot];
  return consultCategoryNames.includes(mode)&&!routineDisabledConsultModes.has(mode);
 }

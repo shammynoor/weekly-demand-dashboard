@@ -394,3 +394,6 @@ to a clinician. The dedicated Signposting chart remains independent and uses
 the original events. Unknown destinations remain Unassigned until the
 administrator assigns them in Slot settings. No existing category mappings
 are overwritten. The viewer sees the shared mappings after refresh.
+
+## Signposting availability filter correction
+Signposting events do not have a session-holder clinician or consult mode. They therefore bypass clinician and consult-mode filters on Urgent and Routine Availability, while continuing to respect the slot type's assigned urgency category, chart date range and weekday rules.
