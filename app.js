@@ -117,7 +117,7 @@ function renderSlotGroupBoxes(){
   if(!$('routineAvailabilityPage').classList.contains('hidden'))renderRoutineAvailabilityChart();
   if(!$('chartPage').classList.contains('hidden'))scheduleDemandRefresh();
   if(!$('bookingTimesPage').classList.contains('hidden'))renderBookingTimesChart();
-  const status=$('slotGroupSaveStatus');if(status)status.textContent='Changes saved in this browser. Click Save to OneDrive to synchronise.';
+  const status=$('slotGroupSaveStatus');if(status)status.textContent='Changes are saving automatically to OneDrive.';
  };
  const editor=(initial,placeholder,onSave,onCancel)=>{
   const wrap=make('div','people-inline-editor');
@@ -253,7 +253,7 @@ function renderPeopleGroups(){
   renderClinicianGroupEditor();
   updateClinicianChartFilter();
   refreshClinicianCharts();
-  const status=$('peopleSaveStatus');if(status)status.textContent='Changes saved in this browser — click Save to OneDrive to synchronise.';
+  const status=$('peopleSaveStatus');if(status)status.textContent='Changes are saving automatically to OneDrive.';
  };
  const editor=(initial,placeholder,onSave)=>{
   const wrap=el('div','people-inline-editor');
@@ -417,7 +417,7 @@ function renderSlotTable(){
    if(!$('routineAvailabilityPage').classList.contains('hidden'))renderRoutineAvailabilityChart();
    if(!$('chartPage').classList.contains('hidden'))scheduleDemandRefresh();
    if(!$('bookingTimesPage').classList.contains('hidden'))renderBookingTimesChart();
-   const status=$('slotGroupSaveStatus');if(status)status.textContent='Changes saved in this browser. Click Save to OneDrive to synchronise.';
+   const status=$('slotGroupSaveStatus');if(status)status.textContent='Changes are saving automatically to OneDrive.';
   });
   assignedCell.append(select);
   const groupCell=document.createElement('td');groupCell.className='people-clinician-group-cell';
@@ -478,7 +478,7 @@ function renderPeople(){
    saveCategories();
    refreshClinicianCharts();
    renderPeople();
-   const status=$('peopleSaveStatus');if(status)status.textContent='Changes saved in this browser — click Save to OneDrive to synchronise.';
+   const status=$('peopleSaveStatus');if(status)status.textContent='Changes are saving automatically to OneDrive.';
   });
   assignedCell.append(assigned);
   const groupCell=document.createElement('td');groupCell.className='people-clinician-group-cell';
@@ -498,7 +498,7 @@ function renderPeople(){
   locum.addEventListener('change',()=>{
    peopleLocum[key]=locum.value;
    saveCategories();
-   const status=$('peopleSaveStatus');if(status)status.textContent='Changes saved in this browser — click Save to OneDrive to synchronise.';
+   const status=$('peopleSaveStatus');if(status)status.textContent='Changes are saving automatically to OneDrive.';
   });
   locumCell.append(locum);tr.append(name,type,assignedCell,groupCell,locumCell);body.append(tr);
  }
@@ -576,9 +576,10 @@ async function loadCloudCategories(){
     saveCategories(false);
     await saveCloudCategories();
    }else cloudNotice('All categories loaded from OneDrive.');
-  }else cloudNotice('No cloud settings yet. Click Save to publish your category assignments.');
+  }else cloudNotice('No cloud settings yet. Changes will save automatically.');
   cloudReady=true;
   saveCategories(false);
+  if(categoryDirty)markCategoryDirty();
   renderEditor();
   renderGroupUrgencyEditor();
   renderClinicianEditor();
@@ -593,25 +594,25 @@ async function loadCloudCategories(){
   cloudReady=false;
  }
 }
-let categoryDirty=false;
+let categoryDirty=false, cloudChangeSerial=0, cloudRetryTimer=null;
 function markCategoryDirty(){
- categoryDirty=true;
- cloudNotice('Unsaved category changes — click Save.');
+ categoryDirty=true;cloudChangeSerial++;
+ cloudNotice('Saving settings automatically…');
+ clearTimeout(cloudSaveTimer);
+ if(activeAccount&&cloudReady)cloudSaveTimer=setTimeout(()=>{void saveCloudCategories()},850);
+ else cloudNotice('Changes saved in this browser; OneDrive will sync when connected.');
 }
 function scheduleCloudSave(){markCategoryDirty()}
+
 async function saveCloudCategories(options={}){
  const manual=!!options.manual;
  if(!activeAccount||!cloudReady){
   if(manual)cloudNotice('Cannot save: sign in and wait for OneDrive settings to load.');
   return false;
  }
- if(cloudBusy){
-  if(manual)cloudNotice('A OneDrive save is already running. Please try again.');
-  return false;
- }
+ if(cloudBusy){return false;}
  cloudBusy=true;
- const button=$('saveToOneDrive');
- if(button)button.disabled=true;
+ const saveSerial=cloudChangeSerial;
  if(manual)cloudNotice('Saving all categories and slot assignments to OneDrive…');
  const snapshot=JSON.stringify({
   version:6,
@@ -654,11 +655,18 @@ async function saveCloudCategories(options={}){
   }
   return true;
  }catch(e){
-  cloudNotice('Save failed: '+e.message+'. Changes are still stored in this browser.');
+  categoryDirty=true;
+  cloudNotice('OneDrive autosave failed: '+e.message+'. Changes remain in this browser; retrying automatically.');
+  clearTimeout(cloudRetryTimer);
+  cloudRetryTimer=setTimeout(()=>{if(categoryDirty&&cloudReady&&activeAccount)void saveCloudCategories()},10000);
   return false;
  }finally{
   cloudBusy=false;
-  if(button)button.disabled=false;
+  if(categoryDirty&&cloudReady&&activeAccount&&!cloudRetryTimer){
+   clearTimeout(cloudSaveTimer);
+   cloudSaveTimer=setTimeout(()=>{void saveCloudCategories()},350);
+  }
+  if(!categoryDirty){clearTimeout(cloudRetryTimer);cloudRetryTimer=null;}
  }
 }
 function setStatus(s){$('connectionStatus').textContent=s;$('loginStatus').textContent=s}
@@ -1328,7 +1336,7 @@ function renderGroupUrgencyEditor(){renderDropEditor('groupUrgency');updateAvail
  else if(which==='bookingTimes')setTimeout(renderBookingTimesChart,0);
  else if(which==='people'){renderPeopleGroups();renderPeopleGroupFilter();renderPeople();}
  else {renderSlotGroupBoxes();renderSlotTable();renderEditor();renderGroupUrgencyEditor();renderClinicianEditor();renderClinicianGroupEditor();renderConsultEditor()}
-}document.getElementById('navChart').onclick=()=>showPage('chart');document.getElementById('navCategories').onclick=()=>showPage('categories');document.getElementById('navAvailability').onclick=()=>showPage('availability');document.getElementById('navRoutineAvailability').onclick=()=>showPage('routineAvailability');document.getElementById('navBookingTimes').onclick=()=>showPage('bookingTimes');document.getElementById('navPeople').onclick=()=>showPage('people');$('slotTableSearch').addEventListener('input',renderSlotTable);$('slotGroupFilter').addEventListener('change',renderSlotTable);$('slotUnassignedOnly').addEventListener('change',()=>{$('slotGroupFilter').disabled=$('slotUnassignedOnly').checked;renderSlotTable()});$('peopleSearch').addEventListener('input',renderPeople);$('peopleGroupFilter').addEventListener('change',renderPeople);$('peopleUnassignedOnly').addEventListener('change',()=>{const only=$('peopleUnassignedOnly').checked;$('peopleGroupFilter').disabled=only;renderPeople()});$('savePeopleToOneDrive').onclick=async()=>{const ok=await saveCloudCategories({manual:true});$('peopleSaveStatus').textContent=ok?'Saved to OneDrive.':'Save failed. Please check Manage categories for details.'};document.getElementById('saveToOneDrive').onclick=()=>{void saveCloudCategories({manual:true})};
+}document.getElementById('navChart').onclick=()=>showPage('chart');document.getElementById('navCategories').onclick=()=>showPage('categories');document.getElementById('navAvailability').onclick=()=>showPage('availability');document.getElementById('navRoutineAvailability').onclick=()=>showPage('routineAvailability');document.getElementById('navBookingTimes').onclick=()=>showPage('bookingTimes');document.getElementById('navPeople').onclick=()=>showPage('people');$('slotTableSearch').addEventListener('input',renderSlotTable);$('slotGroupFilter').addEventListener('change',renderSlotTable);$('slotUnassignedOnly').addEventListener('change',()=>{$('slotGroupFilter').disabled=$('slotUnassignedOnly').checked;renderSlotTable()});$('peopleSearch').addEventListener('input',renderPeople);$('peopleGroupFilter').addEventListener('change',renderPeople);$('peopleUnassignedOnly').addEventListener('change',()=>{const only=$('peopleUnassignedOnly').checked;$('peopleGroupFilter').disabled=only;renderPeople()});
 function renderClinicianEditor(){renderDropEditor('clinician');updateClinicianChartFilter()}
 function renderClinicianGroupEditor(){renderDropEditor('clinicianGroup');if(!$('peoplePage')?.classList.contains('hidden'))renderPeopleGroups()}
 $('addClinicianCategory').onclick=()=>{const el=$('newClinicianCategory');const c=el.value.trim();if(!c)return;if(c.toLowerCase()==='uncategorised'||clinicianCategoryNames.some(x=>x.toLowerCase()===c.toLowerCase())){alert('This clinician category name already exists or is reserved.');return}clinicianCategoryNames.push(c);el.value='';saveCategories();renderClinicianEditor();renderClinicianGroupEditor()};
