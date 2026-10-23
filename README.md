@@ -357,3 +357,9 @@ Slot settings: CSV slot types now appear in a searchable table with Assigned typ
 
 
 Availability chart styling: urgent and routine now use solid saved detailed-type colours, fine white separators, darker blue-grey plot backgrounds, and matching subtly rounded tops. No gradients or whole-bar outlines.
+
+
+Urgent and Routine availability: compact blue Days/Weeks switch, independent Group Withheld switch. When enabled, Blocked and Embargoed are aggregated into dark-grey Held Back; otherwise Embargoed is a darker grey. Source records and saved assignments are unchanged.
+
+
+Days/Weeks selection on Urgent and Routine availability uses the same secondary-size slate-blue toggle as Group Withheld, with Days to its left and Weeks to its right.

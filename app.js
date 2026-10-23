@@ -1505,13 +1505,10 @@ const urgentCategoryDisabled=new Set();
 let urgentAvailabilityGranularity='day';
 function setUrgentAvailabilityGranularity(mode){
  urgentAvailabilityGranularity=mode==='week'?'week':'day';
- document.querySelectorAll('[data-urgent-granularity]').forEach(button=>{
-  const active=button.dataset.urgentGranularity===urgentAvailabilityGranularity;
-  button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));
- });
+ const switchInput=$('urgentDaysWeeksSwitch');if(switchInput)switchInput.checked=urgentAvailabilityGranularity==='week';
  renderAvailabilityChart();
 }
-document.querySelectorAll('[data-urgent-granularity]').forEach(button=>button.addEventListener('click',()=>setUrgentAvailabilityGranularity(button.dataset.urgentGranularity)));
+$('urgentDaysWeeksSwitch')?.addEventListener('change',event=>setUrgentAvailabilityGranularity(event.target.checked?'week':'day'));
 
 let urgentWeeksBack=1,urgentWeeksForward=3;
 function setupUrgentRangeControls(){
@@ -1595,14 +1592,15 @@ function applyFlatAvailabilityBars(target){
  target.querySelectorAll('.urgent-whole-bar-outlines').forEach(el=>el.remove());
 }
 
+// Independent display-only capacity grouping for both availability charts.
 let urgentGroupWithheld=false;
 let routineGroupWithheld=false;
-for(const [id,update] of [
- ['urgentGroupWithheld',checked=>{urgentGroupWithheld=checked;renderAvailabilityChart()}],
- ['routineGroupWithheld',checked=>{routineGroupWithheld=checked;renderRoutineAvailabilityChart()}]
-]){
+for(const [id,isUrgent] of [['availabilityPageGroupWithheld',true],['routineAvailabilityPageGroupWithheld',false]]){
  const input=$(id);
- if(input)input.addEventListener('change',()=>update(input.checked));
+ if(input)input.addEventListener('change',()=>{
+  if(isUrgent){urgentGroupWithheld=input.checked;renderAvailabilityChart()}
+  else{routineGroupWithheld=input.checked;renderRoutineAvailabilityChart()}
+ });
 }
 function renderAvailabilityChart(){
  const target=$('availabilityChart');
@@ -1622,10 +1620,7 @@ function renderAvailabilityChart(){
   const category=String(assignments[r.slot]||'').trim();
   if(!names.includes(category)||!urgentClinicianMatches(r.clinician,r.person)||!urgentConsultMatches(r.slot))continue;
   const status=String(r.availability||'').trim().toLowerCase();
-  const label=status==='booked'?category:
-   status==='blocked'?(urgentGroupWithheld?'Held Back':'Blocked'):
-   status==='embargoed'?(urgentGroupWithheld?'Held Back':'Embargoed'):
-   status==='available'?'Available':null;
+  const label=status==='booked'?category:status==='blocked'?(urgentGroupWithheld?'Held Back':'Blocked'):status==='embargoed'?(urgentGroupWithheld?'Held Back':'Embargoed'):status==='available'?'Available':null;
   if(!label)continue;
   const key=JSON.stringify([r.date,label]);counts.set(key,(counts.get(key)||0)+r.count);
  }
@@ -1639,7 +1634,7 @@ function renderAvailabilityChart(){
  }
  const labels=[...names,...(urgentGroupWithheld?['Held Back']:['Blocked','Embargoed']),'Available'];
  const colours=Object.fromEntries(names.map(n=>[n,urgentColour(n)]));
- Object.assign(colours,{Blocked:'#435569',Embargoed:'#667382','Held Back':'#485563',Available:'#ffffff'});
+ Object.assign(colours,{Blocked:'#435569',Embargoed:'#586674','Held Back':'#48535f',Available:'#ffffff'});
  const totals=buckets.map(date=>labels.reduce((a,n)=>a+(counts.get(JSON.stringify([date,n]))||0),0));
  const max=Math.ceil(Math.max(1,...totals)*1.2/10)*10;
  const daySummary=buckets.map(date=>{
@@ -1736,13 +1731,10 @@ let routineStartWeek=-1,routineEndWeek=6;
 let routineAvailabilityGranularity='week';
 function setRoutineAvailabilityGranularity(mode){
  routineAvailabilityGranularity=mode==='day'?'day':'week';
- document.querySelectorAll('[data-routine-granularity]').forEach(button=>{
-  const active=button.dataset.routineGranularity===routineAvailabilityGranularity;
-  button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));
- });
+ const switchInput=$('routineDaysWeeksSwitch');if(switchInput)switchInput.checked=routineAvailabilityGranularity==='week';
  renderRoutineAvailabilityChart();
 }
-document.querySelectorAll('[data-routine-granularity]').forEach(button=>button.addEventListener('click',()=>setRoutineAvailabilityGranularity(button.dataset.routineGranularity)));
+$('routineDaysWeeksSwitch')?.addEventListener('change',event=>setRoutineAvailabilityGranularity(event.target.checked?'week':'day'));
 
 function setupRoutineRangeControls(){
  const start=$('routineWeeksStart'),end=$('routineWeeksEnd');
@@ -1790,15 +1782,14 @@ function renderRoutineAvailabilityChart(){
   const bucket=isDaily?r.date:mondayOf(r.date);
   if(!bucketSet.has(bucket))continue;
   const status=String(r.availability||'').trim().toLowerCase();
-  const label=({booked:'Booked',blocked:routineGroupWithheld?'Held Back':'Blocked',
-   embargoed:routineGroupWithheld?'Held Back':'Embargoed',available:'Available'})[status];
+  const label=({booked:'Booked',blocked:routineGroupWithheld?'Held Back':'Blocked',embargoed:routineGroupWithheld?'Held Back':'Embargoed',available:'Available'})[status];
   if(!label)continue;
   matched+=r.count;
   const key=JSON.stringify([bucket,label]);byBucket.set(key,(byBucket.get(key)||0)+r.count);
   if(label==='Booked'){const typeKey=JSON.stringify([bucket,'Booked',detailed]);byBucket.set(typeKey,(byBucket.get(typeKey)||0)+r.count);}
  }
  const labels=['Booked',...(routineGroupWithheld?['Held Back']:['Blocked','Embargoed']),'Available'];
- const colours={'Booked':'#5fc18a','Blocked':'#435569','Embargoed':'#667382','Held Back':'#485563','Available':'#ffffff'};
+ const colours={'Booked':'#5fc18a','Blocked':'#435569','Embargoed':'#586674','Held Back':'#48535f','Available':'#ffffff'};
  const dateText=d=>new Date(d+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',timeZone:'UTC'});
  const summaries=dates.map(date=>{
   const heading=isDaily?new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'short',timeZone:'UTC'}):'Week commencing '+dateText(date);
