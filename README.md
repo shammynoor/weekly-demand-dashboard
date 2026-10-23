@@ -327,3 +327,6 @@ Updated only the Routine Availability Plotly styling: cleaner off-white chart ba
 
 ## Routine bar polish
 Rounded top corners (Plotly barcornerradius), subtle status-specific SVG linear gradients for a glass/bevel finish, and totals raised by 10 more pixels. The routine chart's original data, hover, stacked status counts, historical shading and Today x-coordinate are unchanged. Gradients are applied to rendered Plotly SVG paths after each chart render, without modifying the chart data.
+
+## Urgent chart facelift
+Urgent Appointment Availability uses richer category colours, matching the Routine chart's light plot background, stacked-bar rounded top corners, subtle SVG gradient/bevel treatment, cleaner axes and gridlines, higher totals, and blue Today marker. The historical overlay is 20% opacity (80% transparent). Existing day/week positions, filters, totals and settings are unchanged. The Days/Weeks selector has slightly squarer corners on both pages.

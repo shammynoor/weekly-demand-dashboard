@@ -1319,12 +1319,42 @@ function renderUrgentCategoryToggles(){
 }
 function urgentColour(name){
  const n=name.toLowerCase();
- if(n.includes('red'))return '#d58d8a';
- if(n.includes('extra'))return '#a58acb';
- if(n.includes('priority'))return '#ead28c';
- const palette=['#88b7b0','#8baed0','#d6a9c5','#c7aa88','#9caec1'];
+ if(n.includes('red'))return '#d4777e';
+ if(n.includes('extra'))return '#9978c8';
+ if(n.includes('priority'))return '#e4b94f';
+ if(n.includes('flexi'))return '#72a9d5';
+ const palette=['#6eaea6','#80a6d1','#cf8eb7','#c79c70','#8b9db8'];
  let hash=0;for(const c of n)hash=(hash*31+c.charCodeAt(0))>>>0;
  return palette[hash%palette.length];
+}
+function urgentGradientStops(hex){
+ const rgb=[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16));
+ const mix=(other,t)=>'#'+rgb.map((v,i)=>Math.round(v*(1-t)+other[i]*t).toString(16).padStart(2,'0')).join('');
+ return [['0%',mix([255,255,255],0.37)],['17%',mix([255,255,255],0.12)],['54%',hex],['100%',mix([0,0,0],0.12)]];
+}
+// SVG gradient is a visual finish only. It does not alter Plotly data, bar
+// positions, totals, tooltip targets, Today marker or historical shading.
+function applyUrgentBarGlass(target,names,colours){
+ const svg=target.querySelector('.main-svg');if(!svg)return;
+ const ns='http://www.w3.org/2000/svg';
+ let defs=svg.querySelector('defs');if(!defs){defs=document.createElementNS(ns,'defs');svg.insertBefore(defs,svg.firstChild)}
+ const labels=[...names,'Blocked','Embargoed','Available'];
+ const traces=target.querySelectorAll('.barlayer .trace.bars');
+ traces.forEach((trace,i)=>{
+  if(i>=labels.length)return;
+  const name=labels[i],id='urgent-glass-'+i;
+  let gradient=defs.querySelector('#'+id);
+  if(!gradient){gradient=document.createElementNS(ns,'linearGradient');gradient.id=id;defs.append(gradient)}
+  gradient.setAttribute('x1','0');gradient.setAttribute('x2','0');gradient.setAttribute('y1','0');gradient.setAttribute('y2','1');
+  gradient.replaceChildren();
+  const stops=name==='Available'?[['0%','#ffffff'],['24%','#ffffff'],['70%','#fdfefe'],['100%','#edf3f8']]:urgentGradientStops(colours[name]);
+  for(const [offset,color] of stops){const stop=document.createElementNS(ns,'stop');stop.setAttribute('offset',offset);stop.setAttribute('stop-color',color);gradient.append(stop)}
+  trace.querySelectorAll('.point path').forEach(path=>{
+   path.style.setProperty('fill','url(#'+id+')','important');
+   path.style.setProperty('stroke',name==='Available'?'#dce7ee':'rgba(255,255,255,0.48)');
+   path.style.setProperty('stroke-width',name==='Available'?'0.85px':'0.55px');
+  });
+ });
 }
 function renderAvailabilityChart(){
  const target=$('availabilityChart');
@@ -1358,32 +1388,32 @@ function renderAvailabilityChart(){
  }
  const labels=[...names,'Blocked','Embargoed','Available'];
  const colours=Object.fromEntries(names.map(n=>[n,urgentColour(n)]));
- Object.assign(colours,{Blocked:'#59636e',Embargoed:'#aab2bb',Available:'#ffffff'});
+ Object.assign(colours,{Blocked:'#435569',Embargoed:'#b7c7d1',Available:'#ffffff'});
  const totals=buckets.map(date=>labels.reduce((a,n)=>a+(counts.get(JSON.stringify([date,n]))||0),0));
  const max=Math.ceil(Math.max(1,...totals)*1.2/10)*10;
  const daySummary=buckets.map(date=>{
   const weekday=weekly?'Week commencing '+date:new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'long',timeZone:'UTC'});
   return weekday+'<br>'+labels.map(n=>n+': '+(counts.get(JSON.stringify([date,n]))||0).toLocaleString('en-GB')).join('<br>')+'<br><b>Total: '+totals[buckets.indexOf(date)].toLocaleString('en-GB')+'</b>';
  });
- const traces=labels.map(name=>({type:'bar',name,showlegend:false,x:buckets,y:buckets.map(date=>(weekly||weekdays.has(date))?counts.get(JSON.stringify([date,name]))||0:null),marker:{color:colours[name],line:{color:name==='Available'?'#ffffff':'#e2e7ec',width:name==='Available'?0:1.1}},customdata:daySummary,hovertemplate:'%{customdata}<extra></extra>'}));
+ const traces=labels.map(name=>({type:'bar',name,showlegend:false,x:buckets,y:buckets.map(date=>(weekly||weekdays.has(date))?counts.get(JSON.stringify([date,name]))||0:null),marker:{color:colours[name],line:{color:name==='Available'?'#d9e3eb':'rgba(255,255,255,0.8)',width:name==='Available'?1:0.7}},customdata:daySummary,hovertemplate:'%{customdata}<extra></extra>'}));
  for(const name of labels)traces.push({type:'scatter',mode:'markers',name,x:[null],y:[null],marker:{symbol:'circle',size:14,color:colours[name],line:{color:name==='Available'?'#aeb8c3':colours[name],width:name==='Available'?1.5:0}},hoverinfo:'skip',showlegend:true});
  const weekLabels=Array.from({length:weekCount},(_,i)=>{const offset=i-urgentWeeksBack;return offset===0?'This Week':offset===-1?'Last Week':offset<0?Math.abs(offset)+' weeks ago':offset===1?'Next Week':offset+' weeks'});
- const annotations=weekLabels.map((text,i)=>({x:weekly?buckets[i]:dates[i*7+2],xref:'x',y:1.045,yref:'paper',text,showarrow:false,font:{size:12,color:'#444444'},xanchor:'center',yanchor:'bottom'}));
- const shapes=Array.from({length:weekCount-1},(_,i)=>({type:'line',xref:'x',yref:'paper',x0:weekly?i+0.5:i*7+5.5,x1:weekly?i+0.5:i*7+5.5,y0:0,y1:1,line:{color:'#9ca6b1',width:1.3,dash:'dot'}}));
+ const annotations=weekLabels.map((text,i)=>({x:weekly?buckets[i]:dates[i*7+2],xref:'x',y:1.045,yref:'paper',text,showarrow:false,font:{size:13,color:'#344b60'},xanchor:'center',yanchor:'bottom'}));
+ const shapes=Array.from({length:weekCount-1},(_,i)=>({type:'line',xref:'x',yref:'paper',x0:weekly?i+0.5:i*7+5.5,x1:weekly?i+0.5:i*7+5.5,y0:0,y1:1,line:{color:'#bdcbd6',width:1,dash:'dot'}}));
  if(dateSet.has(todayLondon)){
   const x=weekly?urgentWeeksBack-0.5+((new Date(todayLondon+'T12:00:00Z').getUTCDay()+6)%7)/7:dates.indexOf(todayLondon);
-  shapes.unshift({type:'rect',xref:'x',yref:'paper',x0:-.5,x1:x,y0:0,y1:1,fillcolor:'rgba(128,136,146,0.50)',line:{width:0},layer:'above'});
-  shapes.push({type:'line',xref:'x',yref:'paper',x0:x,x1:x,y0:0,y1:1,line:{color:'#4b5563',width:2,dash:'dot'}});
-  annotations.push({x,xref:'x',y:1.005,yref:'paper',text:'Today',showarrow:false,font:{size:16,color:'#374151'},xanchor:'left',yanchor:'top',xshift:7,yshift:-8});
+  shapes.unshift({type:'rect',xref:'x',yref:'paper',x0:-.5,x1:x,y0:0,y1:1,fillcolor:'rgba(97,112,130,0.20)',line:{width:0},layer:'above'});
+  shapes.push({type:'line',xref:'x',yref:'paper',x0:x,x1:x,y0:0,y1:1,line:{color:'#257cb6',width:2.5,dash:'dot'},layer:'above'});
+  annotations.push({x,xref:'x',y:1.005,yref:'paper',text:'Today',showarrow:false,font:{size:17,color:'#206ca6'},xanchor:'left',yanchor:'top',xshift:7,yshift:-8});
  }
- buckets.forEach((date,i)=>{if((weekly||weekdays.has(date))&&totals[i])annotations.push({x:date,xref:'x',y:totals[i],yref:'y',text:String(totals[i]),showarrow:false,font:{size:10,color:'#818b96'},yshift:4,yanchor:'bottom'})});
+ buckets.forEach((date,i)=>{if((weekly||weekdays.has(date))&&totals[i])annotations.push({x:date,xref:'x',y:totals[i],yref:'y',text:String(totals[i]),showarrow:false,font:{size:weekly?13:10,color:'#425b70'},yshift:15,yanchor:'bottom'})});
  const note=$('availabilityNote');if(note)note.textContent=names.length?'':'Select an Urgent detailed urgency category to display appointments.';
  Plotly.react(target,traces,{
-  autosize:true,height:510,barmode:'stack',bargap:weekly?0.04:0.015,margin:{l:62,r:12,t:66,b:105},paper_bgcolor:'white',plot_bgcolor:'#e2e7ec',
-  legend:{orientation:'h',x:0.5,y:-0.23,xanchor:'center',yanchor:'top',font:{size:12,color:'#444444'},bgcolor:'rgba(255,255,255,0)'},
+  autosize:true,height:510,barmode:'stack',barcornerradius:7,bargap:weekly?0.11:0.13,margin:{l:62,r:18,t:85,b:100},paper_bgcolor:'white',plot_bgcolor:'#f4f8fb',
+  legend:{orientation:'h',x:0.5,y:-0.23,xanchor:'center',yanchor:'top',font:{size:13,color:'#42576a'},bgcolor:'rgba(255,255,255,0)'},
   xaxis:{type:'category',categoryorder:'array',categoryarray:buckets,tickmode:'array',tickvals:buckets,ticktext:buckets.map(date=>weekly?'':weekdays.has(date)?new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'short',timeZone:'UTC'}):''),tickangle:-90,tickfont:{size:12,color:'#444444'},showgrid:false,range:[-.5,buckets.length-.5],fixedrange:true},
-  yaxis:{title:'Appointment slots',range:[0,max],gridcolor:'#dce2e8'},annotations,shapes,hovermode:'closest'
- },{responsive:true,displaylogo:false});
+  yaxis:{title:{text:'Appointment slots',font:{size:12,color:'#708397'}},tickfont:{size:12,color:'#52677b'},range:[0,max],gridcolor:'#e0e8ef',gridwidth:1,zeroline:false,showline:false},annotations,shapes,hovermode:'closest'
+ },{responsive:true,displaylogo:false}).then(()=>applyUrgentBarGlass(target,names,colours));
 }
 window.addEventListener('resize',()=>{if(!$('availabilityPage').classList.contains('hidden'))renderAvailabilityChart()});
 setupUrgentRangeControls();
