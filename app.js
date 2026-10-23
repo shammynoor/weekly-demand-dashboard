@@ -2209,24 +2209,32 @@ function renderBookingTimesChart(){
  const visibleBins=bins.slice(visibleStart,visibleEnd);
  const visibleCumulative=cumulative.slice(visibleStart,visibleEnd);
  const tickvals=visibleTimes.filter((_,i)=>i%8===0);
- const medianBin=count?cumulative.findIndex(p=>p>=50):-1;
- const medianVisible=medianBin>=visibleStart&&medianBin<visibleEnd;
- const medianTime=medianVisible?times[medianBin]:null;
- const shapes=medianVisible?[{type:'line',xref:'x',yref:'y2',x0:medianTime,x1:medianTime,y0:0,y1:50,line:{color:'#636d78',width:1.8,dash:'dot'}}]:[];
- const annotations=medianVisible?[{xref:'x',yref:'y2',x:medianTime,y:50,text:'50% · '+medianTime,showarrow:false,xanchor:'left',yanchor:'bottom',xshift:6,font:{size:12,color:'#475569'}}]:[];
+ const percentileMarkers=[50,75].map((percent,index)=>{
+  const bin=count?cumulative.findIndex(value=>value>=percent):-1;
+  if(bin<visibleStart||bin>=visibleEnd)return null;
+  return {percent,time:times[bin],colour:index===0?'#526b82':'#7a6477'};
+ }).filter(Boolean);
+ const shapes=percentileMarkers.map(({percent,time,colour})=>({type:'line',xref:'x',yref:'y2',x0:time,x1:time,y0:0,y1:percent,line:{color:colour,width:2,dash:'dot'}}));
+ // Place labels in the open area above the percentile intersection, rather
+ // than on top of the cumulative line. Separate the two labels vertically.
+ const annotations=percentileMarkers.map(({percent,time,colour})=>({
+  xref:'x',yref:'y2',x:time,y:percent,text:'<b>'+percent+'% · '+time+'</b>',
+  showarrow:false,xanchor:'center',yanchor:'bottom',yshift:percent===50?24:28,
+  font:{size:16,color:colour},bgcolor:'rgba(255,255,255,0.92)',bordercolor:'rgba(208,219,229,0.9)',borderwidth:1,borderpad:5
+ }));
  const traces=[
   {type:'bar',name:'Bookings per 15 minutes',x:visibleTimes,y:visibleBins,marker:{color:'#8fb4d3',line:{width:0}},hovertemplate:'%{x}–15 min later<br>%{y:,} bookings<extra></extra>',yaxis:'y'},
-  {type:'scatter',mode:'lines',name:'Cumulative %',x:visibleTimes,y:visibleCumulative,yaxis:'y2',line:{color:'#bc756e',width:3,shape:'hv'},hovertemplate:'%{x}<br>%{y:.1f}% booked by this time<extra></extra>'}
+  {type:'scatter',mode:'lines',name:'Cumulative %',x:visibleTimes,y:visibleCumulative,yaxis:'y2',line:{color:'#bc756e',width:3.5,shape:'spline',smoothing:0.8},hovertemplate:'%{x}<br>%{y:.1f}% booked by this time<extra></extra>'}
  ];
  Plotly.react(chart,traces,{dragmode:false,
-  height:520,autosize:true,margin:{l:24,r:85,t:70,b:65},
+  height:540,autosize:true,margin:{l:90,r:95,t:75,b:85},
   paper_bgcolor:'#fff',plot_bgcolor:'#f1f3f5',bargap:0.04,
   legend:{orientation:'h',x:0,y:1.13,xanchor:'left',yanchor:'bottom'},
-  xaxis:{type:'category',categoryorder:'array',categoryarray:visibleTimes,tickmode:'array',tickvals,ticktext:tickvals,title:'Calculated booking time (06:00–21:00)',showgrid:false},
-  yaxis:{visible:false,rangemode:'tozero',showgrid:false,zeroline:false},
-  yaxis2:{title:'Cumulative bookings (%)',overlaying:'y',side:'right',range:[0,100],ticksuffix:'%',showgrid:true,gridcolor:'#d9e1e8',zeroline:false},
+  xaxis:{type:'category',categoryorder:'array',categoryarray:visibleTimes,tickmode:'array',tickvals,ticktext:tickvals,title:{text:'Booking time',font:{size:16,color:'#28445c'},standoff:18},showgrid:false,showline:true,linecolor:'#536b80',linewidth:3,ticks:'outside',tickcolor:'#536b80',tickwidth:2,ticklen:6},
+  yaxis:{title:{text:'Number of bookings',font:{size:16,color:'#28445c'},standoff:14},visible:true,showticklabels:true,rangemode:'tozero',showgrid:false,zeroline:false,showline:true,linecolor:'#536b80',linewidth:3,ticks:'outside',tickcolor:'#536b80',tickwidth:2,ticklen:6},
+  yaxis2:{title:'Cumulative bookings (%)',overlaying:'y',side:'right',range:[0,100],ticksuffix:'%',showgrid:true,gridcolor:'#d9e1e8',zeroline:false,showline:true,linecolor:'#536b80',linewidth:3},
   shapes,annotations,hovermode:'x unified'
- },{responsive:true,displaylogo:false,displayModeBar:false,scrollZoom:false,doubleClick:false});
+ },{responsive:true,displaylogo:false,displayModeBar:false,scrollZoom:false});
  const note=$('bookingTimesNote');
  if(note)note.textContent=count?count.toLocaleString('en-GB')+' booked appointments across the loaded CSV files and selected categories.':'No bookings match these filters. Check category assignments in Manage categories.';
 }
