@@ -292,3 +292,6 @@ All charts now use the named session holder's Assigned Clinician Type from Manag
 
 ## Manage people — clinician group boxes
 Manage people now shows a box for each existing Clinician Group, containing its assigned Detailed Clinician Types. Each box has an Add type field and button. A final Add Group box creates another Clinician Group. Types can be reassigned to another group using their dropdown. All changes update the existing clinician group/category data model, the category editors, and the charts; they are stored locally and sync to the existing private OneDrive settings when saved.
+
+## Compact clinician group organiser
+Manage people displays up to six clinician-group boxes per row on wide screens (five at narrower widths). Detailed clinician types are draggable between groups. Each type has rename (pencil) and delete (×) actions; rename updates person and CSV user-type assignments, and deletion clears those assignments. Add Group is a single button that reveals an input only when clicked. Each group has a compact Add type button. Changes are stored locally and sync to OneDrive with the existing Save button.

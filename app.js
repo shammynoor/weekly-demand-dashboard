@@ -48,7 +48,8 @@ function renderPeopleGroups(){
  const root=$('peopleGroupBoxes');if(!root)return;
  root.replaceChildren();
  const groups=[...clinicianGroupNames];
- const make=(tag,cls,txt)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(txt!==undefined)e.textContent=txt;return e};
+ const el=(tag,cls,text)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e};
+ const nameValid=(name,existing)=>name&&name.toLowerCase()!=='uncategorised'&&!existing.some(x=>x.toLowerCase()===name.toLowerCase());
  const changed=()=>{
   saveCategories();
   renderPeopleGroups();
@@ -59,58 +60,87 @@ function renderPeopleGroups(){
   refreshClinicianCharts();
   const status=$('peopleSaveStatus');if(status)status.textContent='Changes saved in this browser — click Save to OneDrive to synchronise.';
  };
- for(const group of groups){
-  const card=make('section','people-group-card');
-  const heading=make('h3','people-group-title',group);
-  const assigned=clinicianCategoryNames.filter(t=>clinicianGroupAssignments[t]===group).sort((a,b)=>a.localeCompare(b));
-  const count=make('span','people-group-count',assigned.length+' types');
-  const header=make('div','people-group-heading');header.append(heading,count);card.append(header);
-  const list=make('div','people-group-types');
-  for(const type of assigned){
-   const row=make('div','people-group-type');
-   const label=make('span','',type);
-   const move=make('select','people-type-move');
-   move.setAttribute('aria-label','Move '+type+' to clinician group');
-   for(const destination of groups){
-    const option=make('option','',destination);option.value=destination;move.append(option);
-   }
-   const unassigned=make('option','','Unassigned');unassigned.value='Uncategorised';move.append(unassigned);
-   move.value=group;
-   move.addEventListener('change',()=>{clinicianGroupAssignments[type]=move.value;changed()});
-   row.append(label,move);list.append(row);
-  }
-  if(!assigned.length)list.append(make('p','muted','No detailed clinician types yet.'));
-  card.append(list);
-  const addRow=make('div','people-group-add-row');
-  const input=make('input','people-group-add-input');input.placeholder='New detailed clinician type';input.setAttribute('aria-label','New detailed clinician type for '+group);
-  const add=make('button','people-group-add-button','Add type');add.type='button';
-  const create=()=>{
-   const value=input.value.trim();
-   if(!value)return;
-   if(value.toLowerCase()==='uncategorised'||clinicianCategoryNames.some(t=>t.toLowerCase()===value.toLowerCase())){
-    alert('This detailed clinician type already exists or is reserved. Use its group dropdown to move it instead.');return;
-   }
-   clinicianCategoryNames.push(value);
-   clinicianGroupAssignments[value]=group;
-   changed();
-  };
-  add.addEventListener('click',create);
-  input.addEventListener('keydown',e=>{if(e.key==='Enter')create()});
-  addRow.append(input,add);card.append(addRow);root.append(card);
- }
- const addCard=make('section','people-group-card people-group-new');
- const input=make('input','people-group-add-input');input.placeholder='New clinician group';input.setAttribute('aria-label','New clinician group name');
- const add=make('button','people-group-add-button','+ Add Group');add.type='button';
- const createGroup=()=>{
-  const name=input.value.trim();
-  if(!name)return;
-  if(name.toLowerCase()==='uncategorised'||clinicianGroupNames.some(g=>g.toLowerCase()===name.toLowerCase())){
-   alert('This clinician group already exists or is reserved.');return;
-  }
-  clinicianGroupNames.push(name);changed();
+ const editor=(initial,placeholder,onSave)=>{
+  const wrap=el('div','people-inline-editor');
+  const input=el('input','people-group-add-input');input.value=initial;input.placeholder=placeholder;
+  const save=el('button','people-mini-action','Save');save.type='button';
+  const cancel=el('button','people-mini-action','Cancel');cancel.type='button';
+  save.addEventListener('click',()=>onSave(input.value.trim()));
+  cancel.addEventListener('click',()=>renderPeopleGroups());
+  input.addEventListener('keydown',e=>{if(e.key==='Enter')save.click();if(e.key==='Escape')cancel.click()});
+  wrap.append(input,save,cancel);
+  return {wrap,input};
  };
- add.addEventListener('click',createGroup);input.addEventListener('keydown',e=>{if(e.key==='Enter')createGroup()});
- addCard.append(input,add);root.append(addCard);
+ const renameType=(oldName,newName)=>{
+  if(newName===oldName){renderPeopleGroups();return}
+  if(!nameValid(newName,clinicianCategoryNames)){alert('Please enter a unique detailed clinician type.');return}
+  clinicianCategoryNames=clinicianCategoryNames.map(n=>n===oldName?newName:n);
+  clinicianGroupAssignments[newName]=clinicianGroupAssignments[oldName];
+  delete clinicianGroupAssignments[oldName];
+  for(const key of Object.keys(clinicianAssignments))if(clinicianAssignments[key]===oldName)clinicianAssignments[key]=newName;
+  for(const key of Object.keys(peopleClinicianType))if(peopleClinicianType[key]===oldName)peopleClinicianType[key]=newName;
+  changed();
+ };
+ for(const group of groups){
+  const card=el('section','people-group-card');
+  const assigned=clinicianCategoryNames.filter(t=>clinicianGroupAssignments[t]===group).sort((a,b)=>a.localeCompare(b));
+  const header=el('div','people-group-heading');
+  header.append(el('h3','people-group-title',group),el('span','people-group-count',assigned.length+' types'));
+  card.append(header);
+  const list=el('div','people-group-types');
+  list.dataset.group=group;
+  list.addEventListener('dragover',event=>{if(event.dataTransfer.types.includes('text/plain')){event.preventDefault();event.dataTransfer.dropEffect='move';card.classList.add('people-drop-target')}});
+  list.addEventListener('dragleave',event=>{if(!list.contains(event.relatedTarget))card.classList.remove('people-drop-target')});
+  list.addEventListener('drop',event=>{
+   event.preventDefault();card.classList.remove('people-drop-target');
+   const type=event.dataTransfer.getData('text/plain');
+   if(!clinicianCategoryNames.includes(type)||clinicianGroupAssignments[type]===group)return;
+   clinicianGroupAssignments[type]=group;changed();
+  });
+  for(const type of assigned){
+   const row=el('div','people-group-type');
+   row.draggable=true;row.title='Drag to another clinician group';
+   row.addEventListener('dragstart',event=>{event.dataTransfer.setData('text/plain',type);event.dataTransfer.effectAllowed='move';row.classList.add('people-dragging')});
+   row.addEventListener('dragend',()=>row.classList.remove('people-dragging'));
+   const grip=el('span','people-drag-grip','⠿');grip.setAttribute('aria-hidden','true');
+   const label=el('span','people-type-label',type);
+   const edit=el('button','people-icon-action','✎');edit.type='button';edit.title='Rename '+type;edit.setAttribute('aria-label','Rename '+type);
+   edit.addEventListener('click',()=>{
+    const {wrap,input}=editor(type,'Clinician type',value=>renameType(type,value));
+    row.replaceChildren(wrap);input.focus();input.select();
+   });
+   const remove=el('button','people-icon-action people-delete-action','×');remove.type='button';remove.title='Delete '+type;remove.setAttribute('aria-label','Delete '+type);
+   remove.addEventListener('click',()=>{
+    if(!confirm('Delete clinician type "'+type+'"? Any people or CSV user types assigned to it will become unassigned.'))return;
+    clinicianCategoryNames=clinicianCategoryNames.filter(n=>n!==type);
+    delete clinicianGroupAssignments[type];
+    for(const key of Object.keys(clinicianAssignments))if(clinicianAssignments[key]===type)clinicianAssignments[key]='Uncategorised';
+    for(const key of Object.keys(peopleClinicianType))if(peopleClinicianType[key]===type)peopleClinicianType[key]='';
+    changed();
+   });
+   row.append(grip,label,edit,remove);list.append(row);
+  }
+  if(!assigned.length)list.append(el('p','people-empty-group','Drop a type here'));
+  card.append(list);
+  const add=el('button','people-add-type-button','+ Add type');add.type='button';
+  add.addEventListener('click',()=>{
+   const {wrap,input}=editor('','New detailed type',value=>{
+    if(!nameValid(value,clinicianCategoryNames)){alert('Please enter a unique detailed clinician type.');return}
+    clinicianCategoryNames.push(value);clinicianGroupAssignments[value]=group;changed();
+   });
+   add.replaceWith(wrap);input.focus();
+  });
+  card.append(add);root.append(card);
+ }
+ const add=el('button','people-add-group-button','+ Add Group');add.type='button';
+ add.addEventListener('click',()=>{
+  const {wrap,input}=editor('','New clinician group',value=>{
+   if(!nameValid(value,clinicianGroupNames)){alert('Please enter a unique clinician group.');return}
+   clinicianGroupNames.push(value);changed();
+  });
+  add.replaceWith(wrap);input.focus();
+ });
+ root.append(add);
 }
 function renderPeople(){
  const body=$('peopleTableBody'),count=$('peopleCount');if(!body)return;
