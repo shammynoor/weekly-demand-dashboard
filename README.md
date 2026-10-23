@@ -354,3 +354,6 @@ Slot settings: CSV slot types now appear in a searchable table with Assigned typ
 
 
 2026-10-23: Individual customisable colours for clinician and urgency types, saved locally and to OneDrive. Group/type chart switches match their colours. Legacy consult-mode drag/drop editors hidden in Slot settings; data and underlying compatibility retained.
+
+
+Availability chart styling: urgent and routine now use solid saved detailed-type colours, fine white separators, darker blue-grey plot backgrounds, and matching subtly rounded tops. No gradients or whole-bar outlines.

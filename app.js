@@ -1567,70 +1567,22 @@ function urgentGradientStops(hex){
 }
 // SVG gradient is a visual finish only. It does not alter Plotly data, bar
 // positions, totals, tooltip targets, Today marker or historical shading.
-function applyUrgentBarGlass(target,names,colours){
- const svg=target.querySelector('.main-svg');if(!svg)return;
- const ns='http://www.w3.org/2000/svg';
- let defs=svg.querySelector('defs');if(!defs){defs=document.createElementNS(ns,'defs');svg.insertBefore(defs,svg.firstChild)}
- const labels=[...names,'Blocked','Embargoed','Available'];
- const traces=target.querySelectorAll('.barlayer .trace.bars');
- traces.forEach((trace,i)=>{
-  if(i>=labels.length)return;
-  const name=labels[i],id='urgent-glass-'+i;
-  let gradient=defs.querySelector('#'+id);
-  if(!gradient){gradient=document.createElementNS(ns,'linearGradient');gradient.id=id;defs.append(gradient)}
-  gradient.setAttribute('x1','0');gradient.setAttribute('x2','0');gradient.setAttribute('y1','0');gradient.setAttribute('y2','1');
-  gradient.replaceChildren();
-  const stops=name==='Available'?[['0%','#ffffff'],['75%','#ffffff'],['100%','#f3f8fc']]:name==='Embargoed'?[['0%','#c6d1d9'],['100%','#c0ccd5']]:urgentGradientStops(colours[name]);
-  for(const [offset,color] of stops){const stop=document.createElementNS(ns,'stop');stop.setAttribute('offset',offset);stop.setAttribute('stop-color',color);gradient.append(stop)}
-  trace.querySelectorAll('.point path').forEach(path=>{
-   // Plotly creates a flat path for zero-height stacked segments. A stroke
-   // turns it into a stray horizontal line; hide only the zero-height shape.
-   let height=0;
-   try{height=path.getBBox().height}catch(_){height=0}
-   if(height<0.6){path.style.setProperty('stroke','none','important');path.style.setProperty('fill','none','important');return}
-   path.style.setProperty('fill','url(#'+id+')','important');
-   // No individual section outline: one fine border is drawn around the entire stack below.
+// Shared flat visual treatment; saved type colours remain the source of truth.
+function applyFlatAvailabilityBars(target){
+ target.querySelectorAll('.barlayer .trace.bars .point path').forEach(path=>{
+  let height=0;
+  try{height=path.getBBox().height}catch(_){}
+  if(height<0.6){
+   path.style.setProperty('fill','none','important');
    path.style.setProperty('stroke','none','important');
-  });
+   return;
+  }
+  path.style.removeProperty('fill');
+  path.style.setProperty('stroke','rgba(255,255,255,0.86)','important');
+  path.style.setProperty('stroke-width','0.7px','important');
+  path.style.setProperty('stroke-linejoin','round','important');
  });
- // Draw one hairline outline around the *whole* stacked bar, including the
- // white Available cap. Never draw a line across an individual section.
- // Plotly's bar paths are in trace-local coordinates, so transform each
- // segment's bounding box into the shared SVG bar-layer coordinate space.
- const layer=target.querySelector('.barlayer');
- if(!layer)return;
- layer.querySelectorAll('.urgent-whole-bar-outlines').forEach(el=>el.remove());
- const layerCTM=layer.getScreenCTM();
- if(!layerCTM)return;
- const inverse=layerCTM.inverse();
- const stacks=new Map();
- traces.forEach(trace=>trace.querySelectorAll('.point path').forEach(path=>{
-  let box,ctm;
-  try{box=path.getBBox();ctm=path.getScreenCTM()}catch(_){return}
-  if(!ctm||box.height<0.6||box.width<0.6)return;
-  const matrix=inverse.multiply(ctm);
-  const corners=[[box.x,box.y],[box.x+box.width,box.y],[box.x,box.y+box.height],[box.x+box.width,box.y+box.height]]
-   .map(([x,y])=>({x:matrix.a*x+matrix.c*y+matrix.e,y:matrix.b*x+matrix.d*y+matrix.f}));
-  const left=Math.min(...corners.map(p=>p.x)),right=Math.max(...corners.map(p=>p.x));
-  const top=Math.min(...corners.map(p=>p.y)),bottom=Math.max(...corners.map(p=>p.y));
-  // All segments in the same day/week share an x-position.
-  const key=Math.round((left+right)/2*10)/10;
-  const prev=stacks.get(key);
-  if(prev){prev.left=Math.min(prev.left,left);prev.right=Math.max(prev.right,right);prev.top=Math.min(prev.top,top);prev.bottom=Math.max(prev.bottom,bottom)}
-  else stacks.set(key,{left,right,top,bottom});
- }));
- const outlines=document.createElementNS(ns,'g');outlines.setAttribute('class','urgent-whole-bar-outlines');
- outlines.setAttribute('pointer-events','none');
- for(const {left,right,top,bottom} of stacks.values()){
-  const rect=document.createElementNS(ns,'rect');
-  rect.setAttribute('x',left);rect.setAttribute('y',top);
-  rect.setAttribute('width',Math.max(0,right-left));rect.setAttribute('height',Math.max(0,bottom-top));
-  rect.setAttribute('rx','2.5');rect.setAttribute('ry','2.5');
-  rect.setAttribute('fill','none');rect.setAttribute('stroke','#c3d1dc');
-  rect.setAttribute('stroke-width','0.55');rect.setAttribute('vector-effect','non-scaling-stroke');
-  outlines.append(rect);
- }
- layer.append(outlines);
+ target.querySelectorAll('.urgent-whole-bar-outlines').forEach(el=>el.remove());
 }
 function renderAvailabilityChart(){
  const target=$('availabilityChart');
@@ -1678,18 +1630,18 @@ function renderAvailabilityChart(){
  const shapes=Array.from({length:weekCount-1},(_,i)=>({type:'line',xref:'x',yref:'paper',x0:weekly?i+0.5:i*7+5.5,x1:weekly?i+0.5:i*7+5.5,y0:0,y1:1,line:{color:'#bdcbd6',width:1,dash:'dot'}}));
  if(dateSet.has(todayLondon)){
   const x=weekly?urgentWeeksBack-0.5+((new Date(todayLondon+'T12:00:00Z').getUTCDay()+6)%7)/7:dates.indexOf(todayLondon);
-  shapes.unshift({type:'rect',xref:'x',yref:'paper',x0:-.5,x1:x,y0:0,y1:1,fillcolor:'rgba(97,112,130,0.20)',line:{width:0},layer:'above'});
+  shapes.unshift({type:'rect',xref:'x',yref:'paper',x0:-.5,x1:x,y0:0,y1:1,fillcolor:'rgba(97,112,130,0.12)',line:{width:0},layer:'above'});
   shapes.push({type:'line',xref:'x',yref:'paper',x0:x,x1:x,y0:0,y1:1,line:{color:'#257cb6',width:2.5,dash:'dot'},layer:'above'});
   annotations.push({x,xref:'x',y:1.005,yref:'paper',text:'Today',showarrow:false,font:{size:17,color:'#206ca6'},xanchor:'left',yanchor:'top',xshift:7,yshift:-8});
  }
  buckets.forEach((date,i)=>{if((weekly||weekdays.has(date))&&totals[i])annotations.push({x:date,xref:'x',y:totals[i],yref:'y',text:String(totals[i]),showarrow:false,font:{size:weekly?13:10,color:'#425b70'},yshift:15,yanchor:'bottom'})});
  const note=$('availabilityNote');if(note)note.textContent=names.length?'':'Select an Urgent detailed urgency category to display appointments.';
  Plotly.react(target,traces,{
-  autosize:true,height:555,barmode:'stack',barcornerradius:3,bargap:weekly?0.11:0.13,margin:{l:62,r:18,t:85,b:100},paper_bgcolor:'white',plot_bgcolor:'#eaf1f6',
+  autosize:true,height:555,barmode:'stack',barcornerradius:3,bargap:weekly?0.11:0.13,margin:{l:62,r:18,t:85,b:100},paper_bgcolor:'white',plot_bgcolor:'#e1eaf1',
   legend:{orientation:'h',x:0.5,y:-0.23,xanchor:'center',yanchor:'top',font:{size:13,color:'#42576a'},bgcolor:'rgba(255,255,255,0)'},
   xaxis:{type:'category',categoryorder:'array',categoryarray:buckets,tickmode:'array',tickvals:buckets,ticktext:buckets.map(date=>weekly?'':weekdays.has(date)?new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'short',timeZone:'UTC'}):''),tickangle:-90,tickfont:{size:12,color:'#444444'},showgrid:false,range:[-.5,buckets.length-.5],fixedrange:true},
   yaxis:{title:{text:'Appointment slots',font:{size:12,color:'#708397'}},tickfont:{size:12,color:'#52677b'},range:[0,max],gridcolor:'#e0e8ef',gridwidth:1,zeroline:false,showline:false},annotations,shapes,hovermode:'closest'
- },{responsive:true,displaylogo:false,displayModeBar:false}).then(()=>applyUrgentBarGlass(target,names,colours));
+ },{responsive:true,displaylogo:false,displayModeBar:false}).then(()=>applyFlatAvailabilityBars(target));
 }
 window.addEventListener('resize',()=>{if(!$('availabilityPage').classList.contains('hidden'))renderAvailabilityChart()});
 setupUrgentRangeControls();
@@ -1791,40 +1743,6 @@ function setupRoutineRangeControls(){
 }
 // Visual-only finish for the Routine stacked bars. The original Plotly data,
 // hover targets, shading and Today geometry are left untouched.
-function applyRoutineBarGlass(target,bookedTypeCount=1){
- const svg=target.querySelector('.main-svg');
- if(!svg)return;
- const ns='http://www.w3.org/2000/svg';
- let defs=svg.querySelector('defs');
- if(!defs){defs=document.createElementNS(ns,'defs');svg.insertBefore(defs,svg.firstChild)}
- const gradients=[
-  ['routine-glass-booked',[['0%','#92d8b0'],['18%','#6dc895'],['52%','#5fc18a'],['100%','#4dac79']]],
-  ['routine-glass-blocked',[['0%','#758798'],['18%','#526579'],['55%','#435569'],['100%','#354659']]],
-  ['routine-glass-embargoed',[['0%','#d8e2e9'],['18%','#c2d1db'],['55%','#b7c7d1'],['100%','#a2b5c1']]],
-  ['routine-glass-available',[['0%','#ffffff'],['20%','#ffffff'],['65%','#fdfefe'],['100%','#edf3f8']]]
- ];
- for(const [id,stops] of gradients){
-  let grad=defs.querySelector('#'+id);
-  if(!grad){
-   grad=document.createElementNS(ns,'linearGradient');grad.id=id;
-   grad.setAttribute('x1','0');grad.setAttribute('x2','0');grad.setAttribute('y1','0');grad.setAttribute('y2','1');
-   for(const [offset,color] of stops){const stop=document.createElementNS(ns,'stop');stop.setAttribute('offset',offset);stop.setAttribute('stop-color',color);grad.append(stop)}
-   defs.append(grad);
-  }
- }
- // Plotly draws one bar trace per availability status, in the order above.
- const traces=target.querySelectorAll('.barlayer .trace.bars');
- traces.forEach((trace,i)=>{
-  if(i<bookedTypeCount)return; // Retain the chosen colour for each routine category.
-  const statusIndex=i-bookedTypeCount+1;
-  if(statusIndex>=gradients.length)return;
-  trace.querySelectorAll('.point path').forEach(path=>{
-   path.style.setProperty('fill','url(#'+gradients[statusIndex][0]+')','important');
-   path.style.setProperty('stroke',statusIndex===3?'#dce7ee':'rgba(255,255,255,0.45)');
-   path.style.setProperty('stroke-width',statusIndex===3?'0.85px':'0.6px');
-  });
- });
-}
 function renderRoutineAvailabilityChart(){
  const target=$('routineAvailabilityChart');
  if(!target||$('routineAvailabilityPage').classList.contains('hidden')||!window.Plotly)return;
@@ -1862,11 +1780,11 @@ function renderRoutineAvailabilityChart(){
   const heading=isDaily?new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'short',timeZone:'UTC'}):'Week commencing '+dateText(date);
   return '<b>'+heading+'</b><br>'+labels.map(label=>label+': '+(byBucket.get(JSON.stringify([date,label]))||0).toLocaleString('en-GB')).join('<br>')+'<br><b>Total: '+labels.reduce((sum,label)=>sum+(byBucket.get(JSON.stringify([date,label]))||0),0).toLocaleString('en-GB')+'</b>';
  });
- const plotBackground='#f4f8fb';
+ const plotBackground='#e1eaf1';
  const routineTypes=routineDetailedTypes().filter(name=>!routineDisabledTypes.has(name));
  const traces=[
   ...routineTypes.map(name=>({type:'bar',name,showlegend:true,x:dates,y:dates.map(date=>byBucket.get(JSON.stringify([date,'Booked',name]))||0),marker:{color:urgencyTypeColour(name),line:{width:0}},customdata:summaries,hovertemplate:'%{customdata}<extra></extra>'})),
-  ...labels.filter(label=>label!=='Booked').map(label=>({type:'bar',name:label,showlegend:false,x:dates,y:dates.map(date=>byBucket.get(JSON.stringify([date,label]))||0),marker:{color:colours[label],line:{color:label==='Available'?'#d9e3eb':'rgba(255,255,255,0.8)',width:label==='Available'?1:0.7}},customdata:summaries,hovertemplate:'%{customdata}<extra></extra>'}))
+  ...labels.filter(label=>label!=='Booked').map(label=>({type:'bar',name:label,showlegend:false,x:dates,y:dates.map(date=>byBucket.get(JSON.stringify([date,label]))||0),marker:{color:colours[label],line:{width:0}},customdata:summaries,hovertemplate:'%{customdata}<extra></extra>'}))
  ];
  for(const label of labels.filter(label=>label!=='Booked'))traces.push({type:'scatter',mode:'markers',name:label,x:[null],y:[null],marker:{symbol:'circle',size:14,color:colours[label],line:{color:label==='Available'?'#a7b8c6':colours[label],width:label==='Available'?1.5:0}},showlegend:true,hoverinfo:'skip'});
  const totals=dates.map(date=>labels.reduce((sum,label)=>sum+(byBucket.get(JSON.stringify([date,label]))||0),0));
@@ -1878,7 +1796,7 @@ function renderRoutineAvailabilityChart(){
  const weekIndex=weeks.indexOf(thisWeek);
  const todayX=weekIndex<0?null:isDaily?dates.indexOf(todayLondon):weekIndex-0.5+(Math.min(dayIndex,4)*0.2+0.05);
  const shapes=todayX===null?[]:[
-  {type:'rect',xref:'x',yref:'paper',x0:-0.5,x1:todayX,y0:0,y1:1,fillcolor:'rgba(97,112,130,0.20)',line:{width:0},layer:'above'},
+  {type:'rect',xref:'x',yref:'paper',x0:-0.5,x1:todayX,y0:0,y1:1,fillcolor:'rgba(97,112,130,0.12)',line:{width:0},layer:'above'},
   {type:'line',xref:'x',yref:'paper',x0:todayX,x1:todayX,y0:0,y1:1,line:{color:'#257cb6',width:2.5,dash:'dot'},layer:'above'}
  ];
  for(let i=0;i<weeks.length-1;i++){const boundary=isDaily?(i+1)*7-0.5:i+0.5;shapes.push({type:'line',xref:'x',yref:'paper',x0:boundary,x1:boundary,y0:0,y1:1,line:{color:'#bdcbd6',width:1,dash:'dot'},layer:'above'});}
@@ -1886,13 +1804,13 @@ function renderRoutineAvailabilityChart(){
  const note=$('routineAvailabilityNote');
  if(note)note.textContent=matched?'':"No matching Routine urgency-group appointments found. Check Manage categories → Urgency Group.";
  Plotly.react(target,traces,{
-  height:555,autosize:true,barmode:'stack',barcornerradius:7,bargap:isDaily?0.13:0.11,
+  height:555,autosize:true,barmode:'stack',barcornerradius:3,bargap:isDaily?0.13:0.11,
   margin:{l:62,r:18,t:85,b:100},paper_bgcolor:'#fff',plot_bgcolor:plotBackground,
   legend:{orientation:'h',x:0.5,y:-0.20,xanchor:'center',yanchor:'top',font:{size:13,color:'#42576a'},traceorder:'normal'},
   xaxis:{type:'category',categoryorder:'array',categoryarray:dates,range:[-0.5,dates.length-0.5],tickmode:'array',tickvals:dates,ticktext:isDaily?dates.map(date=>new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'short',timeZone:'UTC'})):dates.map(()=>''),tickangle:-90,tickfont:{size:10},showticklabels:isDaily,showgrid:false,showline:true,linecolor:'#a9b9c7',linewidth:1.5,zeroline:false,fixedrange:true},
   yaxis:{title:{text:'Appointment slots',font:{size:12,color:'#708397'}},tickfont:{size:12,color:'#52677b'},range:[0,Math.ceil(max*1.18/10)*10],gridcolor:'#e0e8ef',gridwidth:1,zeroline:false,showline:false},
   annotations,shapes,hovermode:'closest'
- },{responsive:true,displaylogo:false,displayModeBar:false}).then(()=>applyRoutineBarGlass(target,routineTypes.length));
+ },{responsive:true,displaylogo:false,displayModeBar:false}).then(()=>applyFlatAvailabilityBars(target));
 }
 window.addEventListener('resize',()=>{if(!$('routineAvailabilityPage').classList.contains('hidden'))renderRoutineAvailabilityChart()});
 setupRoutineRangeControls();
