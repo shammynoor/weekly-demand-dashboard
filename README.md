@@ -377,3 +377,20 @@ Days/Weeks selection on Urgent and Routine availability uses the same secondary-
 
 ### Shared settings loading fix
 Viewer accounts now locate weekly-demand-categories.json through the shared folder item listing and download its content by item ID. Missing or empty slot assignments produce a clear sign-in error. Refresh status shows assigned slot type count.
+
+
+## Signposting events as appointment slot types
+Each valid dated row from `Signposting Auto Report.csv` is counted as one booked
+appointment event. The exact `Code Term` (signposting destination) becomes a
+Slot Type in the existing Slot settings table, where the administrator can
+assign a detailed urgency category and its associated urgency group.
+The event is included in the weekly demand charts (subject to the existing
+2025-07-07 booking-week cut-off) and in appointment availability counts.
+Its event date is treated as both booking date and appointment date; its
+consultation time is used for Booking Times when valid. Since the signposting
+CSV has no clinician session-holder field, it is assigned a distinct
+`Signposting (no clinician recorded)` placeholder rather than being attributed
+to a clinician. The dedicated Signposting chart remains independent and uses
+the original events. Unknown destinations remain Unassigned until the
+administrator assigns them in Slot settings. No existing category mappings
+are overwritten. The viewer sees the shared mappings after refresh.

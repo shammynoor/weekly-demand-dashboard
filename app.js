@@ -1164,7 +1164,7 @@ function parseSignpostingCSV(csv){
    row[key]=value||previous[key]||'';
   }
   const date=parseSignpostingDate(row.Date),destination=String(row['Code Term']||'').trim();
-  if(date&&destination)results.push({date,destination});
+  if(date&&destination)results.push({date,destination,time:String(row["Consultation Details' Time"]||'').trim()});
  }
  return results;
 }
@@ -1202,6 +1202,28 @@ async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;
  newSlotFiles++;
  const stats=aggregateCSV(csvText,aggregate,availabilityAggregate,bookingTimeAggregate,peopleAggregate);valid+=stats.valid;skipped+=stats.skipped}
  signpostingRecords=newSignposting;signpostingFileCount=newSignpostingFiles;
+ // Each dated signposting event is also a booked appointment for the main
+ // demand/availability calculations. Its destination is its Slot Type.
+ // Keep the dedicated Signposting page sourced from the original event list.
+ // No clinician/person is invented: the report has no session holder field.
+ // The event date is used as its booking AND appointment date.
+ const signpostingClinician='Signposting (no clinician recorded)';
+ for(const event of newSignposting){
+  const slot=event.destination,date=event.date;
+  const availabilityKey=JSON.stringify([date,slot,'Booked',signpostingClinician,'']);
+  availabilityAggregate.set(availabilityKey,(availabilityAggregate.get(availabilityKey)||0)+1);
+  const bookedWeek=mondayOf(date);
+  if(bookedWeek>='2025-07-07'){
+   const key=JSON.stringify([date,slot,signpostingClinician,'']);
+   aggregate.set(key,(aggregate.get(key)||0)+1);
+   const tm=/^(\\d{1,2}):(\\d{2})/.exec(event.time||'');
+   if(tm&&Number(tm[1])<24&&Number(tm[2])<60){
+    const minute=Number(tm[1])*60+Number(tm[2]);
+    const timeKey=JSON.stringify([date,minute,slot,signpostingClinician,'']);
+    bookingTimeAggregate.set(timeKey,(bookingTimeAggregate.get(timeKey)||0)+1);
+   }
+  }
+ }
  const peopleByName=new Map();
  for(const [key,count] of peopleAggregate){
   const [name,type]=JSON.parse(key);
@@ -1236,7 +1258,7 @@ const drawingErrors=[];
   try{draw()}catch(error){drawingErrors.push(label+': '+(error?.message||String(error)));console.error('Dashboard rendering error in '+label,error)}
  }
  showRefreshFeedback(drawingErrors.length?'Data loaded; chart issue: '+drawingErrors.join('; '):(!isOwner?'Data refreshed · shared slot assignments: '+Object.keys(assignments).length:'Data refreshed successfully'));
- scheduleChartResize();setSync(`${newSlotFiles} Slot Report CSV files · ${newSignpostingFiles} Signposting CSV files · ${valid.toLocaleString('en-GB')} booked rows counted · ${skipped.toLocaleString('en-GB')} skipped · ${Object.keys(assignments).length} assigned slot types · Updated ${new Date().toLocaleString('en-GB')}`)
+ scheduleChartResize();setSync(`${newSlotFiles} Slot Report CSV files · ${newSignpostingFiles} Signposting CSV files · ${valid.toLocaleString('en-GB')} booked Slot Report rows + ${newSignposting.length.toLocaleString('en-GB')} signposting events · ${skipped.toLocaleString('en-GB')} skipped · ${Object.keys(assignments).length} assigned slot types · Updated ${new Date().toLocaleString('en-GB')}`)
  }catch(e){
  const message=e?.message||String(e);
  console.error('OneDrive refresh error',e);
