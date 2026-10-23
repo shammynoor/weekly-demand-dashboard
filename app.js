@@ -11,6 +11,25 @@ let availabilityRecords=[];
 let peopleRecords=[];
 let peopleLocum={};
 let peopleClinicianType={};
+// Stable pastel colours per detailed clinician type, synced with dashboard settings.
+let clinicianTypeColours={};
+const CLINICIAN_PASTELS=['#9fc7e8','#b5d9af','#e4b9d8','#f0ce9d','#b9b6e9','#a4d7d3','#e9b4ad','#d4c5a7','#c4d7a1','#c5b8df','#a8c9ce','#e7c6a9'];
+function clinicianTypeColour(type){
+ if(!type)return '#aab5c1';
+ if(/^#[0-9a-f]{6}$/i.test(clinicianTypeColours[type]||''))return clinicianTypeColours[type];
+ // Stable initial colour regardless of category order.
+ let hash=0;for(const char of type.toLowerCase())hash=((hash*31)+char.charCodeAt(0))>>>0;
+ return CLINICIAN_PASTELS[hash%CLINICIAN_PASTELS.length];
+}
+function clinicianGroupColour(group){
+ const types=clinicianCategoryNames.filter(type=>clinicianGroupAssignments[type]===group).sort((a,b)=>a.localeCompare(b));
+ return types.length?clinicianTypeColour(types[0]):'#b8c2cc';
+}
+function clinicianColourDot(type){
+ const dot=document.createElement('span');dot.className='clinician-colour-dot';
+ dot.style.backgroundColor=clinicianTypeColour(type);dot.title=type+' colour';return dot;
+}
+
 function normalisePersonName(value){return String(value??'').trim().replace(/\\s+/g,' ')}
 function personKey(name){return normalisePersonName(name).toLocaleLowerCase('en-GB')}
 function suggestedLocum(type){
@@ -76,6 +95,7 @@ function renderPeopleGroups(){
   if(newName===oldName){renderPeopleGroups();return}
   if(!nameValid(newName,clinicianCategoryNames)){alert('Please enter a unique detailed clinician type.');return}
   clinicianCategoryNames=clinicianCategoryNames.map(n=>n===oldName?newName:n);
+  if(clinicianTypeColours[oldName]){clinicianTypeColours[newName]=clinicianTypeColours[oldName];delete clinicianTypeColours[oldName]}
   clinicianGroupAssignments[newName]=clinicianGroupAssignments[oldName];
   delete clinicianGroupAssignments[oldName];
   for(const key of Object.keys(clinicianAssignments))if(clinicianAssignments[key]===oldName)clinicianAssignments[key]=newName;
@@ -131,6 +151,19 @@ function renderPeopleGroups(){
    row.addEventListener('dragstart',event=>{event.dataTransfer.setData('text/plain',type);event.dataTransfer.effectAllowed='move';row.classList.add('people-dragging')});
    row.addEventListener('dragend',()=>row.classList.remove('people-dragging'));
    const grip=el('span','people-drag-grip','⠿');grip.setAttribute('aria-hidden','true');
+   const colourWrap=el('label','people-colour-control');
+   colourWrap.title='Change colour for '+type;
+   const dot=clinicianColourDot(type);
+   const picker=el('input','people-colour-picker');
+   picker.type='color';picker.value=clinicianTypeColour(type);picker.addEventListener('dragstart',event=>event.stopPropagation());picker.setAttribute('aria-label','Choose colour for '+type);
+   picker.addEventListener('change',()=>{
+    clinicianTypeColours[type]=picker.value;
+    saveCategories();
+    renderPeopleGroups();renderPeople();refreshClinicianCharts();
+    renderUrgentSideFilters();renderRoutineAvailabilityFilters();
+   });
+   // Keep native picker keyboard accessible while exposing the pastel dot.
+   colourWrap.append(dot,picker);
    const label=el('span','people-type-label',type);
    const edit=el('button','people-icon-action','✎');edit.type='button';edit.title='Rename '+type;edit.setAttribute('aria-label','Rename '+type);
    edit.addEventListener('click',()=>{
@@ -141,12 +174,13 @@ function renderPeopleGroups(){
    remove.addEventListener('click',()=>{
     if(!confirm('Delete clinician type "'+type+'"? Any people or CSV user types assigned to it will become unassigned.'))return;
     clinicianCategoryNames=clinicianCategoryNames.filter(n=>n!==type);
+    delete clinicianTypeColours[type];
     delete clinicianGroupAssignments[type];
     for(const key of Object.keys(clinicianAssignments))if(clinicianAssignments[key]===type)clinicianAssignments[key]='Uncategorised';
     for(const key of Object.keys(peopleClinicianType))if(peopleClinicianType[key]===type)peopleClinicianType[key]='';
     changed();
    });
-   row.append(grip,label,edit,remove);list.append(row);
+   row.append(grip,colourWrap,label,edit,remove);list.append(row);
   }
   if(!assigned.length)list.append(el('p','people-empty-group','Drop a type here'));
   card.append(list);
@@ -221,6 +255,15 @@ function renderPeople(){
    const status=$('peopleSaveStatus');if(status)status.textContent='Changes saved in this browser — click Save to OneDrive to synchronise.';
   });
   assignedCell.append(assigned);
+  const groupCell=document.createElement('td');groupCell.className='people-clinician-group-cell';
+  const selectedType=effectivePeopleClinicianType(person);
+  const groupName=selectedType?clinicianGroupAssignments[selectedType]||'':'';
+  const validGroup=clinicianGroupNames.includes(groupName);
+  const groupBadge=document.createElement('span');groupBadge.className='people-clinician-group-badge';
+  const groupDot=document.createElement('span');groupDot.className='clinician-colour-dot';
+  groupDot.style.backgroundColor=validGroup?clinicianTypeColour(selectedType):'#b6c0ca';
+  groupBadge.append(groupDot,document.createTextNode(validGroup?groupName:'Unassigned'));
+  groupCell.append(groupBadge);
   const locumCell=document.createElement('td');locumCell.className='people-locum-cell';
   const locum=document.createElement('select');locum.className='people-locum-select';
   locum.setAttribute('aria-label','Locum status for '+person.name);
@@ -231,7 +274,7 @@ function renderPeople(){
    saveCategories();
    const status=$('peopleSaveStatus');if(status)status.textContent='Changes saved in this browser — click Save to OneDrive to synchronise.';
   });
-  locumCell.append(locum);tr.append(name,type,assignedCell,locumCell);body.append(tr);
+  locumCell.append(locum);tr.append(name,type,assignedCell,groupCell,locumCell);body.append(tr);
  }
  if(count)count.textContent=rows.length.toLocaleString('en-GB')+' of '+peopleRecords.length.toLocaleString('en-GB')+' people';
 }
@@ -271,6 +314,7 @@ async function loadCloudCategories(){
   if(data){
    peopleLocum=data.peopleLocum&&typeof data.peopleLocum==='object'&&!Array.isArray(data.peopleLocum)?Object.fromEntries(Object.entries(data.peopleLocum).filter(([key,value])=>typeof key==='string'&&(value==='yes'||value==='no'))):peopleLocum;
    peopleClinicianType=data.peopleClinicianType&&typeof data.peopleClinicianType==='object'&&!Array.isArray(data.peopleClinicianType)?data.peopleClinicianType:peopleClinicianType;
+   if(data.clinicianTypeColours&&typeof data.clinicianTypeColours==='object'&&!Array.isArray(data.clinicianTypeColours))clinicianTypeColours=Object.fromEntries(Object.entries(data.clinicianTypeColours).filter(([k,v])=>typeof k==='string'&&/^#[0-9a-f]{6}$/i.test(v)));
    cloudFolder=data.folder&&typeof data.folder.id==='string'?data.folder:null;
    const names=validCategoryNames(data.categories);
    const remoteAssignments=validAssignments(data.assignments,names);
@@ -343,6 +387,7 @@ async function saveCloudCategories(options={}){
   version:6,
   peopleLocum:{...peopleLocum},
   peopleClinicianType:{...peopleClinicianType},
+  clinicianTypeColours:{...clinicianTypeColours},
   categories:categoryNames.slice(),
   assignments:{...assignments},
   clinicianCategories:clinicianCategoryNames.slice(),
@@ -901,8 +946,8 @@ let groupUrgencyNames=[],groupUrgencyAssignments={};
 let clinicianGroupNames=[],clinicianGroupAssignments={};
 const STORAGE_KEY='appointment-dashboard-categories-v1';let categoryNames=['Urgent','Routine','Follow up'],assignments={};try{const saved=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');categoryNames=Array.isArray(saved.categories)&&saved.categories.length?saved.categories.filter(x=>typeof x==='string'&&x.trim()&&x!=='Uncategorised'):['Urgent','Routine','Follow up'];assignments=saved.assignments&&typeof saved.assignments==='object'?saved.assignments:{};}catch(e){}let clinicianCategoryNames=[],clinicianAssignments={};try{const local=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');if(Array.isArray(local.clinicianCategories))clinicianCategoryNames=validCategoryNames(local.clinicianCategories);if(local.clinicianAssignments)clinicianAssignments=validAssignments(local.clinicianAssignments,clinicianCategoryNames)}catch(e){}let consultCategoryNames=[],consultAssignments={};try{const local=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');if(Array.isArray(local.consultCategories))consultCategoryNames=validCategoryNames(local.consultCategories);if(local.consultAssignments)consultAssignments=validAssignments(local.consultAssignments,consultCategoryNames)}catch(e){}try{const local=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');if(Array.isArray(local.groupUrgencyCategories))groupUrgencyNames=validCategoryNames(local.groupUrgencyCategories);if(local.groupUrgencyAssignments)groupUrgencyAssignments=validAssignments(local.groupUrgencyAssignments,groupUrgencyNames)}catch(e){}
 try{const local=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');if(Array.isArray(local.clinicianGroupCategories))clinicianGroupNames=validCategoryNames(local.clinicianGroupCategories);if(local.clinicianGroupAssignments)clinicianGroupAssignments=validAssignments(local.clinicianGroupAssignments,clinicianGroupNames)}catch(e){}
-try{const local=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');if(local.peopleLocum&&typeof local.peopleLocum==='object')peopleLocum=local.peopleLocum;if(local.peopleClinicianType&&typeof local.peopleClinicianType==='object')peopleClinicianType=local.peopleClinicianType}catch(e){}
-function ensureFollowUpCategory(){if(!categoryNames.some(c=>c.toLowerCase().replace(/[\s-]+/g,'')==='followup'))categoryNames.push('Follow up')}ensureFollowUpCategory();function guessCategory(t){return /RED|YELLOW|AMBER|URGENT|SAME DAY|ACUTE/i.test(t)?'Urgent':/GREEN|FOLLOW UP|ROUTINE/i.test(t)?'Routine':null}function saveCategories(sync=true){lastConsultFilterNames=[];try{localStorage.setItem(STORAGE_KEY,JSON.stringify({categories:categoryNames,assignments,clinicianCategories:clinicianCategoryNames,clinicianAssignments,consultCategories:consultCategoryNames,consultAssignments,groupUrgencyCategories:groupUrgencyNames,groupUrgencyAssignments,clinicianGroupCategories:clinicianGroupNames,clinicianGroupAssignments,peopleLocum,peopleClinicianType}));}catch(e){alert('Could not save settings in this browser. Please try again.')}if(sync)markCategoryDirty()}function allCategories(){return [...categoryNames,'Uncategorised']}function rebuildCategoryFilter(){const old=new Set([...slots.selectedOptions].map(o=>o.value));slots.replaceChildren();for(const c of allCategories()){const o=document.createElement('option');o.value=c;o.textContent=c;o.selected=old.has(c);slots.append(o)}}function renderEditor(){renderDropEditor('urgency');updateAvailabilityUrgencyFilter()}
+try{const local=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');if(local.peopleLocum&&typeof local.peopleLocum==='object')peopleLocum=local.peopleLocum;if(local.peopleClinicianType&&typeof local.peopleClinicianType==='object')peopleClinicianType=local.peopleClinicianType;if(local.clinicianTypeColours&&typeof local.clinicianTypeColours==='object')clinicianTypeColours=local.clinicianTypeColours}catch(e){}
+function ensureFollowUpCategory(){if(!categoryNames.some(c=>c.toLowerCase().replace(/[\s-]+/g,'')==='followup'))categoryNames.push('Follow up')}ensureFollowUpCategory();function guessCategory(t){return /RED|YELLOW|AMBER|URGENT|SAME DAY|ACUTE/i.test(t)?'Urgent':/GREEN|FOLLOW UP|ROUTINE/i.test(t)?'Routine':null}function saveCategories(sync=true){lastConsultFilterNames=[];try{localStorage.setItem(STORAGE_KEY,JSON.stringify({categories:categoryNames,assignments,clinicianCategories:clinicianCategoryNames,clinicianAssignments,consultCategories:consultCategoryNames,consultAssignments,groupUrgencyCategories:groupUrgencyNames,groupUrgencyAssignments,clinicianGroupCategories:clinicianGroupNames,clinicianGroupAssignments,peopleLocum,peopleClinicianType,clinicianTypeColours}));}catch(e){alert('Could not save settings in this browser. Please try again.')}if(sync)markCategoryDirty()}function allCategories(){return [...categoryNames,'Uncategorised']}function rebuildCategoryFilter(){const old=new Set([...slots.selectedOptions].map(o=>o.value));slots.replaceChildren();for(const c of allCategories()){const o=document.createElement('option');o.value=c;o.textContent=c;o.selected=old.has(c);slots.append(o)}}function renderEditor(){renderDropEditor('urgency');updateAvailabilityUrgencyFilter()}
 function renderGroupUrgencyEditor(){renderDropEditor('groupUrgency');updateAvailabilityUrgencyFilter()}document.getElementById('addCategory').onclick=()=>{const el=document.getElementById('newCategory');const c=el.value.trim();if(!c)return;if(c.toLowerCase()==='uncategorised'||categoryNames.some(x=>x.toLowerCase()===c.toLowerCase())){alert('This category name already exists or is reserved.');return}categoryNames.push(c);el.value='';saveCategories();rebuildCategoryFilter();renderEditor();renderGroupUrgencyEditor()};document.getElementById('newCategory').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('addCategory').click()});document.getElementById('slotSearch').addEventListener('input',renderEditor);function showPage(which){
  for(const [page,nav,name] of [['chartPage','navChart','chart'],['categoryPage','navCategories','categories'],['availabilityPage','navAvailability','availability'],['routineAvailabilityPage','navRoutineAvailability','routineAvailability'],['bookingTimesPage','navBookingTimes','bookingTimes'],['peoplePage','navPeople','people']]){
   $(page).classList.toggle('hidden',which!==name);$(nav).classList.toggle('active',which===name);
@@ -1214,7 +1259,7 @@ function renderRoutineAvailabilityFilters(){
  const build=(id,names,disabled,empty)=>{
   const root=$(id);if(!root)return;
   const previous=[...root.querySelectorAll('input')].map(el=>el.getAttribute('data-filter-name'));
-  if(previous.length===names.length&&names.every((name,i)=>name===previous[i]))return;
+  if(previous.length===names.length&&names.every((name,i)=>name===previous[i])){if(id==='routineClinicianFilters')root.querySelectorAll('input[data-filter-name]').forEach(input=>input.nextElementSibling?.style.setProperty('--switch-on',clinicianGroupColour(input.dataset.filterName)));return;}
   root.replaceChildren();
   if(!names.length){const note=document.createElement('span');note.className='hint';note.textContent=empty;root.append(note);return}
   for(const name of names){
@@ -1222,7 +1267,7 @@ function renderRoutineAvailabilityFilters(){
    const switchEl=document.createElement('span');switchEl.className='switch';
    const input=document.createElement('input');input.type='checkbox';input.setAttribute('role','switch');input.setAttribute('data-filter-name',name);
    input.checked=!disabled.has(name);input.setAttribute('aria-label','Include '+name);
-   const track=document.createElement('span');track.className='switch-track';
+   const track=document.createElement('span');track.className='switch-track';if(id==='routineClinicianFilters')track.style.setProperty('--switch-on',clinicianGroupColour(name));
    const title=document.createElement('span');title.textContent=name;
    switchEl.append(input,track);row.append(switchEl,title);root.append(row);
    input.addEventListener('change',()=>{

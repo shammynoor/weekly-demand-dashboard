@@ -302,3 +302,6 @@ Every main group heading now has a pencil (rename) and × (delete). Renaming upd
 
 
 Manage people table filters: a Clinician Groups dropdown next to search (All or any saved group) and an Unassigned toggle that shows only people with no valid clinician-group assignment. When Unassigned is on the group dropdown is disabled. Filters use the effective Assigned Clinician Type, including manual overrides, and refresh when people or group assignments change.
+
+## Detailed clinician type colours
+Each Detailed Clinician Type has a stable pastel colour swatch in Manage people. Click its dot to open the browser's native colour picker. Colours are saved in localStorage and private OneDrive settings (`clinicianTypeColours`). The Manage people table now includes Clinician Group as column four, with a dot showing the person's assigned detailed clinician type colour; Locum is column five. Clinician-group filters on Urgent and Routine availability charts use the first alphabetically assigned type's colour for the group, while category/status colours remain unchanged.
