@@ -13,6 +13,14 @@ let peopleLocum={};
 let peopleClinicianType={};
 // One customisable colour per Clinician Group (never per detailed type).
 let clinicianGroupColours={};
+let clinicianTypeColours={};
+let urgencyTypeColours={};
+const TYPE_PALETTE=['#d4777e','#9978c8','#e4b94f','#72a9d5','#6eaea6','#cf8eb7','#82b789','#c79c70'];
+function typeColour(name,overrides){if(/^#[0-9a-f]{6}$/i.test(overrides[name]||''))return overrides[name];let hash=0;for(const c of String(name).toLowerCase())hash=(hash*31+c.charCodeAt(0))>>>0;return TYPE_PALETTE[hash%TYPE_PALETTE.length]}
+function urgencyTypeColour(name){return typeColour(name,urgencyTypeColours)}
+function clinicianTypeColour(name){return typeColour(name,clinicianTypeColours)}
+function typeColourPicker(type,kind,onChanged){const colour=kind==='urgency'?urgencyTypeColours:clinicianTypeColours;const current=kind==='urgency'?urgencyTypeColour(type):clinicianTypeColour(type);const wrap=document.createElement('label');wrap.className='people-colour-control people-type-colour-control';wrap.title='Change colour for '+type;wrap.draggable=false;const dot=document.createElement('span');dot.className='clinician-colour-dot';dot.style.backgroundColor=current;const input=document.createElement('input');input.className='people-colour-picker';input.type='color';input.value=current;input.setAttribute('aria-label','Choose colour for '+type);input.addEventListener('change',()=>{colour[type]=input.value;onChanged()});wrap.append(dot,input);return wrap}
+
 const CLINICIAN_GROUP_PALETTE=['#78a9d1','#85bb99','#b49bd3','#dea37e','#80bdbf','#d493b0','#b8ae75','#8badd1','#b1a0ca','#c89e80'];
 function clinicianGroupColour(group){
  if(!group||!clinicianGroupNames.includes(group))return '#aab5c1';
@@ -76,7 +84,7 @@ function renderSlotGroupBoxes(){
  const make=(tag,cls,value)=>{const element=document.createElement(tag);if(cls)element.className=cls;if(value!==undefined)element.textContent=value;return element};
  const valid=(name,existing)=>name&&name.toLocaleLowerCase('en-GB')!=='uncategorised'&&!existing.some(x=>x.toLocaleLowerCase('en-GB')===name.toLocaleLowerCase('en-GB'));
  const changed=()=>{
-  saveCategories();rebuildCategoryFilter();renderSlotGroupBoxes();
+  saveCategories();rebuildCategoryFilter();renderSlotGroupBoxes();renderUrgentCategoryToggles();
   // Maintain compatibility with existing slot type → detailed urgency editor.
   renderEditor();renderGroupUrgencyEditor();renderSlotTable();
   if(!$('availabilityPage').classList.contains('hidden'))renderAvailabilityChart();
@@ -99,6 +107,7 @@ function renderSlotGroupBoxes(){
   if(oldName===newName){renderSlotGroupBoxes();return}
   if(!valid(newName,categoryNames)){alert('Please enter a unique detailed urgency type.');return}
   categoryNames=categoryNames.map(name=>name===oldName?newName:name);
+  if(urgencyTypeColours[oldName]){urgencyTypeColours[newName]=urgencyTypeColours[oldName];delete urgencyTypeColours[oldName]}
   groupUrgencyAssignments[newName]=groupUrgencyAssignments[oldName]||'Uncategorised';
   delete groupUrgencyAssignments[oldName];
   for(const slot of Object.keys(assignments))if(assignments[slot]===oldName)assignments[slot]=newName;
@@ -174,11 +183,11 @@ function renderSlotGroupBoxes(){
    const remove=make('button','people-icon-action people-delete-action','×');remove.type='button';remove.title='Delete '+type;remove.setAttribute('aria-label','Delete urgency type '+type);
    remove.addEventListener('click',()=>{
     if(!confirm('Delete detailed urgency type "'+type+'"? Slot types assigned to it will become uncategorised.'))return;
-    categoryNames=categoryNames.filter(name=>name!==type);delete groupUrgencyAssignments[type];
+    categoryNames=categoryNames.filter(name=>name!==type);delete groupUrgencyAssignments[type];delete urgencyTypeColours[type];
     for(const slot of Object.keys(assignments))if(assignments[slot]===type)assignments[slot]='Uncategorised';
     urgentCategoryDisabled.delete(type);changed();
    });
-   row.append(grip,label,edit,remove);list.append(row);
+   row.append(grip,typeColourPicker(type,'urgency',changed),label,edit,remove);list.append(row);
   }
   if(!types.length)list.append(make('p','people-empty-group','Drop a type here'));
   card.append(list);
@@ -235,6 +244,7 @@ function renderPeopleGroups(){
   if(newName===oldName){renderPeopleGroups();return}
   if(!nameValid(newName,clinicianCategoryNames)){alert('Please enter a unique detailed clinician type.');return}
   clinicianCategoryNames=clinicianCategoryNames.map(n=>n===oldName?newName:n);
+  if(clinicianTypeColours[oldName]){clinicianTypeColours[newName]=clinicianTypeColours[oldName];delete clinicianTypeColours[oldName]}
   clinicianGroupAssignments[newName]=clinicianGroupAssignments[oldName];
   delete clinicianGroupAssignments[oldName];
   for(const key of Object.keys(clinicianAssignments))if(clinicianAssignments[key]===oldName)clinicianAssignments[key]=newName;
@@ -313,13 +323,13 @@ function renderPeopleGroups(){
    const remove=el('button','people-icon-action people-delete-action','×');remove.type='button';remove.title='Delete '+type;remove.setAttribute('aria-label','Delete '+type);
    remove.addEventListener('click',()=>{
     if(!confirm('Delete clinician type "'+type+'"? Any people or CSV user types assigned to it will become unassigned.'))return;
-    clinicianCategoryNames=clinicianCategoryNames.filter(n=>n!==type);
+    clinicianCategoryNames=clinicianCategoryNames.filter(n=>n!==type);delete clinicianTypeColours[type];
     delete clinicianGroupAssignments[type];
     for(const key of Object.keys(clinicianAssignments))if(clinicianAssignments[key]===type)clinicianAssignments[key]='Uncategorised';
     for(const key of Object.keys(peopleClinicianType))if(peopleClinicianType[key]===type)peopleClinicianType[key]='';
     changed();
    });
-   row.append(grip,label,edit,remove);list.append(row);
+   row.append(grip,typeColourPicker(type,'clinician',changed),label,edit,remove);list.append(row);
   }
   if(!assigned.length)list.append(el('p','people-empty-group','Drop a type here'));
   card.append(list);
@@ -504,6 +514,8 @@ async function loadCloudCategories(){
   if(data){
    peopleLocum=data.peopleLocum&&typeof data.peopleLocum==='object'&&!Array.isArray(data.peopleLocum)?Object.fromEntries(Object.entries(data.peopleLocum).filter(([key,value])=>typeof key==='string'&&(value==='yes'||value==='no'))):peopleLocum;
    peopleClinicianType=data.peopleClinicianType&&typeof data.peopleClinicianType==='object'&&!Array.isArray(data.peopleClinicianType)?data.peopleClinicianType:peopleClinicianType;
+   if(data.clinicianTypeColours&&typeof data.clinicianTypeColours==='object')clinicianTypeColours=Object.fromEntries(Object.entries(data.clinicianTypeColours).filter(([k,v])=>/^#[0-9a-f]{6}$/i.test(v)));
+   if(data.urgencyTypeColours&&typeof data.urgencyTypeColours==='object')urgencyTypeColours=Object.fromEntries(Object.entries(data.urgencyTypeColours).filter(([k,v])=>/^#[0-9a-f]{6}$/i.test(v)));
    if(data.clinicianGroupColours&&typeof data.clinicianGroupColours==='object'&&!Array.isArray(data.clinicianGroupColours))clinicianGroupColours=Object.fromEntries(Object.entries(data.clinicianGroupColours).filter(([k,v])=>typeof k==='string'&&/^#[0-9a-f]{6}$/i.test(v)));
    cloudFolder=data.folder&&typeof data.folder.id==='string'?data.folder:null;
    const names=validCategoryNames(data.categories);
@@ -579,7 +591,7 @@ async function saveCloudCategories(options={}){
   version:6,
   peopleLocum:{...peopleLocum},
   peopleClinicianType:{...peopleClinicianType},
-  clinicianGroupColours:{...clinicianGroupColours},
+  clinicianGroupColours:{...clinicianGroupColours},clinicianTypeColours:{...clinicianTypeColours},urgencyTypeColours:{...urgencyTypeColours},
   categories:categoryNames.slice(),
   assignments:{...assignments},
   clinicianCategories:clinicianCategoryNames.slice(),
@@ -1276,10 +1288,10 @@ drawCategoryChart('followupChart','followup',yearColours.followup,5*followupStep
 }
 let groupUrgencyNames=[],groupUrgencyAssignments={};
 let clinicianGroupNames=[],clinicianGroupAssignments={};
-const STORAGE_KEY='appointment-dashboard-categories-v1';let categoryNames=['Urgent','Routine','Follow up'],assignments={};try{const saved=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');categoryNames=Array.isArray(saved.categories)&&saved.categories.length?saved.categories.filter(x=>typeof x==='string'&&x.trim()&&x!=='Uncategorised'):['Urgent','Routine','Follow up'];assignments=saved.assignments&&typeof saved.assignments==='object'?saved.assignments:{};}catch(e){}let clinicianCategoryNames=[],clinicianAssignments={};try{const local=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');if(Array.isArray(local.clinicianCategories))clinicianCategoryNames=validCategoryNames(local.clinicianCategories);if(local.clinicianAssignments)clinicianAssignments=validAssignments(local.clinicianAssignments,clinicianCategoryNames)}catch(e){}let consultCategoryNames=[],consultAssignments={};try{const local=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');if(Array.isArray(local.consultCategories))consultCategoryNames=validCategoryNames(local.consultCategories);if(local.consultAssignments)consultAssignments=validAssignments(local.consultAssignments,consultCategoryNames)}catch(e){}try{const local=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');if(Array.isArray(local.groupUrgencyCategories))groupUrgencyNames=validCategoryNames(local.groupUrgencyCategories);if(local.groupUrgencyAssignments)groupUrgencyAssignments=validAssignments(local.groupUrgencyAssignments,groupUrgencyNames);if(local.urgencyGroupColours&&typeof local.urgencyGroupColours==='object')urgencyGroupColours=local.urgencyGroupColours}catch(e){}
+const STORAGE_KEY='appointment-dashboard-categories-v1';let categoryNames=['Urgent','Routine','Follow up'],assignments={};try{const saved=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');categoryNames=Array.isArray(saved.categories)&&saved.categories.length?saved.categories.filter(x=>typeof x==='string'&&x.trim()&&x!=='Uncategorised'):['Urgent','Routine','Follow up'];assignments=saved.assignments&&typeof saved.assignments==='object'?saved.assignments:{};}catch(e){}let clinicianCategoryNames=[],clinicianAssignments={};try{const local=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');if(Array.isArray(local.clinicianCategories))clinicianCategoryNames=validCategoryNames(local.clinicianCategories);if(local.clinicianAssignments)clinicianAssignments=validAssignments(local.clinicianAssignments,clinicianCategoryNames)}catch(e){}let consultCategoryNames=[],consultAssignments={};try{const local=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');if(Array.isArray(local.consultCategories))consultCategoryNames=validCategoryNames(local.consultCategories);if(local.consultAssignments)consultAssignments=validAssignments(local.consultAssignments,consultCategoryNames)}catch(e){}try{const local=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');if(Array.isArray(local.groupUrgencyCategories))groupUrgencyNames=validCategoryNames(local.groupUrgencyCategories);if(local.groupUrgencyAssignments)groupUrgencyAssignments=validAssignments(local.groupUrgencyAssignments,groupUrgencyNames);if(local.urgencyGroupColours&&typeof local.urgencyGroupColours==='object')urgencyGroupColours=local.urgencyGroupColours;if(local.urgencyTypeColours&&typeof local.urgencyTypeColours==='object')urgencyTypeColours=local.urgencyTypeColours}catch(e){}
 try{const local=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');if(Array.isArray(local.clinicianGroupCategories))clinicianGroupNames=validCategoryNames(local.clinicianGroupCategories);if(local.clinicianGroupAssignments)clinicianGroupAssignments=validAssignments(local.clinicianGroupAssignments,clinicianGroupNames)}catch(e){}
-try{const local=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');if(local.peopleLocum&&typeof local.peopleLocum==='object')peopleLocum=local.peopleLocum;if(local.peopleClinicianType&&typeof local.peopleClinicianType==='object')peopleClinicianType=local.peopleClinicianType;if(local.clinicianGroupColours&&typeof local.clinicianGroupColours==='object')clinicianGroupColours=local.clinicianGroupColours}catch(e){}
-function ensureFollowUpCategory(){if(!categoryNames.some(c=>c.toLowerCase().replace(/[\s-]+/g,'')==='followup'))categoryNames.push('Follow up')}ensureFollowUpCategory();function guessCategory(t){return /RED|YELLOW|AMBER|URGENT|SAME DAY|ACUTE/i.test(t)?'Urgent':/GREEN|FOLLOW UP|ROUTINE/i.test(t)?'Routine':null}function saveCategories(sync=true){lastConsultFilterNames=[];try{localStorage.setItem(STORAGE_KEY,JSON.stringify({categories:categoryNames,assignments,clinicianCategories:clinicianCategoryNames,clinicianAssignments,consultCategories:consultCategoryNames,consultAssignments,groupUrgencyCategories:groupUrgencyNames,groupUrgencyAssignments,urgencyGroupColours,clinicianGroupCategories:clinicianGroupNames,clinicianGroupAssignments,peopleLocum,peopleClinicianType,clinicianGroupColours}));}catch(e){alert('Could not save settings in this browser. Please try again.')}if(sync)markCategoryDirty()}function allCategories(){return [...categoryNames,'Uncategorised']}function rebuildCategoryFilter(){const old=new Set([...slots.selectedOptions].map(o=>o.value));slots.replaceChildren();for(const c of allCategories()){const o=document.createElement('option');o.value=c;o.textContent=c;o.selected=old.has(c);slots.append(o)}}function renderEditor(){renderDropEditor('urgency');updateAvailabilityUrgencyFilter()}
+try{const local=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');if(local.peopleLocum&&typeof local.peopleLocum==='object')peopleLocum=local.peopleLocum;if(local.peopleClinicianType&&typeof local.peopleClinicianType==='object')peopleClinicianType=local.peopleClinicianType;if(local.clinicianTypeColours&&typeof local.clinicianTypeColours==='object')clinicianTypeColours=local.clinicianTypeColours;if(local.urgencyTypeColours&&typeof local.urgencyTypeColours==='object')urgencyTypeColours=local.urgencyTypeColours;if(local.clinicianGroupColours&&typeof local.clinicianGroupColours==='object')clinicianGroupColours=local.clinicianGroupColours}catch(e){}
+function ensureFollowUpCategory(){if(!categoryNames.some(c=>c.toLowerCase().replace(/[\s-]+/g,'')==='followup'))categoryNames.push('Follow up')}ensureFollowUpCategory();function guessCategory(t){return /RED|YELLOW|AMBER|URGENT|SAME DAY|ACUTE/i.test(t)?'Urgent':/GREEN|FOLLOW UP|ROUTINE/i.test(t)?'Routine':null}function saveCategories(sync=true){lastConsultFilterNames=[];try{localStorage.setItem(STORAGE_KEY,JSON.stringify({categories:categoryNames,assignments,clinicianCategories:clinicianCategoryNames,clinicianAssignments,consultCategories:consultCategoryNames,consultAssignments,groupUrgencyCategories:groupUrgencyNames,groupUrgencyAssignments,urgencyGroupColours,clinicianGroupCategories:clinicianGroupNames,clinicianGroupAssignments,peopleLocum,peopleClinicianType,clinicianGroupColours,clinicianTypeColours,urgencyTypeColours}));}catch(e){alert('Could not save settings in this browser. Please try again.')}if(sync)markCategoryDirty()}function allCategories(){return [...categoryNames,'Uncategorised']}function rebuildCategoryFilter(){const old=new Set([...slots.selectedOptions].map(o=>o.value));slots.replaceChildren();for(const c of allCategories()){const o=document.createElement('option');o.value=c;o.textContent=c;o.selected=old.has(c);slots.append(o)}}function renderEditor(){renderDropEditor('urgency');updateAvailabilityUrgencyFilter()}
 function renderGroupUrgencyEditor(){renderDropEditor('groupUrgency');updateAvailabilityUrgencyFilter()}document.getElementById('addCategory').onclick=()=>{const el=document.getElementById('newCategory');const c=el.value.trim();if(!c)return;if(c.toLowerCase()==='uncategorised'||categoryNames.some(x=>x.toLowerCase()===c.toLowerCase())){alert('This category name already exists or is reserved.');return}categoryNames.push(c);el.value='';saveCategories();rebuildCategoryFilter();renderEditor();renderGroupUrgencyEditor()};document.getElementById('newCategory').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('addCategory').click()});document.getElementById('slotSearch').addEventListener('input',renderEditor);function showPage(which){
  for(const [page,nav,name] of [['chartPage','navChart','chart'],['categoryPage','navCategories','categories'],['availabilityPage','navAvailability','availability'],['routineAvailabilityPage','navRoutineAvailability','routineAvailability'],['bookingTimesPage','navBookingTimes','bookingTimes'],['peoplePage','navPeople','people']]){
   $(page).classList.toggle('hidden',which!==name);$(nav).classList.toggle('active',which===name);
@@ -1429,14 +1441,14 @@ function renderUrgentSideFilters(){
  const build=(id,names,disabled,colour)=>{
   const root=$(id);if(!root)return;
   const previous=[...root.querySelectorAll('input[data-filter-name]')].map(el=>el.dataset.filterName);
-  if(previous.length===names.length&&names.every((n,i)=>n===previous[i]))return;
+  if(previous.length===names.length&&names.every((n,i)=>n===previous[i])){root.querySelectorAll('input[data-filter-name]').forEach(input=>input.nextElementSibling?.style.setProperty('--switch-on',id==='urgentClinicianToggles'?clinicianGroupColour(input.dataset.filterName):'#a1c8e8'));return;}
   root.replaceChildren();
   for(const name of names){
    const row=document.createElement('label');row.className='filter-row';
    const sw=document.createElement('span');sw.className='switch';
    const input=document.createElement('input');input.type='checkbox';input.setAttribute('role','switch');input.dataset.filterName=name;input.checked=!disabled.has(name);
    input.setAttribute('aria-label','Include '+name);
-   const track=document.createElement('span');track.className='switch-track';track.style.setProperty('--switch-on',colour);
+   const track=document.createElement('span');track.className='switch-track';track.style.setProperty('--switch-on',id==='urgentClinicianToggles'?clinicianGroupColour(name):colour);
    const caption=document.createElement('span');caption.textContent=name;
    sw.append(input,track);row.append(sw,caption);root.append(row);
    input.addEventListener('change',()=>{
@@ -1513,16 +1525,7 @@ function renderUrgentCategoryToggles(){
   });
  }
 }
-function urgentColour(name){
- const n=name.toLowerCase();
- if(n.includes('red'))return '#d4777e';
- if(n.includes('extra'))return '#9978c8';
- if(n.includes('priority'))return '#e4b94f';
- if(n.includes('flexi'))return '#72a9d5';
- const palette=['#6eaea6','#80a6d1','#cf8eb7','#c79c70','#8b9db8'];
- let hash=0;for(const c of n)hash=(hash*31+c.charCodeAt(0))>>>0;
- return palette[hash%palette.length];
-}
+function urgentColour(name){return urgencyTypeColour(name)}
 function urgentGradientStops(hex){
  const rgb=[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16));
  const mix=(other,t)=>'#'+rgb.map((v,i)=>Math.round(v*(1-t)+other[i]*t).toString(16).padStart(2,'0')).join('');
@@ -1855,7 +1858,7 @@ function bookingTimesTogglePanel(id,names,disabled){
   const input=document.createElement('input');input.type='checkbox';input.setAttribute('role','switch');
   input.dataset.filterName=name;input.checked=!disabled.has(name);input.setAttribute('aria-label','Include '+name);
   const track=document.createElement('span');track.className='switch-track';
-  if(id==='bookingTimesUrgencyFilters')track.style.setProperty('--switch-on',urgencyGroupColour(name));
+  if(id==='bookingTimesUrgencyFilters')track.style.setProperty('--switch-on',urgencyGroupColour(name));else if(id==='bookingTimesClinicianFilters')track.style.setProperty('--switch-on',clinicianGroupColour(name));
   const caption=document.createElement('span');caption.textContent=name;
   switchWrap.append(input,track);label.append(switchWrap,caption);root.append(label);
   input.addEventListener('change',()=>{if(input.checked)disabled.delete(name);else disabled.add(name);renderBookingTimesChart()});

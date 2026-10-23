@@ -351,3 +351,6 @@ Slot settings now has the same compact group-card organiser as People settings. 
 
 
 Slot settings: CSV slot types now appear in a searchable table with Assigned type dropdown and coloured Urgency Group indicator. Filter by urgency group or unassigned. Urgency group/type cards remain editable above.
+
+
+2026-10-23: Individual customisable colours for clinician and urgency types, saved locally and to OneDrive. Group/type chart switches match their colours. Legacy consult-mode drag/drop editors hidden in Slot settings; data and underlying compatibility retained.
