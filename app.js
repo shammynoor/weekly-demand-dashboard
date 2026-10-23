@@ -1687,6 +1687,34 @@ window.addEventListener('resize',()=>{if(!$('availabilityPage').classList.contai
 setupUrgentRangeControls();
 
 // Independent filters for Routine Appointment Availability.
+const routineDisabledTypes=new Set();
+function routineDetailedTypes(){
+ return [...new Set([...Object.keys(groupUrgencyAssignments),...Object.values(assignments)])]
+  .filter(name=>name&&String(groupUrgencyAssignments[name]||'').trim().toLowerCase()==='routine')
+  .sort((a,b)=>a.localeCompare(b));
+}
+function renderRoutineCategoryToggles(){
+ const root=$('routineCategoryToggles');if(!root)return;
+ const names=routineDetailedTypes();
+ const old=[...root.querySelectorAll('input[data-filter-name]')].map(el=>el.dataset.filterName);
+ if(old.length===names.length&&names.every((name,i)=>name===old[i])){
+  root.querySelectorAll('input[data-filter-name]').forEach(input=>input.nextElementSibling?.style.setProperty('--switch-on',urgencyTypeColour(input.dataset.filterName)));
+  return;
+ }
+ root.replaceChildren();
+ if(!names.length){root.textContent='Assign detailed types to the Routine urgency group in Slot settings.';return}
+ for(const name of names){
+  const row=document.createElement('label');row.className='filter-row';
+  const sw=document.createElement('span');sw.className='switch';
+  const input=document.createElement('input');input.type='checkbox';input.setAttribute('role','switch');input.dataset.filterName=name;
+  input.checked=!routineDisabledTypes.has(name);input.setAttribute('aria-label','Include '+name);
+  const track=document.createElement('span');track.className='switch-track';
+  track.style.setProperty('--switch-on',urgencyTypeColour(name));
+  const caption=document.createElement('span');caption.textContent=name;
+  sw.append(input,track);row.append(sw,caption);root.append(row);
+  input.addEventListener('change',()=>{input.checked?routineDisabledTypes.delete(name):routineDisabledTypes.add(name);renderRoutineAvailabilityChart()});
+ }
+}
 const routineDisabledClinicianGroups=new Set();
 const routineDisabledConsultModes=new Set();
 function renderRoutineAvailabilityFilters(){
@@ -1755,7 +1783,7 @@ function setupRoutineRangeControls(){
 }
 // Visual-only finish for the Routine stacked bars. The original Plotly data,
 // hover targets, shading and Today geometry are left untouched.
-function applyRoutineBarGlass(target){
+function applyRoutineBarGlass(target,bookedTypeCount=1){
  const svg=target.querySelector('.main-svg');
  if(!svg)return;
  const ns='http://www.w3.org/2000/svg';
@@ -1779,11 +1807,13 @@ function applyRoutineBarGlass(target){
  // Plotly draws one bar trace per availability status, in the order above.
  const traces=target.querySelectorAll('.barlayer .trace.bars');
  traces.forEach((trace,i)=>{
-  if(i>=gradients.length)return;
+  if(i<bookedTypeCount)return; // Retain the chosen colour for each routine category.
+  const statusIndex=i-bookedTypeCount+1;
+  if(statusIndex>=gradients.length)return;
   trace.querySelectorAll('.point path').forEach(path=>{
-   path.style.setProperty('fill','url(#'+gradients[i][0]+')','important');
-   path.style.setProperty('stroke',i===3?'#dce7ee':'rgba(255,255,255,0.45)');
-   path.style.setProperty('stroke-width',i===3?'0.85px':'0.6px');
+   path.style.setProperty('fill','url(#'+gradients[statusIndex][0]+')','important');
+   path.style.setProperty('stroke',statusIndex===3?'#dce7ee':'rgba(255,255,255,0.45)');
+   path.style.setProperty('stroke-width',statusIndex===3?'0.85px':'0.6px');
   });
  });
 }
@@ -1791,6 +1821,7 @@ function renderRoutineAvailabilityChart(){
  const target=$('routineAvailabilityChart');
  if(!target||$('routineAvailabilityPage').classList.contains('hidden')||!window.Plotly)return;
  renderRoutineAvailabilityFilters();
+ renderRoutineCategoryToggles();
  refreshAvailabilityOptionStates('routine');
  const isDaily=routineAvailabilityGranularity==='day';
  const start=new Date(thisWeek+'T12:00:00Z');start.setUTCDate(start.getUTCDate()+7*routineStartWeek);
@@ -1806,7 +1837,7 @@ function renderRoutineAvailabilityChart(){
  for(const r of availabilityRecords){
   const detailed=String(assignments[r.slot]||'').trim();
   const group=String(groupUrgencyAssignments[detailed]||'').trim();
-  if(group.toLowerCase()!=='routine'||!routineClinicianMatches(r.clinician,r.person)||!routineConsultMatches(r.slot))continue;
+  if(group.toLowerCase()!=='routine'||routineDisabledTypes.has(detailed)||!routineClinicianMatches(r.clinician,r.person)||!routineConsultMatches(r.slot))continue;
   const bucket=isDaily?r.date:mondayOf(r.date);
   if(!bucketSet.has(bucket))continue;
   const status=String(r.availability||'').trim().toLowerCase();
@@ -1814,6 +1845,7 @@ function renderRoutineAvailabilityChart(){
   if(!label)continue;
   matched+=r.count;
   const key=JSON.stringify([bucket,label]);byBucket.set(key,(byBucket.get(key)||0)+r.count);
+  if(label==='Booked'){const typeKey=JSON.stringify([bucket,'Booked',detailed]);byBucket.set(typeKey,(byBucket.get(typeKey)||0)+r.count);}
  }
  const labels=['Booked','Blocked','Embargoed','Available'];
  const colours={'Booked':'#5fc18a','Blocked':'#435569','Embargoed':'#b7c7d1','Available':'#ffffff'};
@@ -1823,8 +1855,12 @@ function renderRoutineAvailabilityChart(){
   return '<b>'+heading+'</b><br>'+labels.map(label=>label+': '+(byBucket.get(JSON.stringify([date,label]))||0).toLocaleString('en-GB')).join('<br>')+'<br><b>Total: '+labels.reduce((sum,label)=>sum+(byBucket.get(JSON.stringify([date,label]))||0),0).toLocaleString('en-GB')+'</b>';
  });
  const plotBackground='#f4f8fb';
- const traces=labels.map(label=>({type:'bar',name:label,showlegend:false,x:dates,y:dates.map(date=>byBucket.get(JSON.stringify([date,label]))||0),marker:{color:colours[label],line:{color:label==='Available'?'#d9e3eb':'rgba(255,255,255,0.8)',width:label==='Available'?1:0.7}},customdata:summaries,hovertemplate:'%{customdata}<extra></extra>'}));
- for(const label of labels)traces.push({type:'scatter',mode:'markers',name:label,x:[null],y:[null],marker:{symbol:'circle',size:14,color:colours[label],line:{color:label==='Available'?'#a7b8c6':colours[label],width:label==='Available'?1.5:0}},showlegend:true,hoverinfo:'skip'});
+ const routineTypes=routineDetailedTypes().filter(name=>!routineDisabledTypes.has(name));
+ const traces=[
+  ...routineTypes.map(name=>({type:'bar',name,showlegend:true,x:dates,y:dates.map(date=>byBucket.get(JSON.stringify([date,'Booked',name]))||0),marker:{color:urgencyTypeColour(name),line:{width:0}},customdata:summaries,hovertemplate:'%{customdata}<extra></extra>'})),
+  ...labels.filter(label=>label!=='Booked').map(label=>({type:'bar',name:label,showlegend:false,x:dates,y:dates.map(date=>byBucket.get(JSON.stringify([date,label]))||0),marker:{color:colours[label],line:{color:label==='Available'?'#d9e3eb':'rgba(255,255,255,0.8)',width:label==='Available'?1:0.7}},customdata:summaries,hovertemplate:'%{customdata}<extra></extra>'}))
+ ];
+ for(const label of labels.filter(label=>label!=='Booked'))traces.push({type:'scatter',mode:'markers',name:label,x:[null],y:[null],marker:{symbol:'circle',size:14,color:colours[label],line:{color:label==='Available'?'#a7b8c6':colours[label],width:label==='Available'?1.5:0}},showlegend:true,hoverinfo:'skip'});
  const totals=dates.map(date=>labels.reduce((sum,label)=>sum+(byBucket.get(JSON.stringify([date,label]))||0),0));
  const max=Math.max(1,...totals);
  const annotations=totals.flatMap((total,i)=>total?[{xref:'x',x:i,y:total,text:total.toLocaleString('en-GB'),showarrow:false,yshift:15,font:{size:isDaily?10:13,color:'#425b70'}}]:[]);
@@ -1848,7 +1884,7 @@ function renderRoutineAvailabilityChart(){
   xaxis:{type:'category',categoryorder:'array',categoryarray:dates,range:[-0.5,dates.length-0.5],tickmode:'array',tickvals:dates,ticktext:isDaily?dates.map(date=>new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'short',timeZone:'UTC'})):dates.map(()=>''),tickangle:-90,tickfont:{size:10},showticklabels:isDaily,showgrid:false,showline:true,linecolor:'#a9b9c7',linewidth:1.5,zeroline:false,fixedrange:true},
   yaxis:{title:{text:'Appointment slots',font:{size:12,color:'#708397'}},tickfont:{size:12,color:'#52677b'},range:[0,Math.ceil(max*1.18/10)*10],gridcolor:'#e0e8ef',gridwidth:1,zeroline:false,showline:false},
   annotations,shapes,hovermode:'closest'
- },{responsive:true,displaylogo:false,displayModeBar:false}).then(()=>applyRoutineBarGlass(target));
+ },{responsive:true,displaylogo:false,displayModeBar:false}).then(()=>applyRoutineBarGlass(target,routineTypes.length));
 }
 window.addEventListener('resize',()=>{if(!$('routineAvailabilityPage').classList.contains('hidden'))renderRoutineAvailabilityChart()});
 setupRoutineRangeControls();
