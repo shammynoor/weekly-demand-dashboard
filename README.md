@@ -305,3 +305,6 @@ Manage people table filters: a Clinician Groups dropdown next to search (All or 
 
 ## Detailed clinician type colours
 Each Detailed Clinician Type has a stable pastel colour swatch in Manage people. Click its dot to open the browser's native colour picker. Colours are saved in localStorage and private OneDrive settings (`clinicianTypeColours`). The Manage people table now includes Clinician Group as column four, with a dot showing the person's assigned detailed clinician type colour; Locum is column five. Clinician-group filters on Urgent and Routine availability charts use the first alphabetically assigned type's colour for the group, while category/status colours remain unchanged.
+
+## Group colours (corrected)
+One colour per Clinician Group, shown as a larger clickable circle in the group header. No colours on individual Detailed Clinician Types. More saturated pastel defaults. The Manage People Clinician Group column and the Urgent/Routine clinician-group toggles use the same group colour. Group colours persist in local browser settings and private OneDrive settings as `clinicianGroupColours`; renaming/deleting groups carries over or removes the group colour. Prior per-type colours are ignored.
