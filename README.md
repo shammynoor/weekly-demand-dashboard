@@ -400,3 +400,7 @@ Signposting events do not have a session-holder clinician or consult mode. They 
 
 
 Updated: 30 compact coordinated colour swatches; Urgent and Routine availability tooltips use a custom white rounded card with padded date heading and category rows.
+
+
+## Tooltip and colour palette update
+Availability tooltip cards are approximately half the previous size, with a category-coloured dot beside each legend item. The dots use the chart's actual marker colours, including saved custom colours. The 30-colour palette now includes more visually distinct saturated colours and white, grey, and near-black. Previously saved colour choices are retained.

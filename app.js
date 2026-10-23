@@ -66,7 +66,7 @@ let clinicianTypeColours={};
 let urgencyTypeColours={};
 
 // Curated 18-colour spectrum: cohesive, deep pastel shades rather than unrestricted RGB.
-const DASHBOARD_COLOUR_PALETTE=['#b74f6b','#c45d5d','#c46b52','#c77f50','#c5914b','#c4a24e','#b3a34e','#9ca452','#83a45c','#67a36d','#50a07c','#469d90','#4a9a9b','#4d94a8','#548db5','#6283b7','#737bb8','#8475b4','#9872b2','#a96ea8','#b76b9c','#ae6388','#8b607c','#7c7899','#697e99','#608f8d','#8b9869','#a58a70','#a87772','#887fa5'];
+const DASHBOARD_COLOUR_PALETTE=["#D9485F", "#F06438", "#E88C28", "#D9B528", "#9DAF30", "#42A54C", "#19A886", "#0C9D9B", "#1C91C5", "#3778D6", "#6557D2", "#9348BE", "#C34C9B", "#B95D72", "#9E5737", "#718E38", "#3C9A78", "#377C8C", "#4C70A3", "#7E68AC", "#A861A1", "#C87C42", "#E6C4B3", "#B8D5A5", "#9BD8D6", "#9AB8EB", "#D4A9E6", "#FFFFFF", "#929AA4", "#30343B"];
 function showDashboardColourPalette(anchor,input){
  document.querySelectorAll('.dashboard-colour-popover').forEach(el=>el.remove());
  const popup=document.createElement('div');popup.className='dashboard-colour-popover';popup.setAttribute('role','group');popup.setAttribute('aria-label','Choose from 30 coordinated colours');
@@ -1706,9 +1706,29 @@ function installAvailabilityCardTooltip(target){
   const parts=point.customdata.split('<br>');card.replaceChildren();
   const plain=html=>{const el=document.createElement('span');el.innerHTML=html;return el.textContent||''};
   const heading=document.createElement('div');heading.className='availability-tooltip-heading';heading.textContent=plain(parts[0]);card.appendChild(heading);
+  // Match tooltip dots to the *actual* trace colours (including custom
+  // category colours and the current grouped/un-grouped unavailable states).
+  const chartColours=new Map();
+  for(const trace of target.data||[]){
+   if(!trace.name||!trace.marker?.color)continue;
+   const colour=Array.isArray(trace.marker.color)?trace.marker.color[0]:trace.marker.color;
+   if(typeof colour==='string')chartColours.set(trace.name,colour);
+  }
   for(const part of parts.slice(1)){
    const row=document.createElement('div');row.className='availability-tooltip-line';
-   row.textContent=plain(part);if(part.startsWith('<b>'))row.classList.add('availability-tooltip-total');card.appendChild(row);
+   const text=plain(part);
+   if(part.startsWith('<b>'))row.classList.add('availability-tooltip-total');
+   else {
+    const separator=text.lastIndexOf(': ');
+    const label=separator>=0?text.slice(0,separator):text;
+    const dot=document.createElement('span');dot.className='availability-tooltip-dot';
+    const colour=chartColours.get(label)||'#aab6c1';
+    dot.style.backgroundColor=colour;
+    if(/^#(?:fff|ffffff)$/i.test(colour))dot.style.borderColor='#9eacb8';
+    row.appendChild(dot);
+   }
+   const value=document.createElement('span');value.textContent=text;row.appendChild(value);
+   card.appendChild(row);
   }
   card.hidden=false;
   const rect=target.getBoundingClientRect(),event=data.event;
