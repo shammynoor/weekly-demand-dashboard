@@ -271,3 +271,4 @@ Fixed a circular dependency in auto-disabled clinician/consult filters that coul
 
 ## Fix: circular filter lockout
 Source-data eligibility is evaluated independently for each filter group, not against switches disabled in other groups. If all selected filters would hide every matching appointment, the last switch action is reverted. An existing all-off state is recovered by enabling available options. Applies to urgent and routine charts.
+\n\n## Manage people\nNew navigation tab listing distinct CSV Full Name of the Session Holder of the Session values, with User Type of the Session Holder of the Session and a Locum Yes/No selector (default No). Records are deduplicated by name + user type, sorted by name, and searchable. Locum selections are stored locally and synced to the existing private OneDrive settings JSON using Save to OneDrive. No changes to appointment counts or filtering.\n
