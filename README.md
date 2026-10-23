@@ -289,3 +289,6 @@ Declare peopleAggregate in loadFolder before CSV aggregation, count occurrences 
 
 ## Person-specific clinician categorisation
 All charts now use the named session holder's Assigned Clinician Type from Manage people as their detailed clinician category. This takes priority over the CSV User Type field. The original CSV user type remains visible in Manage people and is used as fallback when no valid person-specific category exists. The person name is retained in each aggregated appointment record to prevent different clinicians from being merged before filtering. Changing a person's category updates visible charts without reimporting CSVs.
+
+## Manage people — clinician group boxes
+Manage people now shows a box for each existing Clinician Group, containing its assigned Detailed Clinician Types. Each box has an Add type field and button. A final Add Group box creates another Clinician Group. Types can be reassigned to another group using their dropdown. All changes update the existing clinician group/category data model, the category editors, and the charts; they are stored locally and sync to the existing private OneDrive settings when saved.

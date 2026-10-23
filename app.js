@@ -44,6 +44,74 @@ function refreshClinicianCharts(){
  if(!$('routineAvailabilityPage')?.classList.contains('hidden'))renderRoutineAvailabilityChart();
  if(!$('bookingTimesPage')?.classList.contains('hidden'))renderBookingTimesChart();
 }
+function renderPeopleGroups(){
+ const root=$('peopleGroupBoxes');if(!root)return;
+ root.replaceChildren();
+ const groups=[...clinicianGroupNames];
+ const make=(tag,cls,txt)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(txt!==undefined)e.textContent=txt;return e};
+ const changed=()=>{
+  saveCategories();
+  renderPeopleGroups();
+  renderPeople();
+  renderClinicianEditor();
+  renderClinicianGroupEditor();
+  updateClinicianChartFilter();
+  refreshClinicianCharts();
+  const status=$('peopleSaveStatus');if(status)status.textContent='Changes saved in this browser — click Save to OneDrive to synchronise.';
+ };
+ for(const group of groups){
+  const card=make('section','people-group-card');
+  const heading=make('h3','people-group-title',group);
+  const assigned=clinicianCategoryNames.filter(t=>clinicianGroupAssignments[t]===group).sort((a,b)=>a.localeCompare(b));
+  const count=make('span','people-group-count',assigned.length+' types');
+  const header=make('div','people-group-heading');header.append(heading,count);card.append(header);
+  const list=make('div','people-group-types');
+  for(const type of assigned){
+   const row=make('div','people-group-type');
+   const label=make('span','',type);
+   const move=make('select','people-type-move');
+   move.setAttribute('aria-label','Move '+type+' to clinician group');
+   for(const destination of groups){
+    const option=make('option','',destination);option.value=destination;move.append(option);
+   }
+   const unassigned=make('option','','Unassigned');unassigned.value='Uncategorised';move.append(unassigned);
+   move.value=group;
+   move.addEventListener('change',()=>{clinicianGroupAssignments[type]=move.value;changed()});
+   row.append(label,move);list.append(row);
+  }
+  if(!assigned.length)list.append(make('p','muted','No detailed clinician types yet.'));
+  card.append(list);
+  const addRow=make('div','people-group-add-row');
+  const input=make('input','people-group-add-input');input.placeholder='New detailed clinician type';input.setAttribute('aria-label','New detailed clinician type for '+group);
+  const add=make('button','people-group-add-button','Add type');add.type='button';
+  const create=()=>{
+   const value=input.value.trim();
+   if(!value)return;
+   if(value.toLowerCase()==='uncategorised'||clinicianCategoryNames.some(t=>t.toLowerCase()===value.toLowerCase())){
+    alert('This detailed clinician type already exists or is reserved. Use its group dropdown to move it instead.');return;
+   }
+   clinicianCategoryNames.push(value);
+   clinicianGroupAssignments[value]=group;
+   changed();
+  };
+  add.addEventListener('click',create);
+  input.addEventListener('keydown',e=>{if(e.key==='Enter')create()});
+  addRow.append(input,add);card.append(addRow);root.append(card);
+ }
+ const addCard=make('section','people-group-card people-group-new');
+ const input=make('input','people-group-add-input');input.placeholder='New clinician group';input.setAttribute('aria-label','New clinician group name');
+ const add=make('button','people-group-add-button','+ Add Group');add.type='button';
+ const createGroup=()=>{
+  const name=input.value.trim();
+  if(!name)return;
+  if(name.toLowerCase()==='uncategorised'||clinicianGroupNames.some(g=>g.toLowerCase()===name.toLowerCase())){
+   alert('This clinician group already exists or is reserved.');return;
+  }
+  clinicianGroupNames.push(name);changed();
+ };
+ add.addEventListener('click',createGroup);input.addEventListener('keydown',e=>{if(e.key==='Enter')createGroup()});
+ addCard.append(input,add);root.append(addCard);
+}
 function renderPeople(){
  const body=$('peopleTableBody'),count=$('peopleCount');if(!body)return;
  const query=String($('peopleSearch')?.value||'').trim().toLowerCase();
@@ -162,6 +230,7 @@ async function loadCloudCategories(){
   renderClinicianGroupEditor();
   renderConsultEditor();
   refresh();
+  renderPeopleGroups();
   renderPeople();
  }catch(e){
   cloudNotice('Could not load cloud categories: '+e.message+' (local settings retained)');
@@ -760,11 +829,11 @@ function renderGroupUrgencyEditor(){renderDropEditor('groupUrgency');updateAvail
  else if(which==='availability')setTimeout(renderAvailabilityChart,0);
  else if(which==='routineAvailability')setTimeout(renderRoutineAvailabilityChart,0);
  else if(which==='bookingTimes')setTimeout(renderBookingTimesChart,0);
- else if(which==='people')renderPeople();
+ else if(which==='people'){renderPeopleGroups();renderPeople();}
  else {renderEditor();renderGroupUrgencyEditor();renderClinicianEditor();renderClinicianGroupEditor();renderConsultEditor()}
 }document.getElementById('navChart').onclick=()=>showPage('chart');document.getElementById('navCategories').onclick=()=>showPage('categories');document.getElementById('navAvailability').onclick=()=>showPage('availability');document.getElementById('navRoutineAvailability').onclick=()=>showPage('routineAvailability');document.getElementById('navBookingTimes').onclick=()=>showPage('bookingTimes');document.getElementById('navPeople').onclick=()=>showPage('people');$('peopleSearch').addEventListener('input',renderPeople);$('savePeopleToOneDrive').onclick=async()=>{const ok=await saveCloudCategories({manual:true});$('peopleSaveStatus').textContent=ok?'Saved to OneDrive.':'Save failed. Please check Manage categories for details.'};document.getElementById('saveToOneDrive').onclick=()=>{void saveCloudCategories({manual:true})};
 function renderClinicianEditor(){renderDropEditor('clinician');updateClinicianChartFilter()}
-function renderClinicianGroupEditor(){renderDropEditor('clinicianGroup')}
+function renderClinicianGroupEditor(){renderDropEditor('clinicianGroup');if(!$('peoplePage')?.classList.contains('hidden'))renderPeopleGroups()}
 $('addClinicianCategory').onclick=()=>{const el=$('newClinicianCategory');const c=el.value.trim();if(!c)return;if(c.toLowerCase()==='uncategorised'||clinicianCategoryNames.some(x=>x.toLowerCase()===c.toLowerCase())){alert('This clinician category name already exists or is reserved.');return}clinicianCategoryNames.push(c);el.value='';saveCategories();renderClinicianEditor();renderClinicianGroupEditor()};
 $('newClinicianCategory').addEventListener('keydown',e=>{if(e.key==='Enter')$('addClinicianCategory').click()});
 $('clinicianSlotSearch').addEventListener('input',renderClinicianEditor);
