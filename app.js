@@ -2164,9 +2164,9 @@ const bookingTimesDisabledConsult=new Set();
 function bookingTimesTogglePanel(id,names,disabled){
  const root=$(id);if(!root)return;
  const current=[...root.querySelectorAll('input[data-filter-name]')].map(input=>input.dataset.filterName);
- if(current.length===names.length&&current.every((name,i)=>name===names[i])){root.querySelectorAll('input[data-filter-name]').forEach(input=>{const colour=id==='bookingTimesUrgencyFilters'?urgencyGroupColour(input.dataset.filterName):id==='bookingTimesClinicianFilters'?clinicianGroupColour(input.dataset.filterName):'#596675';input.nextElementSibling?.style.setProperty('--switch-on',colour)});return;}
+ if(current.length===names.length&&current.every((name,i)=>name===names[i])){root.querySelectorAll('input[data-filter-name]').forEach(input=>{const colour=id==='bookingTimesUrgencyFilters'?urgencyGroupColour(input.dataset.filterName):id==='bookingTimesClinicianFilters'?clinicianGroupColour(input.dataset.filterName):'#596675';input.nextElementSibling?.style.setProperty('--switch-on',colour)});updateCollapsedFilterSummaries();return;}
  root.replaceChildren();
- if(!names.length){const span=document.createElement('span');span.className='hint';span.textContent='Set up categories in Manage categories.';root.append(span);return}
+ if(!names.length){const span=document.createElement('span');span.className='hint';span.textContent='Set up categories in Manage categories.';root.append(span);updateCollapsedFilterSummaries();return}
  for(const name of names){
   const label=document.createElement('label');label.className='filter-row';
   const switchWrap=document.createElement('span');switchWrap.className='switch';
@@ -2178,6 +2178,7 @@ function bookingTimesTogglePanel(id,names,disabled){
   switchWrap.append(input,track);label.append(switchWrap,caption);root.append(label);
   input.addEventListener('change',()=>{if(input.checked)disabled.delete(name);else disabled.add(name);renderBookingTimesChart()});
  }
+ updateCollapsedFilterSummaries();
 }
 function renderBookingTimesChart(){
  const chart=$('bookingTimesChart');
