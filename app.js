@@ -1135,10 +1135,73 @@ function initCSVDragDrop(){
 }
 initCSVDragDrop();
 
+let signpostingRecords=[],signpostingFileCount=0;
+function isSignpostingFile(name){return /signposting[\s_-]*auto[\s_-]*report/i.test(String(name||''))&&/\.csv$/i.test(name)}
+function parseSignpostingDate(raw){
+ const value=String(raw||'').trim();
+ const m=/^(\d{1,2})[-\/ ]([A-Za-z]{3,9})[-\/ ,]*(\d{4})$/.exec(value);
+ if(m){const month=['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'].indexOf(m[2].slice(0,3).toLowerCase());const day=Number(m[1]),year=Number(m[3]);const dt=new Date(Date.UTC(year,month,day));if(month>=0&&dt.getUTCFullYear()===year&&dt.getUTCMonth()===month&&dt.getUTCDate()===day)return dt.toISOString().slice(0,10)}
+ const iso=/^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+ if(iso){const dt=new Date(value+'T00:00:00Z');if(!isNaN(dt)&&dt.toISOString().slice(0,10)===value)return value}
+ return '';
+}
+function parseSignpostingCSV(csv){
+ const parsed=Papa.parse(csv,{header:true,skipEmptyLines:false,bom:true});
+ const required=['Anonymised Identifier','Age','Gender','Date',"Consultation Details' Time",'Code Term'];
+ const headers=(parsed.meta.fields||[]).map(h=>h.trim());
+ if(!required.every(col=>headers.includes(col)))throw Error('Signposting CSV is missing expected columns: '+required.filter(col=>!headers.includes(col)).join(', '));
+ const previous=Object.fromEntries(required.map(k=>[k,'']));
+ const results=[];
+ for(const raw of parsed.data){
+  // Fill down EVERY column independently, including identifiers and demographics.
+  // Completely empty rows are ignored so they cannot become duplicate events.
+  const allFields=Object.keys(raw).filter(k=>k!=='__parsed_extra');
+  if(!allFields.some(k=>String(raw[k]??'').trim()))continue;
+  const row={};
+  for(const key of allFields){
+   const value=String(raw[key]??'').trim();
+   if(value)previous[key]=value;
+   row[key]=value||previous[key]||'';
+  }
+  const date=parseSignpostingDate(row.Date),destination=String(row['Code Term']||'').trim();
+  if(date&&destination)results.push({date,destination});
+ }
+ return results;
+}
+function renderSignpostingChart(){
+ const target=$('signpostingChart');if(!target||$('signpostingPage').classList.contains('hidden'))return;
+ const status=$('signpostingStatus');
+ if(!signpostingFileCount){Plotly.purge(target);status.textContent='No Signposting Auto Report CSV found in the selected OneDrive folder.';return}
+ if(!signpostingRecords.length){Plotly.purge(target);status.textContent='Signposting file loaded, but no valid dated signposting records were found.';return}
+ const counts=new Map(),dates=new Set(),destinations=new Set();
+ for(const record of signpostingRecords){dates.add(record.date);destinations.add(record.destination);const key=JSON.stringify([record.date,record.destination]);counts.set(key,(counts.get(key)||0)+1)}
+ const sortedDates=[...dates].sort(),sortedDestinations=[...destinations].sort((a,b)=>a.localeCompare(b));
+ const traces=sortedDestinations.map((destination,i)=>({
+  type:'scatter',mode:'lines',name:destination,
+  x:sortedDates,y:sortedDates.map(date=>counts.get(JSON.stringify([date,destination]))||0),
+  line:{width:2.4,shape:'linear'},
+  hovertemplate:'<b>%{x|%d %b %Y}</b><br>'+destination.replace(/&/g,'&amp;').replace(/</g,'&lt;')+': %{y:,}<extra></extra>',
+  connectgaps:false
+ }));
+ Plotly.react(target,traces,{
+  autosize:true,height:535,margin:{l:62,r:24,t:28,b:65},
+  paper_bgcolor:'#ffffff',plot_bgcolor:'#ffffff',
+  xaxis:{type:'date',title:'Date',tickformat:'%b %Y',gridcolor:'#edf1f5'},
+  yaxis:{title:'Signposting events',rangemode:'tozero',gridcolor:'#edf1f5'},
+  legend:{orientation:'h',y:1.18,x:0},hovermode:'x unified',
+  hoverlabel:{bgcolor:'#ffffff',bordercolor:'#dce5ed',font:{family:'Arial',size:12,color:'#182b3b'},align:'left'}
+ },{responsive:true,displaylogo:false,displayModeBar:false});
+ status.textContent=signpostingRecords.length.toLocaleString('en-GB')+' signposting records · '+sortedDestinations.length+' destinations · '+signpostingFileCount+' CSV file'+(signpostingFileCount===1?'':'s')+'. Empty cells filled from preceding rows.';
+}
 async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;setButtons();showRefreshFeedback('Refreshing data…',true);setSync('Checking OneDrive CSV files…');try{
  const items=(await children(selectedFolder.id)).filter(f=>f.file&&/\.csv$/i.test(f.name)).sort((a,b)=>a.name.localeCompare(b.name));if(!items.length)throw Error('No CSV files found directly inside this folder.');
  const fingerprint=JSON.stringify(items.map(f=>[f.id,f.lastModifiedDateTime,f.size]));if(!force&&fingerprint===lastFingerprint){showRefreshFeedback('Already up to date');setSync(`No changes detected · ${items.length} CSV files · Checked ${new Date().toLocaleTimeString('en-GB')}`);return}
- const aggregate=new Map(),availabilityAggregate=new Map(),bookingTimeAggregate=new Map(),peopleAggregate=new Map();let valid=0,skipped=0;for(let i=0;i<items.length;i++){const f=items[i];showRefreshFeedback(`Loading file ${i+1} of ${items.length}…`,true);setSync(`Loading ${i+1} of ${items.length}: ${f.name}`);const detail=await graph(sourceItemUrl(f.id));const url=detail['@microsoft.graph.downloadUrl'];if(!url)throw Error('OneDrive did not provide a download URL for '+f.name);const response=await fetch(url,{cache:'no-store'});if(!response.ok)throw Error(`Could not download ${f.name}: HTTP ${response.status}`);const stats=aggregateCSV(await response.text(),aggregate,availabilityAggregate,bookingTimeAggregate,peopleAggregate);valid+=stats.valid;skipped+=stats.skipped}
+ const aggregate=new Map(),availabilityAggregate=new Map(),bookingTimeAggregate=new Map(),peopleAggregate=new Map();let valid=0,skipped=0;const newSignposting=[];let newSignpostingFiles=0,newSlotFiles=0;for(let i=0;i<items.length;i++){const f=items[i];showRefreshFeedback(`Loading file ${i+1} of ${items.length}…`,true);setSync(`Loading ${i+1} of ${items.length}: ${f.name}`);const detail=await graph(sourceItemUrl(f.id));const url=detail['@microsoft.graph.downloadUrl'];if(!url)throw Error('OneDrive did not provide a download URL for '+f.name);const response=await fetch(url,{cache:'no-store'});if(!response.ok)throw Error(`Could not download ${f.name}: HTTP ${response.status}`);const csvText=await response.text();
+ if(isSignpostingFile(f.name)){newSignposting.push(...parseSignpostingCSV(csvText));newSignpostingFiles++;continue}
+ if(!/slot[\s_-]*report/i.test(f.name))continue;
+ newSlotFiles++;
+ const stats=aggregateCSV(csvText,aggregate,availabilityAggregate,bookingTimeAggregate,peopleAggregate);valid+=stats.valid;skipped+=stats.skipped}
+ signpostingRecords=newSignposting;signpostingFileCount=newSignpostingFiles;
  const peopleByName=new Map();
  for(const [key,count] of peopleAggregate){
   const [name,type]=JSON.parse(key);
@@ -1167,12 +1230,13 @@ const drawingErrors=[];
   ['weekly charts',()=>refresh()],
   ['availability chart',()=>renderAvailabilityChart()],
   ['routine availability chart',()=>renderRoutineAvailabilityChart()],
-  ['booking times chart',()=>renderBookingTimesChart()]
+  ['booking times chart',()=>renderBookingTimesChart()],
+  ['signposting chart',()=>renderSignpostingChart()]
  ]){
   try{draw()}catch(error){drawingErrors.push(label+': '+(error?.message||String(error)));console.error('Dashboard rendering error in '+label,error)}
  }
  showRefreshFeedback(drawingErrors.length?'Data loaded; chart issue: '+drawingErrors.join('; '):(!isOwner?'Data refreshed · shared slot assignments: '+Object.keys(assignments).length:'Data refreshed successfully'));
- scheduleChartResize();setSync(`${items.length} CSV files · ${valid.toLocaleString('en-GB')} booked rows counted · ${skipped.toLocaleString('en-GB')} skipped · ${Object.keys(assignments).length} assigned slot types · Updated ${new Date().toLocaleString('en-GB')}`)
+ scheduleChartResize();setSync(`${newSlotFiles} Slot Report CSV files · ${newSignpostingFiles} Signposting CSV files · ${valid.toLocaleString('en-GB')} booked rows counted · ${skipped.toLocaleString('en-GB')} skipped · ${Object.keys(assignments).length} assigned slot types · Updated ${new Date().toLocaleString('en-GB')}`)
  }catch(e){
  const message=e?.message||String(e);
  console.error('OneDrive refresh error',e);
@@ -1416,16 +1480,17 @@ try{const local=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');if(local.peo
 function ensureFollowUpCategory(){if(!categoryNames.some(c=>c.toLowerCase().replace(/[\s-]+/g,'')==='followup'))categoryNames.push('Follow up')}ensureFollowUpCategory();function guessCategory(t){return /RED|YELLOW|AMBER|URGENT|SAME DAY|ACUTE/i.test(t)?'Urgent':/GREEN|FOLLOW UP|ROUTINE/i.test(t)?'Routine':null}function saveCategories(sync=true){lastConsultFilterNames=[];try{localStorage.setItem(STORAGE_KEY,JSON.stringify({categories:categoryNames,assignments,clinicianCategories:clinicianCategoryNames,clinicianAssignments,consultCategories:consultCategoryNames,consultAssignments,groupUrgencyCategories:groupUrgencyNames,groupUrgencyAssignments,urgencyGroupColours,clinicianGroupCategories:clinicianGroupNames,clinicianGroupAssignments,peopleLocum,peopleClinicianType,clinicianGroupColours,clinicianTypeColours,urgencyTypeColours}));}catch(e){alert('Could not save settings in this browser. Please try again.')}if(sync)markCategoryDirty()}function allCategories(){return [...categoryNames,'Uncategorised']}function rebuildCategoryFilter(){const old=new Set([...slots.selectedOptions].map(o=>o.value));slots.replaceChildren();for(const c of allCategories()){const o=document.createElement('option');o.value=c;o.textContent=c;o.selected=old.has(c);slots.append(o)}}function renderEditor(){renderDropEditor('urgency');updateAvailabilityUrgencyFilter()}
 function renderGroupUrgencyEditor(){renderDropEditor('groupUrgency');updateAvailabilityUrgencyFilter()}document.getElementById('addCategory').onclick=()=>{const el=document.getElementById('newCategory');const c=el.value.trim();if(!c)return;if(c.toLowerCase()==='uncategorised'||categoryNames.some(x=>x.toLowerCase()===c.toLowerCase())){alert('This category name already exists or is reserved.');return}categoryNames.push(c);el.value='';saveCategories();rebuildCategoryFilter();renderEditor();renderGroupUrgencyEditor()};document.getElementById('newCategory').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('addCategory').click()});document.getElementById('slotSearch').addEventListener('input',renderEditor);function showPage(which){
  if(!isOwner&&(which==='categories'||which==='people'))return;
- for(const [page,nav,name] of [['chartPage','navChart','chart'],['categoryPage','navCategories','categories'],['availabilityPage','navAvailability','availability'],['routineAvailabilityPage','navRoutineAvailability','routineAvailability'],['bookingTimesPage','navBookingTimes','bookingTimes'],['peoplePage','navPeople','people']]){
+ for(const [page,nav,name] of [['chartPage','navChart','chart'],['categoryPage','navCategories','categories'],['availabilityPage','navAvailability','availability'],['routineAvailabilityPage','navRoutineAvailability','routineAvailability'],['bookingTimesPage','navBookingTimes','bookingTimes'],['signpostingPage','navSignposting','signposting'],['peoplePage','navPeople','people']]){
   $(page).classList.toggle('hidden',which!==name);$(nav).classList.toggle('active',which===name);
  }
  if(which==='chart')setTimeout(()=>{refresh();scheduleChartResize()},0);
  else if(which==='availability')setTimeout(renderAvailabilityChart,0);
  else if(which==='routineAvailability')setTimeout(renderRoutineAvailabilityChart,0);
  else if(which==='bookingTimes')setTimeout(renderBookingTimesChart,0);
+ else if(which==='signposting')setTimeout(renderSignpostingChart,0);
  else if(which==='people'){renderPeopleGroups();renderPeopleGroupFilter();renderPeople();}
  else {renderSlotGroupBoxes();renderSlotTable();renderEditor();renderGroupUrgencyEditor();renderClinicianEditor();renderClinicianGroupEditor();renderConsultEditor()}
-}document.getElementById('navChart').onclick=()=>showPage('chart');document.getElementById('navCategories').onclick=()=>showPage('categories');document.getElementById('navAvailability').onclick=()=>showPage('availability');document.getElementById('navRoutineAvailability').onclick=()=>showPage('routineAvailability');document.getElementById('navBookingTimes').onclick=()=>showPage('bookingTimes');document.getElementById('navPeople').onclick=()=>showPage('people');$('slotTableSearch').addEventListener('input',renderSlotTable);$('slotGroupFilter').addEventListener('change',renderSlotTable);$('slotUnassignedOnly').addEventListener('change',()=>{$('slotGroupFilter').disabled=$('slotUnassignedOnly').checked;renderSlotTable()});$('peopleSearch').addEventListener('input',renderPeople);$('peopleGroupFilter').addEventListener('change',renderPeople);$('peopleUnassignedOnly').addEventListener('change',()=>{const only=$('peopleUnassignedOnly').checked;$('peopleGroupFilter').disabled=only;renderPeople()});
+}document.getElementById('navChart').onclick=()=>showPage('chart');document.getElementById('navCategories').onclick=()=>showPage('categories');document.getElementById('navAvailability').onclick=()=>showPage('availability');document.getElementById('navRoutineAvailability').onclick=()=>showPage('routineAvailability');document.getElementById('navBookingTimes').onclick=()=>showPage('bookingTimes');document.getElementById('navSignposting').onclick=()=>showPage('signposting');document.getElementById('navPeople').onclick=()=>showPage('people');$('slotTableSearch').addEventListener('input',renderSlotTable);$('slotGroupFilter').addEventListener('change',renderSlotTable);$('slotUnassignedOnly').addEventListener('change',()=>{$('slotGroupFilter').disabled=$('slotUnassignedOnly').checked;renderSlotTable()});$('peopleSearch').addEventListener('input',renderPeople);$('peopleGroupFilter').addEventListener('change',renderPeople);$('peopleUnassignedOnly').addEventListener('change',()=>{const only=$('peopleUnassignedOnly').checked;$('peopleGroupFilter').disabled=only;renderPeople()});
 function renderClinicianEditor(){renderDropEditor('clinician');updateClinicianChartFilter()}
 function renderClinicianGroupEditor(){renderDropEditor('clinicianGroup');if(!$('peoplePage')?.classList.contains('hidden'))renderPeopleGroups()}
 $('addClinicianCategory').onclick=()=>{const el=$('newClinicianCategory');const c=el.value.trim();if(!c)return;if(c.toLowerCase()==='uncategorised'||clinicianCategoryNames.some(x=>x.toLowerCase()===c.toLowerCase())){alert('This clinician category name already exists or is reserved.');return}clinicianCategoryNames.push(c);el.value='';saveCategories();renderClinicianEditor();renderClinicianGroupEditor()};
