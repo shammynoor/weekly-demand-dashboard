@@ -1471,6 +1471,54 @@ function refreshAvailabilityOptionStates(page){
   }
  }
 }
+const urgentDisabledClinicianTypes=new Set(),routineDisabledClinicianTypes=new Set();
+function selectedClinicianTypes(page){
+ const disabled=page==='urgent'?urgentClinicianDisabled:routineDisabledClinicianGroups;
+ return clinicianCategoryNames.filter(type=>{
+  const group=clinicianGroupAssignments[type];
+  return group&&clinicianGroupNames.includes(group)&&!disabled.has(group);
+ });
+}
+function renderClinicianTypeFilters(page){
+ const root=$(page+'ClinicianTypeFilters');if(!root)return;
+ const disabled=page==='urgent'?urgentDisabledClinicianTypes:routineDisabledClinicianTypes;
+ const names=selectedClinicianTypes(page);
+ const existing=[...root.querySelectorAll('input[data-filter-name]')].map(input=>input.dataset.filterName);
+ if(existing.length!==names.length||names.some((name,i)=>name!==existing[i])){
+  root.replaceChildren();
+  if(!names.length){const note=document.createElement('span');note.className='hint';note.textContent='No clinician types in selected groups';root.append(note);}
+  for(const name of names){
+   const row=document.createElement('label');row.className='filter-row';
+   const sw=document.createElement('span');sw.className='switch';
+   const input=document.createElement('input');input.type='checkbox';input.dataset.filterName=name;input.setAttribute('role','switch');input.checked=!disabled.has(name);
+   const track=document.createElement('span');track.className='switch-track';
+   const label=document.createElement('span');label.textContent=name;
+   sw.append(input,track);row.append(sw,label);root.append(row);
+   input.addEventListener('change',()=>{input.checked?disabled.delete(name):disabled.add(name);(page==='urgent'?renderAvailabilityChart:renderRoutineAvailabilityChart)();});
+  }
+ }
+ updateCollapsedFilterSummaries();
+}
+function updateCollapsedFilterSummaries(){
+ document.querySelectorAll('.collapsed-selection-summary[data-summary-for]').forEach(summary=>{
+  const root=$(summary.dataset.summaryFor);if(!root)return;
+  const selected=[...root.querySelectorAll('input[data-filter-name]')].filter(input=>input.checked&&!input.disabled).map(input=>input.dataset.filterName);
+  summary.textContent=selected.length?selected.join(', '):'None selected';
+  const expanded=summary.parentElement.querySelector('.collapse-filter-button')?.getAttribute('aria-expanded')==='true';
+  summary.hidden=expanded;root.hidden=!expanded;
+ });
+}
+document.querySelectorAll('.collapse-filter-button').forEach(button=>{
+ button.addEventListener('click',()=>{
+  const expanded=button.getAttribute('aria-expanded')==='true';
+  button.setAttribute('aria-expanded',String(!expanded));
+  button.querySelector('.collapse-sign').textContent=expanded?'+':'−';
+  updateCollapsedFilterSummaries();
+ });
+});
+function simpleAvailabilityHover(heading,labels,values,total){
+ return '<b>'+heading+'</b><br>'+labels.map((label,i)=>label+': '+Number(values[i]||0).toLocaleString('en-GB')).join('<br>')+'<br><b>Total: '+total.toLocaleString('en-GB')+'</b>';
+}
 function renderUrgentSideFilters(){
  const build=(id,names,disabled,colour)=>{
   const root=$(id);if(!root)return;
@@ -1495,7 +1543,7 @@ function renderUrgentSideFilters(){
 }
 function urgentClinicianMatches(clinician,person){
  const detailed=effectiveClinicianType(clinician,person);const group=clinicianGroupAssignments[detailed];
- return clinicianGroupNames.includes(group)&&!urgentClinicianDisabled.has(group);
+ return clinicianGroupNames.includes(group)&&!urgentClinicianDisabled.has(group)&&!urgentDisabledClinicianTypes.has(detailed);
 }
 function urgentConsultMatches(slot){
  const mode=consultAssignments[slot];
@@ -1608,6 +1656,8 @@ function renderAvailabilityChart(){
  renderUrgentCategoryToggles();
  renderUrgentSideFilters();
  refreshAvailabilityOptionStates('urgent');
+ renderClinicianTypeFilters('urgent');
+ updateCollapsedFilterSummaries();
  const names=urgentCategoryNames().filter(n=>!urgentCategoryDisabled.has(n));
  const monday=new Date(thisWeek+'T12:00:00Z');const start=new Date(monday);start.setUTCDate(start.getUTCDate()-7*urgentWeeksBack);
  const weekCount=urgentWeeksBack+urgentWeeksForward+1;
@@ -1638,8 +1688,8 @@ function renderAvailabilityChart(){
  const totals=buckets.map(date=>labels.reduce((a,n)=>a+(counts.get(JSON.stringify([date,n]))||0),0));
  const max=Math.ceil(Math.max(1,...totals)*1.2/10)*10;
  const daySummary=buckets.map(date=>{
-  const weekday=weekly?'Week commencing '+date:new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'long',timeZone:'UTC'});
-  return weekday+'<br>'+labels.map(n=>n+': '+(counts.get(JSON.stringify([date,n]))||0).toLocaleString('en-GB')).join('<br>')+'<br><b>Total: '+totals[buckets.indexOf(date)].toLocaleString('en-GB')+'</b>';
+  const weekday=weekly?'Week commencing '+new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'}):new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'short',year:'numeric',timeZone:'UTC'});
+  return simpleAvailabilityHover(weekday,labels,labels.map(n=>counts.get(JSON.stringify([date,n]))||0),totals[buckets.indexOf(date)]);
  });
  const traces=labels.map(name=>({type:'bar',name,showlegend:false,x:buckets,y:buckets.map(date=>(weekly||weekdays.has(date))?counts.get(JSON.stringify([date,name]))||0:null),marker:{color:colours[name],line:{width:0}},customdata:daySummary,hovertemplate:'%{customdata}<extra></extra>'}));
  for(const name of labels)traces.push({type:'scatter',mode:'markers',name,x:[null],y:[null],marker:{symbol:'circle',size:14,color:colours[name],line:{color:name==='Available'?'#aeb8c3':colours[name],width:name==='Available'?1.5:0}},hoverinfo:'skip',showlegend:true});
@@ -1658,7 +1708,7 @@ function renderAvailabilityChart(){
   autosize:true,height:555,barmode:'stack',barcornerradius:3,bargap:weekly?0.11:0.13,margin:{l:62,r:18,t:85,b:100},paper_bgcolor:'white',plot_bgcolor:'#e1eaf1',
   legend:{orientation:'h',x:0.5,y:-0.23,xanchor:'center',yanchor:'top',font:{size:13,color:'#42576a'},bgcolor:'rgba(255,255,255,0)'},
   xaxis:{type:'category',categoryorder:'array',categoryarray:buckets,tickmode:'array',tickvals:buckets,ticktext:buckets.map(date=>weekly?'':weekdays.has(date)?new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'short',timeZone:'UTC'}):''),tickangle:-90,tickfont:{size:12,color:'#444444'},showgrid:false,range:[-.5,buckets.length-.5],fixedrange:true},
-  yaxis:{title:{text:'Appointment slots',font:{size:12,color:'#708397'}},tickfont:{size:12,color:'#52677b'},range:[0,max],gridcolor:'#e0e8ef',gridwidth:1,zeroline:false,showline:false},annotations,shapes,hovermode:'closest'
+  yaxis:{title:{text:'Appointment slots',font:{size:12,color:'#708397'}},tickfont:{size:12,color:'#52677b'},range:[0,max],gridcolor:'#e0e8ef',gridwidth:1,zeroline:false,showline:false},annotations,shapes,hovermode:'closest',hoverlabel:{bgcolor:'#ffffff',bordercolor:'#dce5ed',font:{family:'Arial',size:12,color:'#182b3b'},align:'left',namelength:0}
  },{responsive:true,displaylogo:false,displayModeBar:false}).then(()=>applyFlatAvailabilityBars(target));
 }
 window.addEventListener('resize',()=>{if(!$('availabilityPage').classList.contains('hidden'))renderAvailabilityChart()});
@@ -1721,7 +1771,7 @@ function renderRoutineAvailabilityFilters(){
 function routineClinicianMatches(clinician,person){
  const detailed=effectiveClinicianType(clinician,person);
  const group=clinicianGroupAssignments[detailed];
- return clinicianGroupNames.includes(group)&&!routineDisabledClinicianGroups.has(group);
+ return clinicianGroupNames.includes(group)&&!routineDisabledClinicianGroups.has(group)&&!routineDisabledClinicianTypes.has(detailed);
 }
 function routineConsultMatches(slot){
  const mode=consultAssignments[slot];
@@ -1764,6 +1814,8 @@ function renderRoutineAvailabilityChart(){
  renderRoutineAvailabilityFilters();
  renderRoutineCategoryToggles();
  refreshAvailabilityOptionStates('routine');
+ renderClinicianTypeFilters('routine');
+ updateCollapsedFilterSummaries();
  const isDaily=routineAvailabilityGranularity==='day';
  const start=new Date(thisWeek+'T12:00:00Z');start.setUTCDate(start.getUTCDate()+7*routineStartWeek);
  const weeks=[];
@@ -1793,7 +1845,7 @@ function renderRoutineAvailabilityChart(){
  const dateText=d=>new Date(d+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',timeZone:'UTC'});
  const summaries=dates.map(date=>{
   const heading=isDaily?new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'short',timeZone:'UTC'}):'Week commencing '+dateText(date);
-  return '<b>'+heading+'</b><br>'+labels.map(label=>label+': '+(byBucket.get(JSON.stringify([date,label]))||0).toLocaleString('en-GB')).join('<br>')+'<br><b>Total: '+labels.reduce((sum,label)=>sum+(byBucket.get(JSON.stringify([date,label]))||0),0).toLocaleString('en-GB')+'</b>';
+  return simpleAvailabilityHover(heading,[...routineDetailedTypes().filter(name=>!routineDisabledTypes.has(name)),...labels.filter(name=>name!=='Booked')],[...routineDetailedTypes().filter(name=>!routineDisabledTypes.has(name)).map(name=>byBucket.get(JSON.stringify([date,'Booked',name]))||0),...labels.filter(name=>name!=='Booked').map(name=>byBucket.get(JSON.stringify([date,name]))||0)],labels.reduce((sum,label)=>sum+(byBucket.get(JSON.stringify([date,label]))||0),0));
  });
  const plotBackground='#e1eaf1';
  const routineTypes=routineDetailedTypes().filter(name=>!routineDisabledTypes.has(name));
@@ -1824,7 +1876,7 @@ function renderRoutineAvailabilityChart(){
   legend:{orientation:'h',x:0.5,y:-0.20,xanchor:'center',yanchor:'top',font:{size:13,color:'#42576a'},traceorder:'normal'},
   xaxis:{type:'category',categoryorder:'array',categoryarray:dates,range:[-0.5,dates.length-0.5],tickmode:'array',tickvals:dates,ticktext:isDaily?dates.map(date=>new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'short',timeZone:'UTC'})):dates.map(()=>''),tickangle:-90,tickfont:{size:10},showticklabels:isDaily,showgrid:false,showline:true,linecolor:'#a9b9c7',linewidth:1.5,zeroline:false,fixedrange:true},
   yaxis:{title:{text:'Appointment slots',font:{size:12,color:'#708397'}},tickfont:{size:12,color:'#52677b'},range:[0,Math.ceil(max*1.18/10)*10],gridcolor:'#e0e8ef',gridwidth:1,zeroline:false,showline:false},
-  annotations,shapes,hovermode:'closest'
+  annotations,shapes,hovermode:'closest',hoverlabel:{bgcolor:'#ffffff',bordercolor:'#dce5ed',font:{family:'Arial',size:12,color:'#182b3b'},align:'left',namelength:0}
  },{responsive:true,displaylogo:false,displayModeBar:false}).then(()=>applyFlatAvailabilityBars(target));
 }
 window.addEventListener('resize',()=>{if(!$('routineAvailabilityPage').classList.contains('hidden'))renderRoutineAvailabilityChart()});
