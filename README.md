@@ -299,3 +299,6 @@ Manage people displays up to six clinician-group boxes per row on wide screens (
 
 ## Clinician Group rename/delete controls
 Every main group heading now has a pencil (rename) and × (delete). Renaming updates the group's name and all detailed clinician type group assignments. Deleting requires confirmation and leaves its detailed types intact but unassigned, so person clinician types are preserved. Both actions update local settings and OneDrive sync on Save.
+
+
+Manage people table filters: a Clinician Groups dropdown next to search (All or any saved group) and an Unassigned toggle that shows only people with no valid clinician-group assignment. When Unassigned is on the group dropdown is disabled. Filters use the effective Assigned Clinician Type, including manual overrides, and refresh when people or group assignments change.
