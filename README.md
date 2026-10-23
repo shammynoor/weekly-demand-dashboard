@@ -348,3 +348,6 @@ Routine Appointment Availability now uses a compact, borderless dual-handle rang
 
 ## Slot settings: urgency group cards
 Slot settings now has the same compact group-card organiser as People settings. Each Urgency Group has a larger editable colour dot, rename and delete controls, and contains draggable Detailed urgency types with their own rename/delete controls and Add type. A final Add Group button reveals its text input on click. An Unassigned card appears when needed and accepts dropped types. Existing slot-to-detailed-urgency assignments are preserved and updated on rename/delete; the original assignment editors remain hidden for compatibility. Consult mode settings remain available. Group colours are saved locally and in the existing OneDrive settings JSON under `urgencyGroupColours`. No CSV data is changed.
+
+
+Slot settings: CSV slot types now appear in a searchable table with Assigned type dropdown and coloured Urgency Group indicator. Filter by urgency group or unassigned. Urgency group/type cards remain editable above.

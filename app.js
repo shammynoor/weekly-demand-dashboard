@@ -78,7 +78,7 @@ function renderSlotGroupBoxes(){
  const changed=()=>{
   saveCategories();rebuildCategoryFilter();renderSlotGroupBoxes();
   // Maintain compatibility with existing slot type → detailed urgency editor.
-  renderEditor();renderGroupUrgencyEditor();
+  renderEditor();renderGroupUrgencyEditor();renderSlotTable();
   if(!$('availabilityPage').classList.contains('hidden'))renderAvailabilityChart();
   if(!$('routineAvailabilityPage').classList.contains('hidden'))renderRoutineAvailabilityChart();
   if(!$('chartPage').classList.contains('hidden'))scheduleDemandRefresh();
@@ -342,6 +342,57 @@ function renderPeopleGroups(){
   add.replaceWith(wrap);input.focus();
  });
  root.append(add);
+}
+function renderSlotTableGroupFilter(){
+ const select=$('slotGroupFilter');if(!select)return;
+ const old=select.value||'';
+ select.replaceChildren();
+ for(const [value,label] of [['','All urgency groups'],...groupUrgencyNames.map(g=>[g,g])]){
+  const option=document.createElement('option');option.value=value;option.textContent=label;select.append(option);
+ }
+ select.value=groupUrgencyNames.includes(old)?old:'';
+}
+function renderSlotTable(){
+ const body=$('slotTableBody');if(!body)return;
+ renderSlotTableGroupFilter();
+ const query=String($('slotTableSearch')?.value||'').trim().toLowerCase();
+ const filter=$('slotGroupFilter')?.value||'';
+ const unassignedOnly=!!$('slotUnassignedOnly')?.checked;
+ const rows=types.filter(slot=>{
+  const assigned=categoryNames.includes(assignments[slot])?assignments[slot]:'';
+  const group=assigned&&groupUrgencyNames.includes(groupUrgencyAssignments[assigned])?groupUrgencyAssignments[assigned]:'';
+  if(unassignedOnly&&assigned)return false;
+  if(!unassignedOnly&&filter&&group!==filter)return false;
+  return !query||(slot+' '+assigned+' '+group).toLowerCase().includes(query);
+ }).sort((a,b)=>a.localeCompare(b,undefined,{sensitivity:'base'}));
+ body.replaceChildren();
+ for(const slot of rows){
+  const tr=document.createElement('tr');
+  const slotCell=document.createElement('td');slotCell.textContent=slot;
+  const assignedCell=document.createElement('td');assignedCell.className='people-assigned-cell';
+  const select=document.createElement('select');select.className='people-clinician-select';select.setAttribute('aria-label','Assigned type for '+slot);
+  for(const name of ['',...categoryNames]){const option=document.createElement('option');option.value=name;option.textContent=name||'Unassigned';select.append(option)}
+  select.value=categoryNames.includes(assignments[slot])?assignments[slot]:'';
+  select.addEventListener('change',()=>{
+   assignments[slot]=select.value||'Uncategorised';
+   saveCategories();rebuildCategoryFilter();renderEditor();renderSlotTable();
+   updateAvailabilityUrgencyFilter();
+   if(!$('availabilityPage').classList.contains('hidden'))renderAvailabilityChart();
+   if(!$('routineAvailabilityPage').classList.contains('hidden'))renderRoutineAvailabilityChart();
+   if(!$('chartPage').classList.contains('hidden'))scheduleDemandRefresh();
+   if(!$('bookingTimesPage').classList.contains('hidden'))renderBookingTimesChart();
+   const status=$('slotGroupSaveStatus');if(status)status.textContent='Changes saved in this browser. Click Save to OneDrive to synchronise.';
+  });
+  assignedCell.append(select);
+  const groupCell=document.createElement('td');groupCell.className='people-clinician-group-cell';
+  const assigned=categoryNames.includes(assignments[slot])?assignments[slot]:'';
+  const group=assigned&&groupUrgencyNames.includes(groupUrgencyAssignments[assigned])?groupUrgencyAssignments[assigned]:'';
+  const badge=document.createElement('span');badge.className='people-clinician-group-badge';
+  const dot=document.createElement('span');dot.className='clinician-colour-dot';dot.style.backgroundColor=group?urgencyGroupColour(group):'#b6c0ca';
+  badge.append(dot,document.createTextNode(group||'Unassigned'));groupCell.append(badge);
+  tr.append(slotCell,assignedCell,groupCell);body.append(tr);
+ }
+ const count=$('slotTableCount');if(count)count.textContent=rows.length+' of '+types.length+' slot types shown';
 }
 function renderPeopleGroupFilter(){
  const select=$('peopleGroupFilter');if(!select)return;
@@ -966,14 +1017,14 @@ async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;
  }
  peopleRecords=[...peopleByName.values()].map(({name,types})=>({name,type:[...types].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]))[0][0]})).sort((a,b)=>a.type.localeCompare(b.type)||a.name.localeCompare(b.name));
  rebuildPeopleTypeLookup();
- renderPeople();
+ renderPeople();renderSlotTable();
  bookingTimeRecords=[...bookingTimeAggregate].map(([key,count])=>{const [bookedDay,minute,slot,clinician,person]=JSON.parse(key);return {bookedDay,minute,slot,clinician,person,count}});
  availabilityRecords=[...availabilityAggregate].map(([key,count])=>{const [date,slot,availability,clinician,person]=JSON.parse(key);return {date,slot,availability,clinician,person,count}});
  records=[...aggregate].map(([key,count])=>{const [bookedDay,slot,clinician,person]=JSON.parse(key);const bookedWeek=mondayOf(bookedDay);return {week:bookedWeek,bookedWeek,bookedDay,slot,clinician,person,status:'Booked',count}});weeks=[...new Set(records.map(r=>r.bookedWeek))].sort();types=[...new Set([...records.map(r=>r.slot),...availabilityRecords.map(r=>r.slot)])].sort();statuses=['Booked'];clinicianTypes=[...new Set([...records.map(r=>r.clinician),...availabilityRecords.map(r=>r.clinician)])].filter(Boolean).sort();
  // Assign obvious names on first encounter; retain any existing manual choices.
  // Do not guess assignments: unknown slot types stay Uncategorised until manually assigned.
 
- saveCategories(false);lastFingerprint=fingerprint;
+ saveCategories(false);renderSlotTable();lastFingerprint=fingerprint;
 const drawingErrors=[];
  for(const [label,draw] of [
   ['category filters',()=>rebuildCategoryFilter()],
@@ -1238,8 +1289,8 @@ function renderGroupUrgencyEditor(){renderDropEditor('groupUrgency');updateAvail
  else if(which==='routineAvailability')setTimeout(renderRoutineAvailabilityChart,0);
  else if(which==='bookingTimes')setTimeout(renderBookingTimesChart,0);
  else if(which==='people'){renderPeopleGroups();renderPeopleGroupFilter();renderPeople();}
- else {renderSlotGroupBoxes();renderEditor();renderGroupUrgencyEditor();renderClinicianEditor();renderClinicianGroupEditor();renderConsultEditor()}
-}document.getElementById('navChart').onclick=()=>showPage('chart');document.getElementById('navCategories').onclick=()=>showPage('categories');document.getElementById('navAvailability').onclick=()=>showPage('availability');document.getElementById('navRoutineAvailability').onclick=()=>showPage('routineAvailability');document.getElementById('navBookingTimes').onclick=()=>showPage('bookingTimes');document.getElementById('navPeople').onclick=()=>showPage('people');$('peopleSearch').addEventListener('input',renderPeople);$('peopleGroupFilter').addEventListener('change',renderPeople);$('peopleUnassignedOnly').addEventListener('change',()=>{const only=$('peopleUnassignedOnly').checked;$('peopleGroupFilter').disabled=only;renderPeople()});$('savePeopleToOneDrive').onclick=async()=>{const ok=await saveCloudCategories({manual:true});$('peopleSaveStatus').textContent=ok?'Saved to OneDrive.':'Save failed. Please check Manage categories for details.'};document.getElementById('saveToOneDrive').onclick=()=>{void saveCloudCategories({manual:true})};
+ else {renderSlotGroupBoxes();renderSlotTable();renderEditor();renderGroupUrgencyEditor();renderClinicianEditor();renderClinicianGroupEditor();renderConsultEditor()}
+}document.getElementById('navChart').onclick=()=>showPage('chart');document.getElementById('navCategories').onclick=()=>showPage('categories');document.getElementById('navAvailability').onclick=()=>showPage('availability');document.getElementById('navRoutineAvailability').onclick=()=>showPage('routineAvailability');document.getElementById('navBookingTimes').onclick=()=>showPage('bookingTimes');document.getElementById('navPeople').onclick=()=>showPage('people');$('slotTableSearch').addEventListener('input',renderSlotTable);$('slotGroupFilter').addEventListener('change',renderSlotTable);$('slotUnassignedOnly').addEventListener('change',()=>{$('slotGroupFilter').disabled=$('slotUnassignedOnly').checked;renderSlotTable()});$('peopleSearch').addEventListener('input',renderPeople);$('peopleGroupFilter').addEventListener('change',renderPeople);$('peopleUnassignedOnly').addEventListener('change',()=>{const only=$('peopleUnassignedOnly').checked;$('peopleGroupFilter').disabled=only;renderPeople()});$('savePeopleToOneDrive').onclick=async()=>{const ok=await saveCloudCategories({manual:true});$('peopleSaveStatus').textContent=ok?'Saved to OneDrive.':'Save failed. Please check Manage categories for details.'};document.getElementById('saveToOneDrive').onclick=()=>{void saveCloudCategories({manual:true})};
 function renderClinicianEditor(){renderDropEditor('clinician');updateClinicianChartFilter()}
 function renderClinicianGroupEditor(){renderDropEditor('clinicianGroup');if(!$('peoplePage')?.classList.contains('hidden'))renderPeopleGroups()}
 $('addClinicianCategory').onclick=()=>{const el=$('newClinicianCategory');const c=el.value.trim();if(!c)return;if(c.toLowerCase()==='uncategorised'||clinicianCategoryNames.some(x=>x.toLowerCase()===c.toLowerCase())){alert('This clinician category name already exists or is reserved.');return}clinicianCategoryNames.push(c);el.value='';saveCategories();renderClinicianEditor();renderClinicianGroupEditor()};
