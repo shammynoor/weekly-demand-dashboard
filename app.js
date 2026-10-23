@@ -2,7 +2,7 @@
 let selectedAvailabilityUrgency='';
 "use strict";
 const CLIENT_ID='ba2bc895-4213-447c-ba62-d7edec6e8173';
-const SCOPES=['Files.Read','Files.ReadWrite.AppFolder'];
+const SCOPES=['Files.Read','Files.ReadWrite','Files.ReadWrite.AppFolder'];
 const REDIRECT_URI='https://shammynoor.github.io/weekly-demand-dashboard/index.html';
 const GRAPH='https://graph.microsoft.com/v1.0';
 const FOLDER_KEY='weekly-demand-onedrive-folder-v1';
@@ -688,6 +688,125 @@ function renderDropEditor(dimension){
  for(const c of cfg.names)boxes.append(makeZone(c));
  $(cfg.summary).textContent=cfg.items.filter(t=>cfg.names.includes(cfg.assign[t])).length+' of '+cfg.items.length+(dimension==='groupUrgency'?' detailed urgency categories':dimension==='clinicianGroup'?' detailed clinician categories':dimension==='clinician'?' clinician user types':' slot types')+' assigned. Drag a slot icon into a category box (or select it, then click a box).';
 }
+
+// Only replace an existing CSV in the selected source folder. Never create files,
+// and never write to the separate app-folder settings JSON.
+let csvDropBusy=false,csvDragDepth=0;
+function csvDropStatus(message,isError=false){
+ const status=$('csvDropStatus');if(status){status.textContent=message;status.classList.toggle('csv-drop-error',isError)}
+}
+function csvDropOverlay(show){
+ const overlay=$('csvDropOverlay');if(overlay)overlay.classList.toggle('hidden',!show);
+}
+function csvUploadModal(show){
+ const modal=$('csvUploadModal');if(modal)modal.classList.toggle('hidden',!show);
+}
+function csvFileDrag(event){
+ return [...(event.dataTransfer?.types||[])].includes('Files');
+}
+function validateReplacementCSV(text){
+ const parsed=Papa.parse(text,{header:true,preview:15,skipEmptyLines:'greedy'});
+ if(parsed.errors?.length)throw Error('CSV parsing failed: '+parsed.errors[0].message);
+ const columns=(parsed.meta.fields||[]).map(x=>String(x||'').replace(/^\uFEFF/,'').trim());
+ const required=['Appointment Date','Appointment Time','Booked Time to Slot Time',
+  'Slot Type','Availability','User Type of the Session Holder of the Session',
+  'Full Name of the Session Holder of the Session','Town of the Location of the Session'];
+ const missing=required.filter(x=>!columns.includes(x));
+ if(missing.length)throw Error('CSV is incompatible. Missing column(s): '+missing.join(', '));
+ if(!parsed.data.length)throw Error('CSV has no appointment rows.');
+ return {columns,previewRows:parsed.data.length};
+}
+function awaitCSVConfirmation(fileName,match){
+ return new Promise(resolve=>{
+  const modal=$('csvUploadModal'),confirm=$('csvUploadConfirm'),cancel=$('csvUploadCancel');
+  if(!modal||!confirm||!cancel){resolve(false);return}
+  $('csvUploadMessage').textContent='Replace the existing OneDrive CSV "'+match.name+'" with the dropped file "'+fileName+'"? This will overwrite the existing file. Your people and slot settings will not be changed.';
+  csvUploadModal(true);
+  const finish=accepted=>{
+   csvUploadModal(false);confirm.removeEventListener('click',yes);cancel.removeEventListener('click',no);
+   resolve(accepted);
+  };
+  const yes=()=>finish(true),no=()=>finish(false);
+  confirm.addEventListener('click',yes);cancel.addEventListener('click',no);
+ });
+}
+async function replaceExistingCSV(file){
+ if(csvDropBusy)return;
+ if(!activeAccount||!selectedFolder){csvDropStatus('Sign in and select your OneDrive CSV folder first.',true);return}
+ if(!file||!/\.csv$/i.test(file.name)){csvDropStatus('Rejected: only CSV files can be uploaded.',true);return}
+ if(file.size===0||file.size>200*1024*1024){csvDropStatus('Rejected: CSV must be non-empty and no larger than 200 MB.',true);return}
+ csvDropBusy=true;csvDropStatus('Checking '+file.name+' against OneDrive…');
+ try{
+  const existing=(await children(selectedFolder.id)).filter(item=>item.file&&/\.csv$/i.test(item.name));
+  // Case-insensitive name matching is necessary because OneDrive filenames are case-insensitive.
+  const matches=existing.filter(item=>item.name.toLocaleLowerCase('en-GB')===file.name.toLocaleLowerCase('en-GB'));
+  if(matches.length!==1)throw Error('Rejected: no existing CSV with exactly this filename in the selected OneDrive folder.');
+  const match=matches[0];
+  const text=await file.text();
+  validateReplacementCSV(text);
+  // Check the original export's columns as well, so incompatible replacements
+  // cannot silently change the source schema.
+  const detail=await graph('/me/drive/items/'+encodeURIComponent(match.id));
+  if(detail.parentReference?.id&&detail.parentReference.id!==selectedFolder.id)
+   throw Error('The existing file is not in the selected OneDrive folder.');
+  const originalUrl=detail['@microsoft.graph.downloadUrl'];
+  if(!originalUrl)throw Error('Could not verify the original OneDrive CSV.');
+  const originalResponse=await fetch(originalUrl,{cache:'no-store'});
+  if(!originalResponse.ok)throw Error('Could not check the original CSV.');
+  const originalText=await originalResponse.text();
+  const originalSchema=validateReplacementCSV(originalText).columns;
+  const newSchema=validateReplacementCSV(text).columns;
+  if(originalSchema.length!==newSchema.length||originalSchema.some((column,i)=>column!==newSchema[i]))
+   throw Error('Rejected: the CSV column headings or their order do not match the existing OneDrive file.');
+  csvDropStatus('Validated '+file.name+'. Waiting for confirmation…');
+  if(!await awaitCSVConfirmation(file.name,match)){csvDropStatus('Upload cancelled. No files were changed.');return}
+  csvDropStatus('Uploading '+file.name+' to OneDrive…');
+  const bearer=await token();
+  // PUT by existing item ID, never by path: this can only replace the matched file.
+  const upload=await fetch(GRAPH+'/me/drive/items/'+encodeURIComponent(match.id)+'/content',{
+   method:'PUT',headers:{Authorization:'Bearer '+bearer,'Content-Type':'text/csv'},
+   body:file
+  });
+  if(!upload.ok){
+   let message='HTTP '+upload.status;
+   try{const response=await upload.json();message=response.error?.message||message}catch{}
+   throw Error('OneDrive rejected the replacement: '+message);
+  }
+  csvDropStatus('Replaced '+match.name+' successfully. Refreshing charts…');
+  // This refresh reads the current saved categories and people assignments
+  // without changing them; the settings JSON is never overwritten here.
+  lastFingerprint='';
+  await loadFolder(true);
+  csvDropStatus('OneDrive CSV replaced: '+match.name+'. Dashboard refresh completed.');
+ }catch(error){
+  console.error('CSV replacement error',error);
+  csvDropStatus(error?.message||String(error),true);
+ }finally{csvDropBusy=false}
+}
+function initCSVDragDrop(){
+ window.addEventListener('dragenter',event=>{
+  if(!csvFileDrag(event))return;
+  event.preventDefault();csvDragDepth++;
+  if(!csvDropBusy)csvDropOverlay(true);
+ });
+ window.addEventListener('dragover',event=>{
+  if(!csvFileDrag(event))return;
+  event.preventDefault();event.dataTransfer.dropEffect='copy';
+ });
+ window.addEventListener('dragleave',event=>{
+  if(!csvFileDrag(event))return;
+  csvDragDepth=Math.max(0,csvDragDepth-1);
+  if(!csvDragDepth)csvDropOverlay(false);
+ });
+ window.addEventListener('drop',event=>{
+  event.preventDefault();csvDragDepth=0;csvDropOverlay(false);
+  const files=[...(event.dataTransfer?.files||[])];
+  if(files.length!==1){csvDropStatus('Rejected: drop exactly one CSV file at a time.',true);return}
+  void replaceExistingCSV(files[0]);
+ });
+}
+initCSVDragDrop();
+
 async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;setButtons();showRefreshFeedback('Refreshing data…',true);setSync('Checking OneDrive CSV files…');try{
  const items=(await children(selectedFolder.id)).filter(f=>f.file&&/\.csv$/i.test(f.name)).sort((a,b)=>a.name.localeCompare(b.name));if(!items.length)throw Error('No CSV files found directly inside this folder.');
  const fingerprint=JSON.stringify(items.map(f=>[f.id,f.lastModifiedDateTime,f.size]));if(!force&&fingerprint===lastFingerprint){showRefreshFeedback('Already up to date');setSync(`No changes detected · ${items.length} CSV files · Checked ${new Date().toLocaleTimeString('en-GB')}`);return}

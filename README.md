@@ -318,3 +318,6 @@ Reduced repeated CSV scans and person lookup overhead. A named-person → user-t
 
 
 Navigation: chart tabs are left aligned; Slot settings and People settings are right aligned in a muted lavender-grey style, with responsive wrapping. The page IDs and chart logic are unchanged.
+
+## Replace CSV from desktop by drag and drop
+Drag exactly one `.csv` onto any dashboard page. Only a file with the same case-insensitive filename as an existing CSV directly in the configured OneDrive folder is accepted. Both CSVs must have compatible appointment-export headings in identical order; malformed, empty, or wrong-extension files are rejected. The dashboard requires confirmation before replacing the existing OneDrive item by its ID, then refreshes the data. This does NOT edit the separate private app-folder settings JSON containing people, clinician groups, colours, urgency/slot assignments or other settings. Upload requires delegated Microsoft Graph Files.ReadWrite permission, requested on sign-in; a Microsoft consent prompt may be shown. Files above 200 MB are rejected (simple Graph upload endpoint has a 250 MB limit). No new filenames or new files are allowed.
