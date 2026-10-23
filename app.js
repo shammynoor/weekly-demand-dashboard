@@ -1484,37 +1484,37 @@ function renderRoutineAvailabilityChart(){
   const key=JSON.stringify([bucket,label]);byBucket.set(key,(byBucket.get(key)||0)+r.count);
  }
  const labels=['Booked','Blocked','Embargoed','Available'];
- const colours={'Booked':'#81c6a0','Blocked':'#59636e','Embargoed':'#aab2bb','Available':'#ffffff'};
+ const colours={'Booked':'#5fc18a','Blocked':'#435569','Embargoed':'#b7c7d1','Available':'#ffffff'};
  const dateText=d=>new Date(d+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',timeZone:'UTC'});
  const summaries=dates.map(date=>{
   const heading=isDaily?new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'short',timeZone:'UTC'}):'Week commencing '+dateText(date);
   return '<b>'+heading+'</b><br>'+labels.map(label=>label+': '+(byBucket.get(JSON.stringify([date,label]))||0).toLocaleString('en-GB')).join('<br>')+'<br><b>Total: '+labels.reduce((sum,label)=>sum+(byBucket.get(JSON.stringify([date,label]))||0),0).toLocaleString('en-GB')+'</b>';
  });
- const plotBackground='#e0e4e8';
- const traces=labels.map(label=>({type:'bar',name:label,showlegend:false,x:dates,y:dates.map(date=>byBucket.get(JSON.stringify([date,label]))||0),marker:{color:colours[label],line:{color:label==='Available'?'rgba(0,0,0,0)':plotBackground,width:label==='Available'?0:0.8}},customdata:summaries,hovertemplate:'%{customdata}<extra></extra>'}));
- for(const label of labels)traces.push({type:'scatter',mode:'markers',name:label,x:[null],y:[null],marker:{symbol:'circle',size:14,color:colours[label],line:{color:label==='Available'?'#9ba7b2':colours[label],width:label==='Available'?1.5:0}},showlegend:true,hoverinfo:'skip'});
+ const plotBackground='#f4f8fb';
+ const traces=labels.map(label=>({type:'bar',name:label,showlegend:false,x:dates,y:dates.map(date=>byBucket.get(JSON.stringify([date,label]))||0),marker:{color:colours[label],line:{color:label==='Available'?'#d9e3eb':'rgba(255,255,255,0.8)',width:label==='Available'?1:0.7}},customdata:summaries,hovertemplate:'%{customdata}<extra></extra>'}));
+ for(const label of labels)traces.push({type:'scatter',mode:'markers',name:label,x:[null],y:[null],marker:{symbol:'circle',size:14,color:colours[label],line:{color:label==='Available'?'#a7b8c6':colours[label],width:label==='Available'?1.5:0}},showlegend:true,hoverinfo:'skip'});
  const totals=dates.map(date=>labels.reduce((sum,label)=>sum+(byBucket.get(JSON.stringify([date,label]))||0),0));
  const max=Math.max(1,...totals);
- const annotations=totals.flatMap((total,i)=>total?[{xref:'x',x:i,y:total,text:total.toLocaleString('en-GB'),showarrow:false,yshift:5,font:{size:isDaily?9:11,color:'#768392'}}]:[]);
+ const annotations=totals.flatMap((total,i)=>total?[{xref:'x',x:i,y:total,text:total.toLocaleString('en-GB'),showarrow:false,yshift:5,font:{size:isDaily?10:13,color:'#425b70'}}]:[]);
  const weekTitles=weeks.map((_,i)=>{const offset=routineStartWeek+i;return offset===0?'This Week':offset===-1?'Last Week':offset<0?Math.abs(offset)+' weeks ago':offset===1?'Next Week':offset+' weeks'});
- for(let i=0;i<weeks.length;i++)annotations.push({xref:'x',yref:'paper',x:isDaily?i*7+3:i,y:1.105,text:weekTitles[i],showarrow:false,font:{family:'Arial',size:12,color:'#384858'}});
+ for(let i=0;i<weeks.length;i++)annotations.push({xref:'x',yref:'paper',x:isDaily?i*7+3:i,y:1.105,text:weekTitles[i],showarrow:false,font:{family:'Arial',size:13,color:'#344b60'}});
  const dayIndex=(new Date(todayLondon+'T12:00:00Z').getUTCDay()+6)%7;
  const weekIndex=weeks.indexOf(thisWeek);
  const todayX=weekIndex<0?null:isDaily?dates.indexOf(todayLondon):weekIndex-0.5+(Math.min(dayIndex,4)*0.2+0.05);
  const shapes=todayX===null?[]:[
-  {type:'rect',xref:'x',yref:'paper',x0:-0.5,x1:todayX,y0:0,y1:1,fillcolor:'rgba(128,136,146,0.50)',line:{width:0},layer:'above'},
-  {type:'line',xref:'x',yref:'paper',x0:todayX,x1:todayX,y0:0,y1:1,line:{color:'#344355',width:2,dash:'dot'},layer:'above'}
+  {type:'rect',xref:'x',yref:'paper',x0:-0.5,x1:todayX,y0:0,y1:1,fillcolor:'rgba(97,112,130,0.20)',line:{width:0},layer:'above'},
+  {type:'line',xref:'x',yref:'paper',x0:todayX,x1:todayX,y0:0,y1:1,line:{color:'#257cb6',width:2.5,dash:'dot'},layer:'above'}
  ];
- for(let i=0;i<weeks.length-1;i++){const boundary=isDaily?(i+1)*7-0.5:i+0.5;shapes.push({type:'line',xref:'x',yref:'paper',x0:boundary,x1:boundary,y0:0,y1:1,line:{color:'#98a2ad',width:1,dash:'dot'},layer:'above'});}
- if(todayX!==null)annotations.push({xref:'x',yref:'paper',x:todayX,y:0.96,text:'Today',showarrow:false,xanchor:'left',yanchor:'top',xshift:7,font:{size:16,color:'#344355'}});
+ for(let i=0;i<weeks.length-1;i++){const boundary=isDaily?(i+1)*7-0.5:i+0.5;shapes.push({type:'line',xref:'x',yref:'paper',x0:boundary,x1:boundary,y0:0,y1:1,line:{color:'#bdcbd6',width:1,dash:'dot'},layer:'above'});}
+ if(todayX!==null)annotations.push({xref:'x',yref:'paper',x:todayX,y:0.96,text:'Today',showarrow:false,xanchor:'left',yanchor:'top',xshift:7,font:{size:17,color:'#206ca6'}});
  const note=$('routineAvailabilityNote');
  if(note)note.textContent=matched?'':"No matching Routine urgency-group appointments found. Check Manage categories → Urgency Group.";
  Plotly.react(target,traces,{
-  height:510,autosize:true,barmode:'stack',bargap:isDaily?0.06:0.025,
-  margin:{l:65,r:12,t:85,b:100},paper_bgcolor:'#fff',plot_bgcolor:plotBackground,
-  legend:{orientation:'h',x:0.5,y:-0.20,xanchor:'center',yanchor:'top',font:{size:13,color:'#344355'},traceorder:'normal'},
-  xaxis:{type:'category',categoryorder:'array',categoryarray:dates,range:[-0.5,dates.length-0.5],tickmode:'array',tickvals:dates,ticktext:isDaily?dates.map(date=>new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'short',timeZone:'UTC'})):dates.map(()=>''),tickangle:-90,tickfont:{size:10},showticklabels:isDaily,showgrid:false,showline:true,linecolor:'#374350',linewidth:3,zeroline:false,fixedrange:true},
-  yaxis:{title:'Appointment slots',range:[0,Math.ceil(max*1.18/10)*10],gridcolor:'#dce2e8'},
+  height:510,autosize:true,barmode:'stack',bargap:isDaily?0.13:0.11,
+  margin:{l:62,r:18,t:85,b:100},paper_bgcolor:'#fff',plot_bgcolor:plotBackground,
+  legend:{orientation:'h',x:0.5,y:-0.20,xanchor:'center',yanchor:'top',font:{size:13,color:'#42576a'},traceorder:'normal'},
+  xaxis:{type:'category',categoryorder:'array',categoryarray:dates,range:[-0.5,dates.length-0.5],tickmode:'array',tickvals:dates,ticktext:isDaily?dates.map(date=>new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'short',timeZone:'UTC'})):dates.map(()=>''),tickangle:-90,tickfont:{size:10},showticklabels:isDaily,showgrid:false,showline:true,linecolor:'#a9b9c7',linewidth:1.5,zeroline:false,fixedrange:true},
+  yaxis:{title:{text:'Appointment slots',font:{size:12,color:'#708397'}},tickfont:{size:12,color:'#52677b'},range:[0,Math.ceil(max*1.18/10)*10],gridcolor:'#e0e8ef',gridwidth:1,zeroline:false,showline:false},
   annotations,shapes,hovermode:'closest'
  },{responsive:true,displaylogo:false});
 }
