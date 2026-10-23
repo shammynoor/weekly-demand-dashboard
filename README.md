@@ -278,3 +278,10 @@ Fix: declare peopleAggregate in loadFolder before passing it to aggregateCSV. Pe
 
 ### 2026-10-23 critical refresh repair
 Declare peopleAggregate in loadFolder before CSV aggregation, count occurrences per person/type, and deduplicate by person name (case-insensitive) selecting the most frequently observed user type. Correct name whitespace normalisation. This fixes ReferenceError: peopleAggregate is not defined.
+
+## Manage people: clinician type and locum
+- Sorted by User Type then Name.
+- Third column is an editable dropdown of Detailed Clinician Types categories.
+- Preselects from the existing User Type → Detailed Clinician Types assignments, falling back to exact name matches; otherwise Unassigned.
+- Fourth column is Locum Yes/No. Conservatively suggests Yes only for explicit 'locum', 'agency', 'bank', or 'temporary' in user type; otherwise No. These are guesses, not verified employment statuses.
+- Both selections are saved to browser storage and to the existing private OneDrive settings on Save. Explicit selections override guesses.
