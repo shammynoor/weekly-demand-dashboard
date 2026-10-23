@@ -312,3 +312,6 @@ One colour per Clinician Group, shown as a larger clickable circle in the group 
 
 ## Manage categories simplified
 Removed the Detailed Clinician Types and Clinician Groups tabs and editors from the visible Manage categories page. Their management remains available under Manage people. Internal legacy editor nodes are retained invisibly for compatibility with existing JS event bindings and refresh logic; the underlying clinician assignments and saved OneDrive settings are unchanged.
+
+## Weekly Demand chart performance
+Reduced repeated CSV scans and person lookup overhead. A named-person → user-type map avoids repeated `peopleRecords.find` searches; clinician and filter results are cached per chart refresh; urgency category totals for all three charts are calculated in one pass rather than repeated scans. Rapid switch changes are coalesced into one animation-frame refresh. Chart definitions and appointment-counting rules are unchanged.

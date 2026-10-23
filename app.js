@@ -36,6 +36,11 @@ function suggestedClinicianType(type){
  const exact=clinicianCategoryNames.find(n=>n.toLocaleLowerCase('en-GB')===String(type||'').trim().toLocaleLowerCase('en-GB'));
  return exact||'';
 }
+// Avoid scanning the entire people table for every appointment on every chart refresh.
+let peopleTypeLookup=new Map();
+function rebuildPeopleTypeLookup(){
+ peopleTypeLookup=new Map(peopleRecords.map(p=>[personKey(p.name),p.type]));
+}
 function effectiveClinicianType(clinician,person){
  const key=personKey(person);
  if(key){
@@ -44,15 +49,14 @@ function effectiveClinicianType(clinician,person){
    // Explicit Unassigned means use the original CSV user-type mapping.
    if(explicit&&clinicianCategoryNames.includes(explicit))return explicit;
   }else{
-   const entry=peopleRecords.find(p=>personKey(p.name)===key);
-   const suggested=suggestedClinicianType(entry?.type||clinician);
+   const suggested=suggestedClinicianType(peopleTypeLookup.get(key)||clinician);
    if(suggested)return suggested;
   }
  }
  return clinicianAssignments[clinician]||'';
 }
 function refreshClinicianCharts(){
- if(!$('chartPage')?.classList.contains('hidden'))refresh();
+ if(!$('chartPage')?.classList.contains('hidden'))scheduleDemandRefresh();
  if(!$('availabilityPage')?.classList.contains('hidden'))renderAvailabilityChart();
  if(!$('routineAvailabilityPage')?.classList.contains('hidden'))renderRoutineAvailabilityChart();
  if(!$('bookingTimesPage')?.classList.contains('hidden'))renderBookingTimesChart();
@@ -697,6 +701,7 @@ async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;
   peopleByName.set(id,entry);
  }
  peopleRecords=[...peopleByName.values()].map(({name,types})=>({name,type:[...types].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]))[0][0]})).sort((a,b)=>a.type.localeCompare(b.type)||a.name.localeCompare(b.name));
+ rebuildPeopleTypeLookup();
  renderPeople();
  bookingTimeRecords=[...bookingTimeAggregate].map(([key,count])=>{const [bookedDay,minute,slot,clinician,person]=JSON.parse(key);return {bookedDay,minute,slot,clinician,person,count}});
  availabilityRecords=[...availabilityAggregate].map(([key,count])=>{const [date,slot,availability,clinician,person]=JSON.parse(key);return {date,slot,availability,clinician,person,count}});
@@ -757,14 +762,18 @@ function updateClinicianChartFilter(){
   switchEl.append(input,track);
   const title=document.createElement('span');title.textContent=name;
   row.append(switchEl,title);root.append(row);
-  input.addEventListener('change',()=>{if(input.checked)disabledClinicianTypes.delete(name);else disabledClinicianTypes.add(name);refresh()});
+  input.addEventListener('change',()=>{if(input.checked)disabledClinicianTypes.delete(name);else disabledClinicianTypes.add(name);scheduleDemandRefresh()});
  }
 }
+let clinicianMatchCache=new Map();
 function clinicianMatches(clinician,person){
+ const key=clinician+'\\u0000'+person;
+ if(clinicianMatchCache.has(key))return clinicianMatchCache.get(key);
  const detailed=effectiveClinicianType(clinician,person);
  const group=clinicianGroupAssignments[detailed];
  // Only session-holder user types mapped through a detailed category to an enabled group count.
- return clinicianGroupNames.includes(group)&&!disabledClinicianTypes.has(group);
+ const matches=clinicianGroupNames.includes(group)&&!disabledClinicianTypes.has(group);
+ clinicianMatchCache.set(key,matches);return matches;
 }
 // Consultation-mode switches on the Weekly Demand Chart.
 const disabledConsultModes=new Set();
@@ -784,7 +793,7 @@ function updateConsultChartFilter(){
   switchEl.append(input,track);
   const title=document.createElement('span');title.textContent=name;
   row.append(switchEl,title);root.append(row);
-  input.addEventListener('change',()=>{if(input.checked)disabledConsultModes.delete(name);else disabledConsultModes.add(name);refresh()});
+  input.addEventListener('change',()=>{if(input.checked)disabledConsultModes.delete(name);else disabledConsultModes.add(name);scheduleDemandRefresh()});
  }
 }
 function consultMatches(slot){
@@ -792,12 +801,12 @@ function consultMatches(slot){
  return consultCategoryNames.includes(mode)&&!disabledConsultModes.has(mode);
 }
 const bankHolidayWeeks=new Set(holidayDates.map(mondayOf));let excludeBankHolidays=true;
-document.getElementById('excludeBH').onchange=e=>{excludeBankHolidays=!e.target.checked;refresh()};
+document.getElementById('excludeBH').onchange=e=>{excludeBankHolidays=!e.target.checked;scheduleDemandRefresh()};
 function isoWeek(weekStart){const d=new Date(weekStart+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+3);const year=d.getUTCFullYear();const jan4=new Date(Date.UTC(year,0,4,12));jan4.setUTCDate(jan4.getUTCDate()-((jan4.getUTCDay()+6)%7));const week=1+Math.round((d-jan4)/604800000);return {year,week}}
 const colours=['#1475b8','#e57a28','#159a78','#9053b4','#c64c69','#65748b'];
 let current=[];let continuousMode=false;let showCurrentWeek=true;let monthlyMode=false;
 let shadeSeasons=document.getElementById('shadeSeasons').checked;
-document.getElementById('shadeSeasons').onchange=e=>{shadeSeasons=e.target.checked;refresh()};
+document.getElementById('shadeSeasons').onchange=e=>{shadeSeasons=e.target.checked;scheduleDemandRefresh()};
 const todayLondon=(()=>{const parts=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/London',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());const v=Object.fromEntries(parts.map(p=>[p.type,p.value]));return `${v.year}-${v.month}-${v.day}`})();
 const thisWeek=mondayOf(todayLondon),thisMonth=todayLondon.slice(0,7);
 let savedWeeklyIncludeBankHolidays=document.getElementById('excludeBH').checked;
@@ -810,10 +819,16 @@ document.getElementById('periodMode').onchange=e=>{
  document.getElementById('currentPeriodLabel').textContent=monthlyMode?'Show current month':'Show current week';
  refresh();
 };
-document.getElementById('currentWeekToggle').onchange=e=>{showCurrentWeek=e.target.checked;refresh()};
-document.getElementById('displayMode').onchange=e=>{continuousMode=e.target.checked;document.getElementById('timelineValue').textContent=continuousMode?'Continuous':'Superimposed';refresh()};
+document.getElementById('currentWeekToggle').onchange=e=>{showCurrentWeek=e.target.checked;scheduleDemandRefresh()};
+document.getElementById('displayMode').onchange=e=>{continuousMode=e.target.checked;document.getElementById('timelineValue').textContent=continuousMode?'Continuous':'Superimposed';scheduleDemandRefresh()};
 function periodKey(r){return monthlyMode?r.bookedDay?.slice(0,7):r.bookedWeek}
-function includedRecord(r){return r.status==='Booked'&&clinicianMatches(r.clinician,r.person)&&consultMatches(r.slot)&&(monthlyMode||!excludeBankHolidays||!bankHolidayWeeks.has(r.bookedWeek))}
+let demandFilterCache=null;
+function includedRecord(r){
+ if(demandFilterCache&&demandFilterCache.has(r))return demandFilterCache.get(r);
+ const result=r.status==='Booked'&&clinicianMatches(r.clinician,r.person)&&consultMatches(r.slot)&&(monthlyMode||!excludeBankHolidays||!bankHolidayWeeks.has(r.bookedWeek));
+ if(demandFilterCache)demandFilterCache.set(r,result);
+ return result;
+}
 function monthOfPeriod(p){return monthlyMode?p+'-01':p}
 function periodIsCurrent(p){return p===(monthlyMode?thisMonth:thisWeek)}
 function weeklyUrgencyMatches(slot,category){
@@ -824,11 +839,32 @@ function weeklyUrgencyMatches(slot,category){
  }
  return detailed.trim().toLowerCase().replace(/[\s-]+/g,'')===category;
 }
-function refresh(){updateClinicianChartFilter();updateConsultChartFilter();
-const activeWeeks=[...new Set(records.filter(includedRecord).map(periodKey).filter(Boolean))].sort();
+let demandRefreshQueued=false;
+function scheduleDemandRefresh(){
+ if(demandRefreshQueued)return;
+ demandRefreshQueued=true;
+ requestAnimationFrame(()=>{demandRefreshQueued=false;refresh()});
+}
+function refresh(){
+ updateClinicianChartFilter();updateConsultChartFilter();
+ demandFilterCache=new WeakMap();
+ clinicianMatchCache=new Map();
+const activeWeekSet=new Set();
+for(const r of records){if(includedRecord(r)){const key=periodKey(r);if(key)activeWeekSet.add(key)}}
+const activeWeeks=[...activeWeekSet].sort();
 const selectedWeeks=activeWeeks.filter(w=>w>=(monthlyMode?'2025-07':'2025-07-07')&&w<=(monthlyMode?thisMonth:thisWeek)&&(showCurrentWeek||!periodIsCurrent(w)));
 const sums=new Map(selectedWeeks.map(w=>[w,0]));
-for(const r of records){const key=periodKey(r);if(!sums.has(key)||!includedRecord(r))continue;sums.set(key,sums.get(key)+r.count)}
+const demandCategoryTotals=Object.fromEntries(['urgent','routine','followup'].map(c=>[c,new Map(selectedWeeks.map(w=>[w,0]))]));
+for(const r of records){
+ const key=periodKey(r);
+ if(!sums.has(key)||!includedRecord(r))continue;
+ sums.set(key,sums.get(key)+r.count);
+ for(const category of ['urgent','routine','followup']){
+  if(weeklyUrgencyMatches(r.slot,category)){
+   const totals=demandCategoryTotals[category];totals.set(key,totals.get(key)+r.count);
+  }
+ }
+}
 current=[...sums].map(([week,count])=>({week,count,...isoWeek(monthOfPeriod(week))}));
 const total=current.reduce((a,r)=>a+r.count,0);
 const yearColours={urgent:['#8b111e','#d43846','#f08088','#6f0712'],routine:['#075d34','#199c5a','#79c99c','#a1d9b4'],followup:['#124b9b','#2675d2','#79acee','#a9cdf6']};
@@ -852,13 +888,7 @@ function seasonBackgroundShapes(periods){
 }
 function drawCategoryChart(target,category,palette,sharedMax){
  const enabled=true;
- const totals=new Map(selectedWeeks.map(w=>[w,0]));
- if(enabled)for(const r of records){
-  const key=periodKey(r);if(!totals.has(key))continue;
-  if(!includedRecord(r))continue;
-  if(!weeklyUrgencyMatches(r.slot,category))continue;
-  totals.set(key,totals.get(key)+r.count);
- }
+ const totals=demandCategoryTotals[category];
  const points=[...totals].map(([date,count])=>({date,count,year:Number(date.slice(0,4)),week:monthlyMode?Number(date.slice(5,7)):isoWeek(date).week}));
  const years=[...new Set(points.map(p=>p.year))].sort();
  const latestYear=years.length?Math.max(...years):2026;
@@ -916,13 +946,7 @@ let followupMaximum=0;
 
 for(const category of ['urgent','routine','followup']){
 
- const totals=new Map(selectedWeeks.map(w=>[w,0]));
- for(const r of records){
-  const key=periodKey(r);if(!totals.has(key))continue;
-  if(!includedRecord(r))continue;
-  if(!weeklyUrgencyMatches(r.slot,category))continue;
-  totals.set(key,totals.get(key)+r.count);
- }
+ const totals=demandCategoryTotals[category];
  for(const count of totals.values()){maximum=Math.max(maximum,count);if(category==='followup')followupMaximum=Math.max(followupMaximum,count);}
 }
 const rawStep=Math.max(1,maximum/5),magnitude=Math.pow(10,Math.floor(Math.log10(rawStep)));
