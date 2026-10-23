@@ -6,6 +6,41 @@ const SCOPES=['Files.Read','Files.ReadWrite','Files.ReadWrite.AppFolder'];
 const REDIRECT_URI='https://shammynoor.github.io/weekly-demand-dashboard/index.html';
 const GRAPH='https://graph.microsoft.com/v1.0';
 const FOLDER_KEY='weekly-demand-onedrive-folder-v1';
+// A specific-person, view-only OneDrive share; not an authentication credential.
+// Only accounts explicitly granted access in OneDrive can read this folder.
+const SHARED_FOLDER_LINK='https://1drv.ms/f/c/07c73540cffc666d/IgDtAqPOppU4RI0NK-J0JwZwASLOpdds9ogr0rNNS18_X78?e=poJClm';
+const OWNER_DRIVE_ID='07c73540cffc666d';
+const SHARED_SETTINGS_FILE='weekly-demand-categories.json';
+const SHARED_TOKEN='u!'+btoa(unescape(encodeURIComponent(SHARED_FOLDER_LINK))).replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
+let isOwner=false,sharedDriveId='',sharedFolderId='';
+function sharedPath(){return '/shares/'+SHARED_TOKEN+'/driveItem'}
+function sourceItemUrl(id){return isOwner?'/me/drive/items/'+encodeURIComponent(id):'/drives/'+encodeURIComponent(sharedDriveId)+'/items/'+encodeURIComponent(id)}
+function applyAccessMode(){
+ document.body.classList.toggle('viewer-mode',!isOwner);
+ for(const id of ['navCategories','navPeople','chooseFolder','sourceSetup']){const el=document.getElementById(id);if(el)el.hidden=!isOwner}
+ const label=document.getElementById('accessRoleLabel');if(label)label.textContent=isOwner?'Administrator':'View only';
+}
+async function identifyOwner(){
+ const drive=await graph('/me/drive?$select=id');
+ isOwner=String(drive.id||'').toLowerCase()===OWNER_DRIVE_ID.toLowerCase();
+ applyAccessMode();
+}
+async function locateSharedFolder(){
+ const root=await graph(sharedPath());
+ if(!root.folder)throw Error('The sharing link does not point to a folder.');
+ sharedDriveId=root.parentReference?.driveId||'';
+ sharedFolderId=root.id||'';
+ if(!sharedDriveId||!sharedFolderId)throw Error('Microsoft did not return the shared folder drive and item identifiers.');
+ return {id:sharedFolderId,name:root.name||'Shared dashboard folder',shared:true};
+}
+async function readSharedSettings(){
+ const bearer=await token();
+ const response=await fetch(GRAPH+sharedPath()+':/'+encodeURIComponent(SHARED_SETTINGS_FILE)+':/content',{headers:{Authorization:'Bearer '+bearer},redirect:'follow'});
+ if(response.status===404)return null;
+ if(!response.ok)throw Error('Shared settings read failed (HTTP '+response.status+')');
+ return response.json();
+}
+
 let records=[],weeks=[],types=[],statuses=[],clinicianTypes=[],bookingTimeRecords=[];
 let availabilityRecords=[];
 let peopleRecords=[];
@@ -512,7 +547,7 @@ let cloudReady=false, cloudSaveTimer=null, cloudVersion=null, cloudBusy=false;
 let cloudFolder=null;
 const CLOUD_SETTINGS_NAME='weekly-demand-categories.json';
 function cloudNotice(msg){const el=$('cloudCategoryStatus');if(el)el.textContent=msg}
-async function cloudFile(){const t=await token();const r=await fetch(GRAPH+'/me/drive/special/approot:/'+CLOUD_SETTINGS_NAME+':/content',{headers:{Authorization:'Bearer '+t}});if(r.status===404)return null;if(!r.ok)throw Error('Settings read failed (HTTP '+r.status+')');return r.json()}
+async function cloudFile(){if(!isOwner)return readSharedSettings();try{const shared=await readSharedSettings();if(shared)return shared}catch(e){cloudNotice('Shared settings not available yet: '+e.message)}const t=await token();const r=await fetch(GRAPH+'/me/drive/special/approot:/'+CLOUD_SETTINGS_NAME+':/content',{headers:{Authorization:'Bearer '+t}});if(r.status===404)return null;if(!r.ok)throw Error('Settings read failed (HTTP '+r.status+')');return r.json()}
 function validCategoryNames(names){
  if(!Array.isArray(names))throw Error('Saved categories are invalid');
  const result=[];
@@ -576,7 +611,8 @@ async function loadCloudCategories(){
     saveCategories(false);
     await saveCloudCategories();
    }else cloudNotice('All categories loaded from OneDrive.');
-  }else cloudNotice('No cloud settings yet. Changes will save automatically.');
+  }else if(!isOwner)throw Error('No shared settings file. The owner must sign in and publish settings first.');
+  else cloudNotice('No cloud settings yet. Changes will save automatically.');
   cloudReady=true;
   saveCategories(false);
   if(categoryDirty)markCategoryDirty();
@@ -596,6 +632,7 @@ async function loadCloudCategories(){
 }
 let categoryDirty=false, cloudChangeSerial=0, cloudRetryTimer=null;
 function markCategoryDirty(){
+ if(!isOwner)return;
  categoryDirty=true;cloudChangeSerial++;
  cloudNotice('Saving settings automatically…');
  clearTimeout(cloudSaveTimer);
@@ -605,6 +642,7 @@ function markCategoryDirty(){
 function scheduleCloudSave(){markCategoryDirty()}
 
 async function saveCloudCategories(options={}){
+ if(!isOwner)return false;
  const manual=!!options.manual;
  if(!activeAccount||!cloudReady){
   if(manual)cloudNotice('Cannot save: sign in and wait for OneDrive settings to load.');
@@ -641,6 +679,14 @@ async function saveCloudCategories(options={}){
    body:snapshot
   });
   if(!response.ok)throw Error('HTTP '+response.status);
+  // Publish the same settings inside the shared CSV folder for read-only viewers.
+  // Never save through a viewer's delegated Microsoft Graph session.
+  if(selectedFolder?.id){
+   const sharedSave=await fetch(GRAPH+'/me/drive/items/'+encodeURIComponent(selectedFolder.id)+':/'+encodeURIComponent(SHARED_SETTINGS_FILE)+':/content',{
+    method:'PUT',headers:{Authorization:'Bearer '+t,'Content-Type':'application/json'},body:snapshot
+   });
+   if(!sharedSave.ok)throw Error('Shared settings publishing failed (HTTP '+sharedSave.status+')');
+  }
   if(manual){
    // Only clear the dirty flag if the user has not changed anything during the save.
    const current=JSON.stringify({categories:categoryNames,assignments,clinicianCategories:clinicianCategoryNames,clinicianAssignments,consultCategories:consultCategoryNames,consultAssignments});
@@ -711,7 +757,7 @@ function setButtons(){
  }
  $('signIn').disabled=logged;
  $('signOut').disabled=!logged;
- $('chooseFolder').disabled=!logged;
+ $('chooseFolder').disabled=!logged||!isOwner;
  $('refreshData').disabled=!logged||!selectedFolder||busy;
 }
 async function initAuth(){
@@ -738,15 +784,23 @@ async function initAuth(){
    $('dashboardShell').dataset.signedIn='true';
    auth.setActiveAccount(activeAccount);
    setButtons(); // Keep the dashboard visible while OneDrive requests are running.
-   try{selectedFolder=JSON.parse(localStorage.getItem(FOLDER_KEY)||'null')}catch{}
+   await identifyOwner();
+   if(isOwner){
+    try{selectedFolder=JSON.parse(localStorage.getItem(FOLDER_KEY)||'null')}catch{}
+   }else{
+    selectedFolder=await locateSharedFolder();
+   }
    await loadCloudCategories();
+   if(!isOwner&&!cloudReady)throw Error('Shared settings could not be loaded. Ask the owner to publish them.');
    // Existing browser migrates its chosen folder to OneDrive settings once.
-   if(cloudFolder){selectedFolder=cloudFolder;localStorage.setItem(FOLDER_KEY,JSON.stringify(selectedFolder))}
+   if(isOwner){if(cloudFolder){selectedFolder=cloudFolder;localStorage.setItem(FOLDER_KEY,JSON.stringify(selectedFolder))}
    else if(selectedFolder&&cloudReady){cloudFolder=selectedFolder;await saveCloudCategories()}
+   // Publish shared settings even if this account has not made edits recently.
+   if(selectedFolder&&cloudReady)await saveCloudCategories();}
    setStatus('Signed in: '+(activeAccount.username||'Microsoft account'));
    $('accountLabel').textContent=activeAccount.username||'Microsoft account';
    if(selectedFolder){$('folderStatus').textContent='Source: '+selectedFolder.name;await loadFolder(false)}
-   else {setSync('No source folder saved yet. Use Manage categories → Source folder setup once on the computer where you previously selected it.');$('sourceSetup').classList.remove('hidden')}
+   else if(isOwner){setSync('No source folder saved yet. Use Slot settings → Source folder setup.');$('sourceSetup').classList.remove('hidden')}
   }else setStatus('Sign in with the Hotmail account that owns your OneDrive files.');
  }catch(e){setStatus('Sign-in setup error: '+e.message);if(auth){try{activeAccount=activeAccount||auth.getActiveAccount()||auth.getAllAccounts()[0]||null}catch(_){}}}finally{setButtons()}
  })();
@@ -765,7 +819,7 @@ async function token(){
  }
 }
 async function graph(url){const bearer=await token();const response=await fetch(url.startsWith('https://')?url:GRAPH+url,{headers:{Authorization:'Bearer '+bearer}});if(!response.ok){let message='HTTP '+response.status;try{const body=await response.json();message=body.error?.message||message}catch{}throw Error(message)}return response.json()}
-async function children(id){let url=id==='root'?'/me/drive/root/children?$top=200&$select=id,name,folder,file,size,lastModifiedDateTime':`/me/drive/items/${encodeURIComponent(id)}/children?$top=200&$select=id,name,folder,file,size,lastModifiedDateTime`;const items=[];while(url){const r=await graph(url);items.push(...(r.value||[]));url=r['@odata.nextLink']||null}return items}
+async function children(id){if(!isOwner&&id===sharedFolderId){const items=[];let url=sharedPath()+'/children?$top=200';while(url){const r=await graph(url);items.push(...(r.value||[]));url=r['@odata.nextLink']||null}return items;}let url=id==='root'?'/me/drive/root/children?$top=200&$select=id,name,folder,file,size,lastModifiedDateTime':`/me/drive/items/${encodeURIComponent(id)}/children?$top=200&$select=id,name,folder,file,size,lastModifiedDateTime`;const items=[];while(url){const r=await graph(url);items.push(...(r.value||[]));url=r['@odata.nextLink']||null}return items}
 async function showFolderPicker(){$('onedrivePanel').classList.remove('hidden');folderView={id:'root',name:'OneDrive',trail:[]};$('folderPicker').classList.remove('hidden');await showFolderContents()}
 async function showFolderContents(){try{$('pickerPath').textContent=[...folderView.trail.map(x=>x.name),folderView.name].join(' / ');$('pickerEntries').textContent='Loading folders…';const folders=(await children(folderView.id)).filter(x=>x.folder).sort((a,b)=>a.name.localeCompare(b.name));$('pickerEntries').replaceChildren();if(!folders.length)$('pickerEntries').textContent='No subfolders. You can select this folder.';for(const f of folders){const btn=document.createElement('button');btn.className='folder-entry';btn.textContent='📁 '+f.name;btn.onclick=async()=>{folderView={id:f.id,name:f.name,trail:[...folderView.trail,{id:folderView.id,name:folderView.name}]};await showFolderContents()};$('pickerEntries').append(btn)}}catch(e){$('pickerEntries').textContent='Could not list folders: '+e.message}}
 function weekMonday(d){const x=new Date(d);x.setUTCHours(12,0,0,0);x.setUTCDate(x.getUTCDate()-((x.getUTCDay()+6)%7));return x.toISOString().slice(0,10)}
@@ -974,7 +1028,7 @@ function awaitCSVConfirmation(fileName,match){
 }
 async function replaceExistingCSV(file){
  if(csvDropBusy)return;
- if(!activeAccount||!selectedFolder){csvDropStatus('Sign in and select your OneDrive CSV folder first.',true);return}
+ if(!isOwner){csvDropStatus('View-only accounts cannot replace CSV files.',true);return;}if(!activeAccount||!selectedFolder){csvDropStatus('Sign in and select your OneDrive CSV folder first.',true);return}
  if(!file||!/\.csv$/i.test(file.name)){csvDropStatus('Rejected: only CSV files can be uploaded.',true);return}
  if(file.size===0||file.size>200*1024*1024){csvDropStatus('Rejected: CSV must be non-empty and no larger than 200 MB.',true);return}
  csvDropBusy=true;csvDropStatus('Checking '+file.name+' against OneDrive…');
@@ -1052,7 +1106,7 @@ initCSVDragDrop();
 async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;setButtons();showRefreshFeedback('Refreshing data…',true);setSync('Checking OneDrive CSV files…');try{
  const items=(await children(selectedFolder.id)).filter(f=>f.file&&/\.csv$/i.test(f.name)).sort((a,b)=>a.name.localeCompare(b.name));if(!items.length)throw Error('No CSV files found directly inside this folder.');
  const fingerprint=JSON.stringify(items.map(f=>[f.id,f.lastModifiedDateTime,f.size]));if(!force&&fingerprint===lastFingerprint){showRefreshFeedback('Already up to date');setSync(`No changes detected · ${items.length} CSV files · Checked ${new Date().toLocaleTimeString('en-GB')}`);return}
- const aggregate=new Map(),availabilityAggregate=new Map(),bookingTimeAggregate=new Map(),peopleAggregate=new Map();let valid=0,skipped=0;for(let i=0;i<items.length;i++){const f=items[i];showRefreshFeedback(`Loading file ${i+1} of ${items.length}…`,true);setSync(`Loading ${i+1} of ${items.length}: ${f.name}`);const detail=await graph(`/me/drive/items/${encodeURIComponent(f.id)}`);const url=detail['@microsoft.graph.downloadUrl'];if(!url)throw Error('OneDrive did not provide a download URL for '+f.name);const response=await fetch(url,{cache:'no-store'});if(!response.ok)throw Error(`Could not download ${f.name}: HTTP ${response.status}`);const stats=aggregateCSV(await response.text(),aggregate,availabilityAggregate,bookingTimeAggregate,peopleAggregate);valid+=stats.valid;skipped+=stats.skipped}
+ const aggregate=new Map(),availabilityAggregate=new Map(),bookingTimeAggregate=new Map(),peopleAggregate=new Map();let valid=0,skipped=0;for(let i=0;i<items.length;i++){const f=items[i];showRefreshFeedback(`Loading file ${i+1} of ${items.length}…`,true);setSync(`Loading ${i+1} of ${items.length}: ${f.name}`);const detail=await graph(sourceItemUrl(f.id));const url=detail['@microsoft.graph.downloadUrl'];if(!url)throw Error('OneDrive did not provide a download URL for '+f.name);const response=await fetch(url,{cache:'no-store'});if(!response.ok)throw Error(`Could not download ${f.name}: HTTP ${response.status}`);const stats=aggregateCSV(await response.text(),aggregate,availabilityAggregate,bookingTimeAggregate,peopleAggregate);valid+=stats.valid;skipped+=stats.skipped}
  const peopleByName=new Map();
  for(const [key,count] of peopleAggregate){
   const [name,type]=JSON.parse(key);
@@ -1095,11 +1149,11 @@ const drawingErrors=[];
  }finally{busy=false;setButtons()}}
 $('signIn').onclick=async()=>{if(authenticatedOnce||activeAccount)return;try{if(!auth){await initAuth();if(!auth)throw Error('Microsoft sign-in is still unavailable. Refresh the page (Ctrl+F5).')}await auth.loginRedirect({scopes:SCOPES})}catch(e){setStatus('Sign-in failed: '+e.message)}};
 $('signOut').onclick=async()=>{if(!activeAccount)return;try{authenticatedOnce=false;$('dashboardShell').dataset.signedIn='false';await auth.logoutRedirect({account:activeAccount,postLogoutRedirectUri:REDIRECT_URI})}catch(e){setStatus('Sign-out failed: '+e.message)}};
-$('chooseFolder').onclick=showFolderPicker;
-$('sourceSetup').onclick=showFolderPicker;
+$('chooseFolder').onclick=()=>{if(isOwner)showFolderPicker()};
+$('sourceSetup').onclick=()=>{if(isOwner)showFolderPicker()};
 $('cancelFolder').onclick=()=>$('folderPicker').classList.add('hidden');
 $('pickerUp').onclick=async()=>{if(!folderView.trail.length)return;const parent=folderView.trail.at(-1);folderView={...parent,trail:folderView.trail.slice(0,-1)};await showFolderContents()};
-$('selectFolder').onclick=async()=>{selectedFolder={id:folderView.id,name:[...folderView.trail.map(x=>x.name),folderView.name].join(' / ')};localStorage.setItem(FOLDER_KEY,JSON.stringify(selectedFolder));$('folderStatus').textContent='Selected folder: '+selectedFolder.name;$('folderPicker').classList.add('hidden');$('onedrivePanel').classList.add('hidden');$('sourceSetup').classList.add('hidden');cloudFolder=selectedFolder;await saveCloudCategories();lastFingerprint='';await loadFolder(true)};
+$('selectFolder').onclick=async()=>{if(!isOwner)return;selectedFolder={id:folderView.id,name:[...folderView.trail.map(x=>x.name),folderView.name].join(' / ')};localStorage.setItem(FOLDER_KEY,JSON.stringify(selectedFolder));$('folderStatus').textContent='Selected folder: '+selectedFolder.name;$('folderPicker').classList.add('hidden');$('onedrivePanel').classList.add('hidden');$('sourceSetup').classList.add('hidden');cloudFolder=selectedFolder;await saveCloudCategories();lastFingerprint='';await loadFolder(true)};
 $('refreshData').onclick=()=>loadFolder(true);
 setInterval(()=>{if(activeAccount&&selectedFolder&&!busy)loadFolder(false)},5*60*1000);
 const holidayDates=['2025-01-01','2025-04-18','2025-04-21','2025-05-05','2025-05-26','2025-08-25','2025-12-25','2025-12-26','2026-01-01','2026-04-03','2026-04-06','2026-05-04','2026-05-25','2026-08-31','2026-12-25','2026-12-28'];
@@ -1327,6 +1381,7 @@ try{const local=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');if(Array.isA
 try{const local=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');if(local.peopleLocum&&typeof local.peopleLocum==='object')peopleLocum=local.peopleLocum;if(local.peopleClinicianType&&typeof local.peopleClinicianType==='object')peopleClinicianType=local.peopleClinicianType;if(local.clinicianTypeColours&&typeof local.clinicianTypeColours==='object')clinicianTypeColours=local.clinicianTypeColours;if(local.urgencyTypeColours&&typeof local.urgencyTypeColours==='object')urgencyTypeColours=local.urgencyTypeColours;if(local.clinicianGroupColours&&typeof local.clinicianGroupColours==='object')clinicianGroupColours=local.clinicianGroupColours}catch(e){}
 function ensureFollowUpCategory(){if(!categoryNames.some(c=>c.toLowerCase().replace(/[\s-]+/g,'')==='followup'))categoryNames.push('Follow up')}ensureFollowUpCategory();function guessCategory(t){return /RED|YELLOW|AMBER|URGENT|SAME DAY|ACUTE/i.test(t)?'Urgent':/GREEN|FOLLOW UP|ROUTINE/i.test(t)?'Routine':null}function saveCategories(sync=true){lastConsultFilterNames=[];try{localStorage.setItem(STORAGE_KEY,JSON.stringify({categories:categoryNames,assignments,clinicianCategories:clinicianCategoryNames,clinicianAssignments,consultCategories:consultCategoryNames,consultAssignments,groupUrgencyCategories:groupUrgencyNames,groupUrgencyAssignments,urgencyGroupColours,clinicianGroupCategories:clinicianGroupNames,clinicianGroupAssignments,peopleLocum,peopleClinicianType,clinicianGroupColours,clinicianTypeColours,urgencyTypeColours}));}catch(e){alert('Could not save settings in this browser. Please try again.')}if(sync)markCategoryDirty()}function allCategories(){return [...categoryNames,'Uncategorised']}function rebuildCategoryFilter(){const old=new Set([...slots.selectedOptions].map(o=>o.value));slots.replaceChildren();for(const c of allCategories()){const o=document.createElement('option');o.value=c;o.textContent=c;o.selected=old.has(c);slots.append(o)}}function renderEditor(){renderDropEditor('urgency');updateAvailabilityUrgencyFilter()}
 function renderGroupUrgencyEditor(){renderDropEditor('groupUrgency');updateAvailabilityUrgencyFilter()}document.getElementById('addCategory').onclick=()=>{const el=document.getElementById('newCategory');const c=el.value.trim();if(!c)return;if(c.toLowerCase()==='uncategorised'||categoryNames.some(x=>x.toLowerCase()===c.toLowerCase())){alert('This category name already exists or is reserved.');return}categoryNames.push(c);el.value='';saveCategories();rebuildCategoryFilter();renderEditor();renderGroupUrgencyEditor()};document.getElementById('newCategory').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('addCategory').click()});document.getElementById('slotSearch').addEventListener('input',renderEditor);function showPage(which){
+ if(!isOwner&&(which==='categories'||which==='people'))return;
  for(const [page,nav,name] of [['chartPage','navChart','chart'],['categoryPage','navCategories','categories'],['availabilityPage','navAvailability','availability'],['routineAvailabilityPage','navRoutineAvailability','routineAvailability'],['bookingTimesPage','navBookingTimes','bookingTimes'],['peoplePage','navPeople','people']]){
   $(page).classList.toggle('hidden',which!==name);$(nav).classList.toggle('active',which===name);
  }

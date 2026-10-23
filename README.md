@@ -363,3 +363,13 @@ Urgent and Routine availability: compact blue Days/Weeks switch, independent Gro
 
 
 Days/Weeks selection on Urgent and Routine availability uses the same secondary-size slate-blue toggle as Group Withheld, with Days to its left and Weeks to its right.
+
+
+## Shared personal OneDrive (view-only colleagues)
+
+- Owner's personal Microsoft OneDrive drive ID is configured in `OWNER_DRIVE_ID`; a specific-person share link is configured in `SHARED_FOLDER_LINK`. These are public in GitHub Pages source, so only use a **Specific people** link, never an Anyone link.
+- Owner must first sign in and select the actual CSV source folder. This publishes `weekly-demand-categories.json` into that folder, alongside the existing private app-folder settings. The owner must have edit rights.
+- Invited personal Microsoft accounts can sign in and use the shared folder in view-only mode; Slot and People settings tabs and folder picker are hidden. OneDrive **Can view** permission, not hidden buttons, enforces write protection.
+- Microsoft Graph shared-folder support is subject to personal OneDrive Graph API behaviour and Microsoft consent. Live cross-account testing is required.
+- To remove a colleague, revoke access to the shared folder in OneDrive.
+- Do not use patient-identifiable information on public hosting without an appropriate security and information governance review.
