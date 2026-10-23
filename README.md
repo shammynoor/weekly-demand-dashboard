@@ -308,3 +308,7 @@ Each Detailed Clinician Type has a stable pastel colour swatch in Manage people.
 
 ## Group colours (corrected)
 One colour per Clinician Group, shown as a larger clickable circle in the group header. No colours on individual Detailed Clinician Types. More saturated pastel defaults. The Manage People Clinician Group column and the Urgent/Routine clinician-group toggles use the same group colour. Group colours persist in local browser settings and private OneDrive settings as `clinicianGroupColours`; renaming/deleting groups carries over or removes the group colour. Prior per-type colours are ignored.
+
+
+## Manage categories simplified
+Removed the Detailed Clinician Types and Clinician Groups tabs and editors from the visible Manage categories page. Their management remains available under Manage people. Internal legacy editor nodes are retained invisibly for compatibility with existing JS event bindings and refresh logic; the underlying clinician assignments and saved OneDrive settings are unchanged.
