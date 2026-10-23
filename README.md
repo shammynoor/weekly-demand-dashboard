@@ -324,3 +324,6 @@ Drag exactly one `.csv` onto any dashboard page. Only a file with the same case-
 
 ## Routine Appointment Availability visual refresh
 Updated only the Routine Availability Plotly styling: cleaner off-white chart background, subtly stronger green booked bars, refined blue-grey statuses, softer gridlines and borders, more readable totals and headers, modest bar spacing, and a blue Today line. Historical shading stays in front of the bars with alpha 0.20 (80% transparent). The Today x-position calculation, slider, daily/weekly behaviour, appointment aggregation, all filters and saved settings are unchanged.
+
+## Routine bar polish
+Rounded top corners (Plotly barcornerradius), subtle status-specific SVG linear gradients for a glass/bevel finish, and totals raised by 10 more pixels. The routine chart's original data, hover, stacked status counts, historical shading and Today x-coordinate are unchanged. Gradients are applied to rendered Plotly SVG paths after each chart render, without modifying the chart data.

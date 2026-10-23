@@ -1455,6 +1455,40 @@ function setupRoutineRangeControls(){
  end.addEventListener('input',()=>update('end'));
  update('start');
 }
+// Visual-only finish for the Routine stacked bars. The original Plotly data,
+// hover targets, shading and Today geometry are left untouched.
+function applyRoutineBarGlass(target){
+ const svg=target.querySelector('.main-svg');
+ if(!svg)return;
+ const ns='http://www.w3.org/2000/svg';
+ let defs=svg.querySelector('defs');
+ if(!defs){defs=document.createElementNS(ns,'defs');svg.insertBefore(defs,svg.firstChild)}
+ const gradients=[
+  ['routine-glass-booked',[['0%','#92d8b0'],['18%','#6dc895'],['52%','#5fc18a'],['100%','#4dac79']]],
+  ['routine-glass-blocked',[['0%','#758798'],['18%','#526579'],['55%','#435569'],['100%','#354659']]],
+  ['routine-glass-embargoed',[['0%','#d8e2e9'],['18%','#c2d1db'],['55%','#b7c7d1'],['100%','#a2b5c1']]],
+  ['routine-glass-available',[['0%','#ffffff'],['20%','#ffffff'],['65%','#fdfefe'],['100%','#edf3f8']]]
+ ];
+ for(const [id,stops] of gradients){
+  let grad=defs.querySelector('#'+id);
+  if(!grad){
+   grad=document.createElementNS(ns,'linearGradient');grad.id=id;
+   grad.setAttribute('x1','0');grad.setAttribute('x2','0');grad.setAttribute('y1','0');grad.setAttribute('y2','1');
+   for(const [offset,color] of stops){const stop=document.createElementNS(ns,'stop');stop.setAttribute('offset',offset);stop.setAttribute('stop-color',color);grad.append(stop)}
+   defs.append(grad);
+  }
+ }
+ // Plotly draws one bar trace per availability status, in the order above.
+ const traces=target.querySelectorAll('.barlayer .trace.bars');
+ traces.forEach((trace,i)=>{
+  if(i>=gradients.length)return;
+  trace.querySelectorAll('.point path').forEach(path=>{
+   path.style.setProperty('fill','url(#'+gradients[i][0]+')','important');
+   path.style.setProperty('stroke',i===3?'#dce7ee':'rgba(255,255,255,0.45)');
+   path.style.setProperty('stroke-width',i===3?'0.85px':'0.6px');
+  });
+ });
+}
 function renderRoutineAvailabilityChart(){
  const target=$('routineAvailabilityChart');
  if(!target||$('routineAvailabilityPage').classList.contains('hidden')||!window.Plotly)return;
@@ -1495,7 +1529,7 @@ function renderRoutineAvailabilityChart(){
  for(const label of labels)traces.push({type:'scatter',mode:'markers',name:label,x:[null],y:[null],marker:{symbol:'circle',size:14,color:colours[label],line:{color:label==='Available'?'#a7b8c6':colours[label],width:label==='Available'?1.5:0}},showlegend:true,hoverinfo:'skip'});
  const totals=dates.map(date=>labels.reduce((sum,label)=>sum+(byBucket.get(JSON.stringify([date,label]))||0),0));
  const max=Math.max(1,...totals);
- const annotations=totals.flatMap((total,i)=>total?[{xref:'x',x:i,y:total,text:total.toLocaleString('en-GB'),showarrow:false,yshift:5,font:{size:isDaily?10:13,color:'#425b70'}}]:[]);
+ const annotations=totals.flatMap((total,i)=>total?[{xref:'x',x:i,y:total,text:total.toLocaleString('en-GB'),showarrow:false,yshift:15,font:{size:isDaily?10:13,color:'#425b70'}}]:[]);
  const weekTitles=weeks.map((_,i)=>{const offset=routineStartWeek+i;return offset===0?'This Week':offset===-1?'Last Week':offset<0?Math.abs(offset)+' weeks ago':offset===1?'Next Week':offset+' weeks'});
  for(let i=0;i<weeks.length;i++)annotations.push({xref:'x',yref:'paper',x:isDaily?i*7+3:i,y:1.105,text:weekTitles[i],showarrow:false,font:{family:'Arial',size:13,color:'#344b60'}});
  const dayIndex=(new Date(todayLondon+'T12:00:00Z').getUTCDay()+6)%7;
@@ -1510,13 +1544,13 @@ function renderRoutineAvailabilityChart(){
  const note=$('routineAvailabilityNote');
  if(note)note.textContent=matched?'':"No matching Routine urgency-group appointments found. Check Manage categories → Urgency Group.";
  Plotly.react(target,traces,{
-  height:510,autosize:true,barmode:'stack',bargap:isDaily?0.13:0.11,
+  height:510,autosize:true,barmode:'stack',barcornerradius:7,bargap:isDaily?0.13:0.11,
   margin:{l:62,r:18,t:85,b:100},paper_bgcolor:'#fff',plot_bgcolor:plotBackground,
   legend:{orientation:'h',x:0.5,y:-0.20,xanchor:'center',yanchor:'top',font:{size:13,color:'#42576a'},traceorder:'normal'},
   xaxis:{type:'category',categoryorder:'array',categoryarray:dates,range:[-0.5,dates.length-0.5],tickmode:'array',tickvals:dates,ticktext:isDaily?dates.map(date=>new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'short',timeZone:'UTC'})):dates.map(()=>''),tickangle:-90,tickfont:{size:10},showticklabels:isDaily,showgrid:false,showline:true,linecolor:'#a9b9c7',linewidth:1.5,zeroline:false,fixedrange:true},
   yaxis:{title:{text:'Appointment slots',font:{size:12,color:'#708397'}},tickfont:{size:12,color:'#52677b'},range:[0,Math.ceil(max*1.18/10)*10],gridcolor:'#e0e8ef',gridwidth:1,zeroline:false,showline:false},
   annotations,shapes,hovermode:'closest'
- },{responsive:true,displaylogo:false});
+ },{responsive:true,displaylogo:false}).then(()=>applyRoutineBarGlass(target));
 }
 window.addEventListener('resize',()=>{if(!$('routineAvailabilityPage').classList.contains('hidden'))renderRoutineAvailabilityChart()});
 setupRoutineRangeControls();
