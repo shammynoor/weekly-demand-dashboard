@@ -85,7 +85,34 @@ function renderPeopleGroups(){
   const card=el('section','people-group-card');
   const assigned=clinicianCategoryNames.filter(t=>clinicianGroupAssignments[t]===group).sort((a,b)=>a.localeCompare(b));
   const header=el('div','people-group-heading');
-  header.append(el('h3','people-group-title',group),el('span','people-group-count',assigned.length+' types'));
+  const title=el('h3','people-group-title',group);
+  const count=el('span','people-group-count',assigned.length+' types');
+  const actions=el('div','people-group-actions');
+  const rename=el('button','people-icon-action','✎');rename.type='button';rename.title='Rename group '+group;rename.setAttribute('aria-label','Rename clinician group '+group);
+  rename.addEventListener('click',()=>{
+   const {wrap,input}=editor(group,'Clinician group',value=>{
+    if(value===group){renderPeopleGroups();return}
+    if(!nameValid(value,clinicianGroupNames)){alert('Please enter a unique clinician group name.');return}
+    clinicianGroupNames=clinicianGroupNames.map(n=>n===group?value:n);
+    for(const type of Object.keys(clinicianGroupAssignments))if(clinicianGroupAssignments[type]===group)clinicianGroupAssignments[type]=value;
+    for(const disabled of [disabledClinicianTypes,urgentClinicianDisabled,routineDisabledClinicianGroups,bookingTimesDisabledClinician]){
+     if(disabled.has(group)){disabled.delete(group);disabled.add(value)}
+    }
+    changed();
+   });
+   header.replaceChildren(wrap);input.focus();input.select();
+  });
+  const remove=el('button','people-icon-action people-delete-action','×');remove.type='button';remove.title='Delete group '+group;remove.setAttribute('aria-label','Delete clinician group '+group);
+  remove.addEventListener('click',()=>{
+   const count=clinicianCategoryNames.filter(t=>clinicianGroupAssignments[t]===group).length;
+   if(!confirm('Delete clinician group "'+group+'"? '+count+' detailed clinician type(s) will become unassigned, but the types and people will not be deleted.'))return;
+   clinicianGroupNames=clinicianGroupNames.filter(n=>n!==group);
+   for(const type of Object.keys(clinicianGroupAssignments))if(clinicianGroupAssignments[type]===group)clinicianGroupAssignments[type]='Uncategorised';
+   for(const disabled of [disabledClinicianTypes,urgentClinicianDisabled,routineDisabledClinicianGroups,bookingTimesDisabledClinician])disabled.delete(group);
+   changed();
+  });
+  actions.append(rename,remove);
+  header.append(title,count,actions);
   card.append(header);
   const list=el('div','people-group-types');
   list.dataset.group=group;

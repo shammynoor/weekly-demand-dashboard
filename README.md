@@ -295,3 +295,7 @@ Manage people now shows a box for each existing Clinician Group, containing its 
 
 ## Compact clinician group organiser
 Manage people displays up to six clinician-group boxes per row on wide screens (five at narrower widths). Detailed clinician types are draggable between groups. Each type has rename (pencil) and delete (×) actions; rename updates person and CSV user-type assignments, and deletion clears those assignments. Add Group is a single button that reveals an input only when clicked. Each group has a compact Add type button. Changes are stored locally and sync to OneDrive with the existing Save button.
+
+
+## Clinician Group rename/delete controls
+Every main group heading now has a pencil (rename) and × (delete). Renaming updates the group's name and all detailed clinician type group assignments. Deleting requires confirmation and leaves its detailed types intact but unassigned, so person clinician types are preserved. Both actions update local settings and OneDrive sync on Save.
