@@ -1068,7 +1068,7 @@ function validateReplacementCSV(text){
 function validateSignpostingReplacementCSV(text){
  const parsed=Papa.parse(text,{header:true,preview:15,skipEmptyLines:'greedy',bom:true});
  if(parsed.errors?.length)throw Error('Signposting CSV parsing failed: '+parsed.errors[0].message);
- const columns=(parsed.meta.fields||[]).map(x=>String(x||'').replace(/^\\uFEFF/,'').trim());
+ const columns=(parsed.meta.fields||[]).map(x=>String(x||'').replace(/^\uFEFF/,'').trim());
  const required=['Anonymised Identifier','Age','Gender','Date',"Consultation Details' Time",'Code Term'];
  const missing=required.filter(x=>!columns.includes(x));
  if(missing.length)throw Error('Signposting CSV is incompatible. Missing column(s): '+missing.join(', '));
