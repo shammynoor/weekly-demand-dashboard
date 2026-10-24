@@ -2615,7 +2615,7 @@ function renderRoutineCategoryToggles(){
   const input=document.createElement('input');input.type='checkbox';input.setAttribute('role','switch');input.dataset.filterName=name;
   input.checked=!routineDisabledTypes.has(name);input.setAttribute('aria-label','Include '+name);
   const track=document.createElement('span');track.className='switch-track';
-  track.style.setProperty('--switch-on',urgencyTypeColour(name));
+  track.style.setProperty('--switch-on',urgencyGroupColour(name));
   const caption=document.createElement('span');caption.textContent=name;
   sw.append(input,track);row.append(sw,caption);root.append(row);
   input.addEventListener('change',()=>{input.checked?routineDisabledTypes.delete(name):routineDisabledTypes.add(name);renderRoutineAvailabilityChart()});
