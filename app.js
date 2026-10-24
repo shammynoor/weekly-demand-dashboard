@@ -609,7 +609,7 @@ function renderSlotPurposeCategories(){
  if(!root||!add)return;
  root.replaceChildren();
  const editor=(oldName='')=>{
-  const row=document.createElement('div');row.className='slot-purpose-category-row';
+  const row=document.createElement('div');row.className='slot-mode-editor';
   const input=document.createElement('input');input.type='text';input.value=oldName;input.placeholder='e.g. Chronic Disease Review';
   const save=document.createElement('button');save.type='button';save.textContent='Save';
   const cancel=document.createElement('button');cancel.type='button';cancel.textContent='Cancel';
@@ -625,9 +625,9 @@ function renderSlotPurposeCategories(){
   row.append(input,save,cancel);return {row,input};
  };
  for(const name of purposeCategoryNames){
-  const row=document.createElement('div');row.className='slot-purpose-category-row';
+  const row=document.createElement('div');row.className='slot-mode-item';
   const colour=slotCategoryColourPicker(name,purposeColours,()=>{saveCategories();renderSlotPurposeCategories()});
-  const label=document.createElement('span');label.className='slot-purpose-category-name';label.textContent=name;
+  const label=document.createElement('span');label.textContent=name;
   const rename=document.createElement('button');rename.type='button';rename.textContent='✎';rename.title='Rename '+name;
   rename.addEventListener('click',()=>{const edit=editor(name);row.replaceWith(edit.row);edit.input.focus();edit.input.select()});
   const remove=document.createElement('button');remove.type='button';remove.textContent='×';remove.title='Delete '+name;
