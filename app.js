@@ -513,9 +513,8 @@ function renderSlotTableGroupFilter(){
 }
 let slotTypeFileStats=new Map();
 function formatSlotMonth(date){const [year,month]=date.split('-');return new Date(Date.UTC(Number(year),Number(month)-1,1)).toLocaleDateString('en-GB',{month:'short',year:'numeric',timeZone:'UTC'});}
-function ensureCoreConsultModes(){for(const name of ['Phone','Face-to-face'])if(!consultCategoryNames.some(value=>value.toLowerCase()===name.toLowerCase()))consultCategoryNames.push(name)}
+function ensureCoreConsultModes(){if(!consultCategoryNames.length)consultCategoryNames=['Phone','Face-to-face']}
 function renderSlotTable(){
- ensureCoreConsultModes();
  const body=$('slotTableBody');if(!body)return;
  renderSlotTableGroupFilter();
  const query=String($('slotTableSearch')?.value||'').trim().toLowerCase();
@@ -711,7 +710,7 @@ async function loadCloudCategories(){
    clinicianCategoryNames=Array.isArray(data.clinicianCategories)?validCategoryNames(data.clinicianCategories):clinicianCategoryNames;
    clinicianAssignments=data.clinicianAssignments?validAssignments(data.clinicianAssignments,clinicianCategoryNames):clinicianAssignments;
    consultCategoryNames=Array.isArray(data.consultCategories)?validCategoryNames(data.consultCategories):[];
-   consultAssignments=data.consultAssignments?validAssignments(data.consultAssignments,consultCategoryNames):{};ensureCoreConsultModes();lastConsultFilterNames=[];
+   consultAssignments=data.consultAssignments?validAssignments(data.consultAssignments,consultCategoryNames):{};lastConsultFilterNames=[];
    if(Array.isArray(data.clinicianGroupCategories)){clinicianGroupNames=validCategoryNames(data.clinicianGroupCategories);clinicianGroupAssignments=data.clinicianGroupAssignments?validAssignments(data.clinicianGroupAssignments,clinicianGroupNames):{};}
    if(data.urgencyGroupColours&&typeof data.urgencyGroupColours==='object'&&!Array.isArray(data.urgencyGroupColours))urgencyGroupColours=Object.fromEntries(Object.entries(data.urgencyGroupColours).filter(([key,value])=>typeof key==='string'&&/^#[0-9a-f]{6}$/i.test(value)));
    if(Array.isArray(data.groupUrgencyCategories)){
