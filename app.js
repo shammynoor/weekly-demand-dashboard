@@ -1909,15 +1909,15 @@ function drawCombinedDemandChart(){
    text:category+' avg '+Math.round(average).toLocaleString('en-GB'),showarrow:false,
    font:{size:10,color:colour},bgcolor:'rgba(255,255,255,0.78)',borderpad:2});
  }
- const rawStep=Math.max(1,maxCount/5),magnitude=Math.pow(10,Math.floor(Math.log10(rawStep)));
- const step=([1,2,5,10].find(v=>v*magnitude>=rawStep)||10)*magnitude;
+ // Fit the axis closely to the visible series and average lines, retaining a zero baseline.
+ const yAxisTop=Math.max(5,Math.ceil(maxCount*1.08));
  const range=demandMonthStart&&demandMonthEnd?[demandMonthStart+'-01',new Date(Date.UTC(Number(demandMonthEnd.slice(0,4)),Number(demandMonthEnd.slice(5,7)),0)).toISOString().slice(0,10)]:null;
  Plotly.react('combinedDemandChart',traces,{dragmode:false,autosize:true,height:535,
   margin:{l:62,r:20,t:55,b:65},paper_bgcolor:'white',plot_bgcolor:'white',
   shapes:[...yearBackgroundShapes(visibleWeeks),...averageShapes],
   legend:{orientation:'h',y:1.14,x:0,xanchor:'left',yanchor:'bottom',entrywidth:85,entrywidthmode:'pixels',traceorder:'normal'},
   xaxis:continuousMode?{type:'date',title:monthlyMode?'Booking month':'Booking date',tickformat:'%b %Y',gridcolor:'#edf1f5',...(range?{range}: {})}:axis,
-  yaxis:{title:'Appointments',range:[0,Math.max(5,step*5)],gridcolor:'#edf1f5'},hovermode:'closest',
+  yaxis:{title:'Appointments',range:[0,yAxisTop],nticks:6,gridcolor:'#edf1f5'},hovermode:'closest',
   annotations:!selected.length?[{text:'Select an urgency type to display appointments',xref:'paper',yref:'paper',x:.5,y:.5,showarrow:false}]:averageAnnotations
  },{responsive:true,displaylogo:false,displayModeBar:false,scrollZoom:false,doubleClick:false}).then(()=>installDemandCardTooltip($('combinedDemandChart')));
 }
