@@ -1930,6 +1930,7 @@ function drawCombinedDemandChart(){
   return historical>0?count*referencePopulation/historical:count;
  };
  const selected=groupUrgencyNames.filter(name=>!disabledDemandUrgencyGroups.has(name));
+ const additiveTitle=$('demandAdditiveTitle');if(additiveTitle){additiveTitle.textContent=additiveLines?selected.join(' + '):'';additiveTitle.hidden=!additiveLines||!selected.length;}
  const visibleWeeks=selectedWeeks.filter(w=>(!demandMonthStart||w.slice(0,7)>=demandMonthStart)&&(!demandMonthEnd||w.slice(0,7)<=demandMonthEnd));
  const years=[...new Set(visibleWeeks.map(w=>Number(w.slice(0,4))))].sort((a,b)=>a-b);
  const latestYear=years.length?years[years.length-1]:null;
@@ -1972,7 +1973,7 @@ function drawCombinedDemandChart(){
     customdata:complete.length?[complete[complete.length-1].date,last.date]:[last.date],
     y:complete.length?[complete[complete.length-1].count,last.count]:[last.count],
     type:'scatter',mode:'lines+markers',opacity,
-    line:{color:urgencyGroupColour(category),width,dash:'dot'},marker:{size:7,symbol:'circle-open'},
+    line:{color:additiveLines?'#2678ad':urgencyGroupColour(category),width,dash:'dot'},marker:{size:7,symbol:'circle-open'},
     hoverinfo:'none'});
   }
  }
@@ -1980,18 +1981,18 @@ function drawCombinedDemandChart(){
  // currently selected booking weeks/months (including zero-count periods).
  const averageShapes=[];
  const averageAnnotations=[];
- for(const category of selected){
-  const totals=demandCategoryTotals[category];
-  const values=visibleWeeks.map(w=>adjustedCount(w,totals.get(w))).filter(Number.isFinite);
+ for(const category of additiveLines?['Combined']:selected){
+  const totals=additiveLines?combinedTotals:demandCategoryTotals[category];
+  const values=visibleWeeks.map(w=>adjustedCount(w,totals.get(w)||0)).filter(Number.isFinite);
   if(!values.length)continue;
   const average=values.reduce((sum,value)=>sum+value,0)/values.length;
   maxCount=Math.max(maxCount,average);
-  const colour=urgencyGroupColour(category);
+  const colour=additiveLines?'#2678ad':urgencyGroupColour(category);
   averageShapes.push({type:'line',xref:'paper',yref:'y',x0:0,x1:1,y0:average,y1:average,
    line:{color:colour,width:1.8,dash:'dot'},layer:'above'});
   averageAnnotations.push({xref:'paper',yref:'y',x:1,y:average,xanchor:'right',yanchor:'bottom',
-   text:category+' avg '+Math.round(average).toLocaleString('en-GB'),showarrow:false,
-   font:{size:10,color:colour},bgcolor:'rgba(255,255,255,0.78)',borderpad:2});
+   text:(additiveLines?'Combined':category)+' average · '+Math.round(average).toLocaleString('en-GB'),showarrow:false,
+   font:{size:11,color:colour},bgcolor:'rgba(255,255,255,0.55)',bordercolor:'rgba(170,185,200,0.65)',borderwidth:1,borderpad:6});
  }
  // Fit the axis closely to the visible series and average lines, retaining a zero baseline.
  const yAxisTop=Math.max(5,Math.ceil(maxCount*1.08));
@@ -2731,7 +2732,7 @@ function renderRoutineAvailabilityChart(){
  const plotBackground='#e1eaf1';
  const routineTypes=routineDetailedTypes().filter(name=>!routineDisabledTypes.has(name));
  const traces=[
-  ...routineTypes.map(name=>({type:'bar',name,showlegend:true,x:dates,y:dates.map(date=>byBucket.get(JSON.stringify([date,'Booked',name]))||0),marker:{color:urgencyTypeColour(name),line:{width:0}},customdata:summaries,hovertemplate:'%{customdata}<extra></extra>'})),
+  ...routineTypes.map(name=>({type:'bar',name,showlegend:true,x:dates,y:dates.map(date=>byBucket.get(JSON.stringify([date,'Booked',name]))||0),marker:{color:urgencyGroupColour(name),line:{width:0}},customdata:summaries,hovertemplate:'%{customdata}<extra></extra>'})),
   ...labels.filter(label=>label!=='Booked').map(label=>({type:'bar',name:label,showlegend:false,x:dates,y:dates.map(date=>byBucket.get(JSON.stringify([date,label]))||0),marker:{color:colours[label],line:{width:0}},customdata:summaries,hovertemplate:'%{customdata}<extra></extra>'}))
  ];
  for(const label of labels.filter(label=>label!=='Booked'))traces.push({type:'scatter',mode:'markers',name:label,x:[null],y:[null],marker:{symbol:'circle',size:14,color:colours[label],line:{color:label==='Available'?'#a7b8c6':colours[label],width:label==='Available'?1.5:0}},showlegend:true,hoverinfo:'skip'});
