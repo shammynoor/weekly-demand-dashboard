@@ -541,7 +541,7 @@ function renderSlotTable(){
   const slotCell=document.createElement('td');
   const slotName=document.createElement('span');slotName.textContent=slot;slotCell.append(slotName);
   const stats=slotTypeFileStats.get(slot);
-  if(stats){const details=document.createElement('span');details.className='slot-type-found-details';details.textContent=` — ${stats.count.toLocaleString('en-GB')} found (${formatSlotMonth(stats.min)} – ${formatSlotMonth(stats.max)})`;slotCell.append(details);}
+  if(stats){const details=document.createElement('span');details.className='slot-type-found-details';details.style.display='block';details.textContent=` — ${stats.count.toLocaleString('en-GB')} found (${formatSlotMonth(stats.min)} – ${formatSlotMonth(stats.max)})`;slotCell.append(details);}
   const assignedCell=document.createElement('td');assignedCell.className='people-assigned-cell';
   const select=document.createElement('select');select.className='people-clinician-select';select.setAttribute('aria-label','Assigned type for '+slot);
   const unassignedOption=document.createElement('option');unassignedOption.value='';unassignedOption.textContent='Unassigned';select.append(unassignedOption);
