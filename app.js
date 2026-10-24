@@ -2492,6 +2492,10 @@ for(const [id,isUrgent] of [['availabilityPageGroupWithheld',true],['routineAvai
   else{routineGroupWithheld=input.checked;renderRoutineAvailabilityChart()}
  });
 }
+let urgentSplitExtras=false,urgentAddSignposted=false;
+for(const [id,setter] of [['urgentSplitExtras',value=>urgentSplitExtras=value],['urgentAddSignposted',value=>urgentAddSignposted=value]]){
+ $(id)?.addEventListener('change',event=>{setter(event.target.checked);renderAvailabilityChart()});
+}
 function renderAvailabilityChart(){
  const target=$('availabilityChart');
  if($('availabilityPage').classList.contains('hidden')||!window.Plotly||!target)return;
@@ -2512,9 +2516,17 @@ function renderAvailabilityChart(){
   const category=String(assignments[r.slot]||'').trim();
   if(!names.includes(capacityUrgencyCategory(r.slot))||!urgentClinicianMatches(r.clinician,r.person)||!urgentConsultMatches(r.slot)||!urgentPurposeMatches(r.slot))continue;
   const status=String(r.availability||'').trim().toLowerCase();
-  const label=status==='booked'?capacityUrgencyCategory(r.slot):status==='blocked'?(urgentGroupWithheld?'Held Back':'Blocked'):status==='embargoed'?(urgentGroupWithheld?'Held Back':'Embargoed'):status==='available'?'Available':null;
+  const isExtra=urgentSplitExtras&&capacityAssignments[r.slot]==='Extras';
+  const label=isExtra?'Extras':status==='booked'?capacityUrgencyCategory(r.slot):status==='blocked'?(urgentGroupWithheld?'Held Back':'Blocked'):status==='embargoed'?(urgentGroupWithheld?'Held Back':'Embargoed'):status==='available'?'Available':null;
   if(!label)continue;
   const key=JSON.stringify([r.date,label]);counts.set(key,(counts.get(key)||0)+r.count);
+ }
+ if(urgentAddSignposted){
+  for(const record of signpostingRecords){
+   if(!weekdays.has(record.date))continue;
+   const key=JSON.stringify([record.date,'Signposted']);
+   counts.set(key,(counts.get(key)||0)+1);
+  }
  }
  const weekly=urgentAvailabilityGranularity==='week';
  const buckets=weekly?Array.from({length:weekCount},(_,i)=>dates[i*7]):dates;
@@ -2524,9 +2536,11 @@ function renderAvailabilityChart(){
   for(const [key,count] of counts){const [date,label]=JSON.parse(key);const k=JSON.stringify([bucketFor(date),label]);aggregated.set(k,(aggregated.get(k)||0)+count);}
   counts.clear();for(const [key,count] of aggregated)counts.set(key,count);
  }
- const labels=[...names,...(urgentGroupWithheld?['Held Back']:['Blocked','Embargoed']),'Available'];
+ const labels=[...names,...(urgentSplitExtras?['Extras']:[]),...(urgentGroupWithheld?['Held Back']:['Blocked','Embargoed']),'Available',...(urgentAddSignposted?['Signposted']:[])];
  const colours=Object.fromEntries(names.map(n=>[n,urgentColour(n)]));
  Object.assign(colours,{Blocked:'#435569',Embargoed:'#586674','Held Back':'#48535f',Available:'#ffffff'});
+ if(urgentSplitExtras)colours.Extras=capacityColours.Extras||'#8aa6bd';
+ if(urgentAddSignposted)colours.Signposted='#72a89c';
  const totals=buckets.map(date=>labels.reduce((a,n)=>a+(counts.get(JSON.stringify([date,n]))||0),0));
  const max=Math.ceil(Math.max(1,...totals)*1.2/10)*10;
  const daySummary=buckets.map(date=>{
