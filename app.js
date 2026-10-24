@@ -1598,7 +1598,7 @@ function renderDemandUrgencyToggles(){
  const root=$('demandUrgencyToggles');if(!root)return;
  const names=[...groupUrgencyNames];
  if(names.length===lastDemandUrgencyGroupNames.length&&names.every((n,i)=>n===lastDemandUrgencyGroupNames[i])){
-  root.querySelectorAll('input[data-urgency-group]').forEach(input=>input.nextElementSibling?.style.setProperty('--switch-on',urgencyGroupColour(input.dataset.urgencyGroup)));
+  root.querySelectorAll('input[data-urgency-group]').forEach(input=>{input.checked=!disabledDemandUrgencyGroups.has(input.dataset.urgencyGroup);input.nextElementSibling?.style.setProperty('--switch-on',urgencyGroupColour(input.dataset.urgencyGroup));});
   return;
  }
  lastDemandUrgencyGroupNames=names;
@@ -1612,7 +1612,12 @@ function renderDemandUrgencyToggles(){
   switchEl.append(input,track);
   const title=document.createElement('span');title.textContent=name;
   row.append(switchEl,title);root.append(row);
-  input.addEventListener('change',()=>{if(input.checked)disabledDemandUrgencyGroups.delete(name);else disabledDemandUrgencyGroups.add(name);scheduleDemandRefresh()});
+  input.addEventListener('change',()=>{
+   if(input.checked)disabledDemandUrgencyGroups.delete(name);
+   else disabledDemandUrgencyGroups.add(name);
+   // Update the displayed plot immediately; the group switch is a primary chart filter.
+   refresh();
+  });
  }
 }
 function drawCombinedDemandChart(){
