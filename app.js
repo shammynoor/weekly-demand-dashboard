@@ -2155,6 +2155,13 @@ function updateAvailabilityUrgencyFilter(){
  select.value=selectedAvailabilityUrgency;
 }
 const urgentClinicianDisabled=new Set();
+const urgentPurposeDisabled=new Set();
+let urgentPurposeInitialised=false;
+function syncUrgentPurposeDefaults(){
+ if(urgentPurposeInitialised||!purposeCategoryNames.length)return;
+ for(const name of purposeCategoryNames)if(name.toLowerCase().trim()!=='general consultation')urgentPurposeDisabled.add(name);
+ urgentPurposeInitialised=true;
+}
 const urgentConsultDisabled=new Set();
 // Eligibility must be independent of currently selected switches: otherwise
 // disabling one dimension can cascade and lock every other dimension off.
@@ -2180,7 +2187,7 @@ function availabilityOptionHasData(page,kind,name){
   const category=String(assignments[r.slot]||'').trim();
   const clinician=clinicianGroupAssignments[effectiveClinicianType(r.clinician,r.person)];
   const consult=consultAssignments[r.slot];
-  return kind==='category'?(page==='urgent'?capacityUrgencyCategory(r.slot):category)===name:kind==='clinician'?clinician===name:consult===name;
+  return kind==='category'?(page==='urgent'?capacityUrgencyCategory(r.slot):category)===name:kind==='clinician'?clinician===name:kind==='purpose'?purposeAssignments[r.slot]===name:consult===name;
  });
 }
 function availabilityHasVisibleRecords(page){
@@ -2191,7 +2198,7 @@ function availabilityHasVisibleRecords(page){
   return page==='urgent'?
    !urgentCategoryDisabled.has(capacityUrgencyCategory(r.slot))&&urgentCategoryNames().includes(capacityUrgencyCategory(r.slot))&&
    clinicianGroupNames.includes(clinician)&&!urgentClinicianDisabled.has(clinician)&&
-   consultCategoryNames.includes(consult)&&!urgentConsultDisabled.has(consult):
+   consultCategoryNames.includes(consult)&&!urgentConsultDisabled.has(consult)&&urgentPurposeMatches(r.slot):
    clinicianGroupNames.includes(clinician)&&!routineDisabledClinicianGroups.has(clinician)&&
    consultCategoryNames.includes(consult)&&!routineDisabledConsultModes.has(consult);
  });
@@ -2210,7 +2217,7 @@ function changeAvailabilityFilter(page,disabled,name,checked,checkbox){
 }
 function refreshAvailabilityOptionStates(page){
  const configs=page==='urgent'?
-  [['urgentCategoryToggles','category',urgentCategoryDisabled],['urgentClinicianToggles','clinician',urgentClinicianDisabled],['urgentConsultToggles','consult',urgentConsultDisabled]]:
+  [['urgentCategoryToggles','category',urgentCategoryDisabled],['urgentClinicianToggles','clinician',urgentClinicianDisabled],['urgentConsultToggles','consult',urgentConsultDisabled],['urgentPurposeToggles','purpose',urgentPurposeDisabled]]:
   [['routineClinicianFilters','clinician',routineDisabledClinicianGroups],['routineConsultFilters','consult',routineDisabledConsultModes]];
  for(const [id,kind,disabled] of configs){
   const root=$(id);if(!root)continue;
@@ -2358,11 +2365,17 @@ function renderUrgentSideFilters(){
  };
  build('urgentClinicianToggles',clinicianGroupNames,urgentClinicianDisabled,'#a6d6b2');
  build('urgentConsultToggles',consultCategoryNames,urgentConsultDisabled,'#a1c8e8');
+ syncUrgentPurposeDefaults();
+ build('urgentPurposeToggles',purposeCategoryNames,urgentPurposeDisabled,'#a1c8e8');
 }
 function urgentClinicianMatches(clinician,person){
  if(clinician==='Signposting (no clinician recorded)')return true;
  const detailed=effectiveClinicianType(clinician,person);const group=clinicianGroupAssignments[detailed];
  return clinicianGroupNames.includes(group)&&!urgentClinicianDisabled.has(group)&&!urgentDisabledClinicianTypes.has(detailed);
+}
+function urgentPurposeMatches(slot){
+ const purpose=purposeAssignments[slot];
+ return purposeCategoryNames.includes(purpose)&&!urgentPurposeDisabled.has(purpose);
 }
 function urgentConsultMatches(slot){
  if(signpostingSlotNames.has(slot))return true;
@@ -2497,7 +2510,7 @@ function renderAvailabilityChart(){
  for(const r of availabilityRecords){
   if(excludedSlotTypes.has(r.slot)||!weekdays.has(r.date))continue;
   const category=String(assignments[r.slot]||'').trim();
-  if(!names.includes(capacityUrgencyCategory(r.slot))||!urgentClinicianMatches(r.clinician,r.person)||!urgentConsultMatches(r.slot))continue;
+  if(!names.includes(capacityUrgencyCategory(r.slot))||!urgentClinicianMatches(r.clinician,r.person)||!urgentConsultMatches(r.slot)||!urgentPurposeMatches(r.slot))continue;
   const status=String(r.availability||'').trim().toLowerCase();
   const label=status==='booked'?capacityUrgencyCategory(r.slot):status==='blocked'?(urgentGroupWithheld?'Held Back':'Blocked'):status==='embargoed'?(urgentGroupWithheld?'Held Back':'Embargoed'):status==='available'?'Available':null;
   if(!label)continue;
