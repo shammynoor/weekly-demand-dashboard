@@ -2218,11 +2218,14 @@ function refreshAvailabilityOptionStates(page){
    const name=input.dataset.filterName;
    const possible=availabilityOptionHasData(page,kind,name);
    // Keep user choices intact when an option temporarily has no data.
-   input.disabled=!possible;
-   input.checked=possible&&!disabled.has(name);
+   // Urgency categories are configured in Slot Settings and must remain visible
+   // and selectable even when there are no matching records in this date range.
+   const configuredUrgency=page==='urgent'&&kind==='category';
+   input.disabled=!possible&&!configuredUrgency;
+   input.checked=!disabled.has(name)&&(possible||configuredUrgency);
    const row=input.closest('.filter-row');
-   if(row)row.hidden=!possible;
-   input.title=possible?'':'No source appointments for this option in the selected date range';
+   if(row)row.hidden=!possible&&!configuredUrgency;
+   input.title=possible?'':(configuredUrgency?'No appointments in the selected date range':'No source appointments for this option in the selected date range');
   }
  }
  // Recover from stale all-off state caused by earlier versions of this logic.
