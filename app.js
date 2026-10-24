@@ -1568,16 +1568,15 @@ const firstPeriod=firstAppointmentDate?(monthlyMode?firstAppointmentDate.slice(0
 const lastPeriod=lastAppointmentDate?(monthlyMode?lastAppointmentDate.slice(0,7):mondayOf(lastAppointmentDate)):'';
 const selectedWeeks=activeWeeks.filter(w=>(!firstPeriod||w>=firstPeriod)&&(!lastPeriod||w<=lastPeriod)&&w<=(monthlyMode?thisMonth:thisWeek)&&(showCurrentWeek||!periodIsCurrent(w)));
 const sums=new Map(selectedWeeks.map(w=>[w,0]));
-const demandCategoryTotals=Object.fromEntries(['urgent','routine','followup'].map(c=>[c,new Map(selectedWeeks.map(w=>[w,0]))]));
+const demandCategoryTotals=Object.fromEntries(groupUrgencyNames.map(name=>[name,new Map(selectedWeeks.map(w=>[w,0]))]));
 for(const r of records){
  const key=periodKey(r);
  if(!sums.has(key)||!includedRecord(r))continue;
  sums.set(key,sums.get(key)+r.count);
- for(const category of ['urgent','routine','followup']){
-  if(weeklyUrgencyMatches(r.slot,category)){
-   const totals=demandCategoryTotals[category];totals.set(key,totals.get(key)+r.count);
-  }
- }
+ const detailed=assignments[r.slot]||'Uncategorised';
+ const group=groupUrgencyAssignments[detailed];
+ const totals=demandCategoryTotals[group];
+ if(totals)totals.set(key,totals.get(key)+r.count);
 }
 current=[...sums].map(([week,count])=>({week,count,...isoWeek(monthOfPeriod(week))}));
 const total=current.reduce((a,r)=>a+r.count,0);
@@ -1593,37 +1592,41 @@ function yearBackgroundShapes(periods){
  }
  return shapes;
 }
-const urgencyColours={urgent:'#981d2b',routine:'#209b60',followup:'#2877c7'};
-const urgencyLabels={urgent:'Urgent',routine:'Routine',followup:'Follow-up'};
-const selectedDemandUrgencies=new Set(['urgent','routine','followup']);
+const disabledDemandUrgencyGroups=new Set();
+let lastDemandUrgencyGroupNames=[];
 function renderDemandUrgencyToggles(){
  const root=$('demandUrgencyToggles');if(!root)return;
- for(const category of ['urgent','routine','followup']){
-  let input=root.querySelector('input[data-urgency="'+category+'"]');
-  if(!input){
-   const label=document.createElement('label');label.className='demand-urgency-option';
-   label.style.setProperty('--urgency-colour',urgencyColours[category]);
-   input=document.createElement('input');input.type='checkbox';input.dataset.urgency=category;
-   const dot=document.createElement('span');dot.className='urgency-dot';
-   const name=document.createElement('span');name.textContent=urgencyLabels[category];
-   label.append(input,dot,name);root.append(label);
-   input.onchange=()=>{if(input.checked)selectedDemandUrgencies.add(category);else selectedDemandUrgencies.delete(category);scheduleDemandRefresh()};
-  }
-  input.checked=selectedDemandUrgencies.has(category);
+ const names=[...groupUrgencyNames];
+ if(names.length===lastDemandUrgencyGroupNames.length&&names.every((n,i)=>n===lastDemandUrgencyGroupNames[i])){
+  root.querySelectorAll('input[data-urgency-group]').forEach(input=>input.nextElementSibling?.style.setProperty('--switch-on',urgencyGroupColour(input.dataset.urgencyGroup)));
+  return;
+ }
+ lastDemandUrgencyGroupNames=names;
+ root.replaceChildren();
+ if(!names.length){const note=document.createElement('span');note.className='hint';note.textContent='Create urgency groups in Slot settings.';root.append(note);return;}
+ for(const name of names){
+  const row=document.createElement('label');row.className='filter-row';
+  const switchEl=document.createElement('span');switchEl.className='switch';
+  const input=document.createElement('input');input.type='checkbox';input.setAttribute('role','switch');input.checked=!disabledDemandUrgencyGroups.has(name);input.dataset.urgencyGroup=name;input.setAttribute('aria-label','Include '+name);
+  const track=document.createElement('span');track.className='switch-track';track.style.setProperty('--switch-on',urgencyGroupColour(name));
+  switchEl.append(input,track);
+  const title=document.createElement('span');title.textContent=name;
+  row.append(switchEl,title);root.append(row);
+  input.addEventListener('change',()=>{if(input.checked)disabledDemandUrgencyGroups.delete(name);else disabledDemandUrgencyGroups.add(name);scheduleDemandRefresh()});
  }
 }
 function drawCombinedDemandChart(){
  renderDemandUrgencyToggles();
- const selected=['urgent','routine','followup'].filter(c=>selectedDemandUrgencies.has(c));
+ const selected=groupUrgencyNames.filter(name=>!disabledDemandUrgencyGroups.has(name));
  const years=[...new Set(selectedWeeks.map(w=>Number(w.slice(0,4))))].sort((a,b)=>a-b);
  const latestYear=years.length?years[years.length-1]:null;
  const traces=[];
- const yearDashes=['solid','dash','dot','dashdot'];
+ const yearWidth=(year)=>year===latestYear?5.5:Math.max(1.1,2.8-(latestYear-year)*0.45);
  const x=p=>continuousMode?monthOfPeriod(p.date):(monthlyMode?Number(p.date.slice(5,7))-.5:monthPosition(p.date));
  // One legend entry per year; colour indicates urgency, thickness highlights the latest year.
  for(const [i,year] of years.entries()){
   traces.push({name:String(year),x:[null],y:[null],type:'scatter',mode:'lines',showlegend:true,
-   line:{color:'#58677a',width:year===latestYear?4.5:2,dash:yearDashes[i%yearDashes.length]},hoverinfo:'skip'});
+   line:{color:'#58677a',width:yearWidth(year)},hoverinfo:'skip'});
  }
  let maxCount=0;
  for(const category of selected){
@@ -1635,19 +1638,19 @@ function drawCombinedDemandChart(){
    const last=data[data.length-1];
    const partial=showCurrentWeek&&periodIsCurrent(last.date);
    const complete=partial?data.slice(0,-1):data;
-   const width=year===latestYear?4.5:2;
-   const opacity=year===latestYear?1:0.42;
+   const width=yearWidth(year);
+   const opacity=year===latestYear?1:Math.max(0.4,0.78-(latestYear-year)*0.08);
    for(const p of data)maxCount=Math.max(maxCount,p.count);
-   traces.push({name:urgencyLabels[category]+' '+year,legendgroup:String(year),showlegend:false,
+   traces.push({name:category+' '+year,legendgroup:String(year),showlegend:false,
     x:complete.map(x),y:complete.map(p=>p.count),customdata:complete.map(p=>p.date),
     type:'scatter',mode:'lines',connectgaps:false,opacity,
-    line:{color:urgencyColours[category],width,dash:yearDashes[i%yearDashes.length],shape:'spline',smoothing:0.5},
-    hovertemplate:'%{customdata}<br><b>'+urgencyLabels[category]+': %{y:,} appointments</b><extra>'+year+'</extra>'});
+    line:{color:urgencyGroupColour(category),width,shape:'spline',smoothing:0.5},
+    hovertemplate:'%{customdata}<br><b>'+category+': %{y:,} appointments</b><extra>'+year+'</extra>'});
    if(partial)traces.push({name:urgencyLabels[category]+' '+year+' (incomplete)',showlegend:false,
     x:complete.length?[x(complete[complete.length-1]),x(last)]:[x(last)],
     y:complete.length?[complete[complete.length-1].count,last.count]:[last.count],
     type:'scatter',mode:'lines+markers',opacity,
-    line:{color:urgencyColours[category],width,dash:'dot'},marker:{size:7,symbol:'circle-open'},
+    line:{color:urgencyGroupColour(category),width,dash:'dot'},marker:{size:7,symbol:'circle-open'},
     hovertemplate:'<b>'+urgencyLabels[category]+': %{y:,} appointments</b><br>Incomplete period<extra>'+year+'</extra>'});
   }
  }
