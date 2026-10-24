@@ -460,6 +460,8 @@ function renderSlotTableGroupFilter(){
  }
  select.value=groupUrgencyNames.includes(old)?old:'';
 }
+let slotTypeFileStats=new Map();
+function formatSlotMonth(date){const [year,month]=date.split('-');return new Date(Date.UTC(Number(year),Number(month)-1,1)).toLocaleDateString('en-GB',{month:'short',year:'numeric',timeZone:'UTC'});}
 function renderSlotTable(){
  const body=$('slotTableBody');if(!body)return;
  renderSlotTableGroupFilter();
@@ -476,7 +478,10 @@ function renderSlotTable(){
  body.replaceChildren();
  for(const slot of rows){
   const tr=document.createElement('tr');
-  const slotCell=document.createElement('td');slotCell.textContent=slot;
+  const slotCell=document.createElement('td');
+  const slotName=document.createElement('span');slotName.textContent=slot;slotCell.append(slotName);
+  const stats=slotTypeFileStats.get(slot);
+  if(stats){const details=document.createElement('span');details.className='slot-type-found-details';details.textContent=` — ${stats.count.toLocaleString('en-GB')} found (${formatSlotMonth(stats.min)} – ${formatSlotMonth(stats.max)})`;slotCell.append(details);}
   const assignedCell=document.createElement('td');assignedCell.className='people-assigned-cell';
   const select=document.createElement('select');select.className='people-clinician-select';select.setAttribute('aria-label','Assigned type for '+slot);
   for(const name of ['',...categoryNames]){const option=document.createElement('option');option.value=name;option.textContent=name||'Unassigned';select.append(option)}
@@ -877,7 +882,7 @@ async function showFolderPicker(){$('onedrivePanel').classList.remove('hidden');
 async function showFolderContents(){try{$('pickerPath').textContent=[...folderView.trail.map(x=>x.name),folderView.name].join(' / ');$('pickerEntries').textContent='Loading folders…';const folders=(await children(folderView.id)).filter(x=>x.folder).sort((a,b)=>a.name.localeCompare(b.name));$('pickerEntries').replaceChildren();if(!folders.length)$('pickerEntries').textContent='No subfolders. You can select this folder.';for(const f of folders){const btn=document.createElement('button');btn.className='folder-entry';btn.textContent='📁 '+f.name;btn.onclick=async()=>{folderView={id:f.id,name:f.name,trail:[...folderView.trail,{id:folderView.id,name:folderView.name}]};await showFolderContents()};$('pickerEntries').append(btn)}}catch(e){$('pickerEntries').textContent='Could not list folders: '+e.message}}
 function weekMonday(d){const x=new Date(d);x.setUTCHours(12,0,0,0);x.setUTCDate(x.getUTCDate()-((x.getUTCDay()+6)%7));return x.toISOString().slice(0,10)}
 function parseDate(s){const m=/^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/.exec((s||'').trim());if(!m)return null;const mi=['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'].indexOf(m[2].toLowerCase());if(mi<0)return null;const d=new Date(Date.UTC(Number(m[3]),mi,Number(m[1])));return d.getUTCMonth()===mi&&d.getUTCDate()===Number(m[1])?d:null}
-function aggregateCSV(csv,aggregated,availabilityAggregate,bookingTimeAggregate,peopleAggregate){
+function aggregateCSV(csv,aggregated,availabilityAggregate,bookingTimeAggregate,peopleAggregate,slotStats){
  const parsed=Papa.parse(csv,{header:true,skipEmptyLines:'greedy'});
  const fields=parsed.meta.fields||[];
  for(const required of ['Appointment Date','Appointment Time','Booked Time to Slot Time','Slot Type','Availability'])if(!fields.includes(required))throw Error('Missing column: '+required);
@@ -919,6 +924,7 @@ function aggregateCSV(csv,aggregated,availabilityAggregate,bookingTimeAggregate,
   const clinician=String(r['User Type of the Session Holder of the Session']??'').trim()||'Unknown clinician';
   const person=normalisePersonName(r['Full Name of the Session Holder of the Session']);
   if(person&&peopleAggregate){const key=JSON.stringify([person,clinician]);peopleAggregate.set(key,(peopleAggregate.get(key)||0)+1)}
+  if(slotStats){const stat=slotStats.get(slotType)||{count:0,min:date,max:date};stat.count++;if(date<stat.min)stat.min=date;if(date>stat.max)stat.max=date;slotStats.set(slotType,stat)}
   const akey=JSON.stringify([date,slotType,availability,clinician,person]);
   availabilityAggregate.set(akey,(availabilityAggregate.get(akey)||0)+1);
   if(status!=='booked')continue;
@@ -1233,11 +1239,12 @@ function updateHomeReportDates(items){const slots=items.filter(f=>/slot[\s_-]*re
 async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;setButtons();showRefreshFeedback('Refreshing data…',true);setSync('Checking OneDrive CSV files…');try{
  const items=(await children(selectedFolder.id)).filter(f=>f.file&&/\.csv$/i.test(f.name)).sort((a,b)=>a.name.localeCompare(b.name));if(!items.length)throw Error('No CSV files found directly inside this folder.');updateHomeReportDates(items);
  const fingerprint=JSON.stringify(items.map(f=>[f.id,f.lastModifiedDateTime,f.size]));if(!force&&fingerprint===lastFingerprint){showRefreshFeedback('Already up to date');setSync(`No changes detected · ${items.length} CSV files · Checked ${new Date().toLocaleTimeString('en-GB')}`);return}
- const aggregate=new Map(),availabilityAggregate=new Map(),bookingTimeAggregate=new Map(),peopleAggregate=new Map();let valid=0,skipped=0;const newSignposting=[];let newSignpostingFiles=0,newSlotFiles=0;for(let i=0;i<items.length;i++){const f=items[i];showRefreshFeedback(`Loading file ${i+1} of ${items.length}…`,true);setSync(`Loading ${i+1} of ${items.length}: ${f.name}`);const detail=await graph(sourceItemUrl(f.id));const url=detail['@microsoft.graph.downloadUrl'];if(!url)throw Error('OneDrive did not provide a download URL for '+f.name);const response=await fetch(url,{cache:'no-store'});if(!response.ok)throw Error(`Could not download ${f.name}: HTTP ${response.status}`);const csvText=await response.text();
+ const aggregate=new Map(),availabilityAggregate=new Map(),bookingTimeAggregate=new Map(),peopleAggregate=new Map(),newSlotTypeStats=new Map();let valid=0,skipped=0;const newSignposting=[];let newSignpostingFiles=0,newSlotFiles=0;for(let i=0;i<items.length;i++){const f=items[i];showRefreshFeedback(`Loading file ${i+1} of ${items.length}…`,true);setSync(`Loading ${i+1} of ${items.length}: ${f.name}`);const detail=await graph(sourceItemUrl(f.id));const url=detail['@microsoft.graph.downloadUrl'];if(!url)throw Error('OneDrive did not provide a download URL for '+f.name);const response=await fetch(url,{cache:'no-store'});if(!response.ok)throw Error(`Could not download ${f.name}: HTTP ${response.status}`);const csvText=await response.text();
  if(isSignpostingFile(f.name)){newSignposting.push(...parseSignpostingCSV(csvText));newSignpostingFiles++;continue}
  if(!/slot[\s_-]*report/i.test(f.name))continue;
  newSlotFiles++;
- const stats=aggregateCSV(csvText,aggregate,availabilityAggregate,bookingTimeAggregate,peopleAggregate);valid+=stats.valid;skipped+=stats.skipped}
+ const stats=aggregateCSV(csvText,aggregate,availabilityAggregate,bookingTimeAggregate,peopleAggregate,newSlotTypeStats);valid+=stats.valid;skipped+=stats.skipped}
+ slotTypeFileStats=newSlotTypeStats;
  signpostingRecords=newSignposting;signpostingFileCount=newSignpostingFiles;signpostingSlotNames=new Set(newSignposting.map(event=>event.destination));
  // Each dated signposting event is also a booked appointment for the main
  // demand/availability calculations. Its destination is its Slot Type.
