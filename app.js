@@ -1978,10 +1978,11 @@ function availabilityRecordsInRange(page){
  const start=new Date(thisWeek+'T12:00:00Z');start.setUTCDate(start.getUTCDate()+from*7);
  const finish=new Date(thisWeek+'T12:00:00Z');finish.setUTCDate(finish.getUTCDate()+(to+1)*7);
  const first=start.toISOString().slice(0,10),last=finish.toISOString().slice(0,10);
+ const urgentNames=urgent?new Set(urgentCategoryNames()):null;
  return availabilityRecords.filter(r=>{
   if(!(r.count>0)||r.date<first||r.date>=last)return false;
   const category=String(assignments[r.slot]||'').trim();
-  if(page==='urgent'?!urgentCategoryNames().includes(category):String(groupUrgencyAssignments[category]||'').trim().toLowerCase()!==page)return false;
+  if(urgent?!urgentNames.has(category):String(groupUrgencyAssignments[category]||'').trim().toLowerCase()!==page)return false;
   if(urgent){const day=new Date(r.date+'T12:00:00Z').getUTCDay();if(day===0||day===6)return false;}
   return true;
  });
