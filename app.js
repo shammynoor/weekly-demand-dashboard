@@ -1026,7 +1026,6 @@ function aggregateCSV(csv,aggregated,availabilityAggregate,bookingTimeAggregate,
   const booked=new Date(dt.getTime()-lead*60000);
   if(!Number.isFinite(booked.getTime())){skipped++;continue;}
   const w=weekMonday(booked);
-  if(w<'2024-12-30')continue;
   const bookedDay=booked.toISOString().slice(0,10);
   // Booking clock time, calculated using the same lead-time arithmetic as the demand charts.
   const bookedMinute=booked.getUTCHours()*60+booked.getUTCMinutes();
@@ -1347,7 +1346,7 @@ async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;
   const availabilityKey=JSON.stringify([date,slot,'Booked',signpostingClinician,'']);
   availabilityAggregate.set(availabilityKey,(availabilityAggregate.get(availabilityKey)||0)+1);
   const bookedWeek=mondayOf(date);
-  if(bookedWeek>='2024-12-30'){
+  {
    const key=JSON.stringify([date,slot,signpostingClinician,'']);
    aggregate.set(key,(aggregate.get(key)||0)+1);
    const tm=/^(\\d{1,2}):(\\d{2})/.exec(event.time||'');
@@ -1524,7 +1523,7 @@ function refresh(){
 const activeWeekSet=new Set();
 for(const r of records){if(includedRecord(r)){const key=periodKey(r);if(key)activeWeekSet.add(key)}}
 const activeWeeks=[...activeWeekSet].sort();
-const selectedWeeks=activeWeeks.filter(w=>w>=(monthlyMode?'2025-01':'2024-12-30')&&w<=(monthlyMode?thisMonth:thisWeek)&&(showCurrentWeek||!periodIsCurrent(w)));
+const selectedWeeks=activeWeeks.filter(w=>w<=(monthlyMode?thisMonth:thisWeek)&&(showCurrentWeek||!periodIsCurrent(w)));
 const sums=new Map(selectedWeeks.map(w=>[w,0]));
 const demandCategoryTotals=Object.fromEntries(['urgent','routine','followup'].map(c=>[c,new Map(selectedWeeks.map(w=>[w,0]))]));
 for(const r of records){
@@ -1610,8 +1609,7 @@ function drawCategoryChart(target,category,palette,sharedMax){
  const visibleDates=selectedWeeks.map(monthOfPeriod).sort();
  const continuousRange=visibleDates.length?[visibleDates[0],visibleDates[visibleDates.length-1]]:null;
  const chartEl=$(target);
- const chartWidth=Math.max(280,Math.floor(chartEl.parentElement.getBoundingClientRect().width)-2);
- Plotly.react(target,traces,{dragmode:false,autosize:true,width:chartWidth,margin:{l:58,r:12,t:32,b:65},paper_bgcolor:'white',plot_bgcolor:'white',shapes:shadeSeasons?seasonBackgroundShapes(selectedWeeks):[],legend:{orientation:'h',y:1.17,x:0},xaxis:continuousMode?{type:'date',title:monthlyMode?'Booking month':'Booking date',tickformat:'%b %Y',gridcolor:'#edf1f5',...(continuousRange?{range:continuousRange}: {})}:axis,yaxis:{title:'Appointments',range:[0,sharedMax],dtick:sharedMax/5,gridcolor:'#edf1f5'},hovermode:'closest',annotations:!hasAppointments&&category==='followup'?[{text:'No follow-up appointments found. In Manage Categories, assign slot types to Follow up and click Save.',xref:'paper',yref:'paper',x:.5,y:.55,showarrow:false,align:'center',font:{size:13,color:'#286cb8'}}]:[]},{responsive:true,displaylogo:false,displayModeBar:false,scrollZoom:false,doubleClick:false});
+ Plotly.react(target,traces,{dragmode:false,autosize:true,margin:{l:58,r:12,t:32,b:65},paper_bgcolor:'white',plot_bgcolor:'white',shapes:shadeSeasons?seasonBackgroundShapes(selectedWeeks):[],legend:{orientation:'h',y:1.17,x:0},xaxis:continuousMode?{type:'date',title:monthlyMode?'Booking month':'Booking date',tickformat:'%b %Y',gridcolor:'#edf1f5',...(continuousRange?{range:continuousRange}: {})}:axis,yaxis:{title:'Appointments',range:[0,sharedMax],dtick:sharedMax/5,gridcolor:'#edf1f5'},hovermode:'closest',annotations:!hasAppointments&&category==='followup'?[{text:'No follow-up appointments found. In Manage Categories, assign slot types to Follow up and click Save.',xref:'paper',yref:'paper',x:.5,y:.55,showarrow:false,align:'center',font:{size:13,color:'#286cb8'}}]:[]},{responsive:true,displaylogo:false,displayModeBar:false,scrollZoom:false,doubleClick:false});
 }
 let maximum=0;
 let followupMaximum=0;
