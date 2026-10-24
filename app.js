@@ -2,7 +2,10 @@
 let selectedAvailabilityUrgency='';
 "use strict";
 // Single rule for every dashboard toggle: exclude this non-actionable mapping value.
-function isDashboardToggleOption(name){return String(name||"").trim().toLowerCase()!=="not relevant";}
+function isDashboardToggleOption(name){
+ const normalized=String(name||'').toLowerCase().replace(/[^a-z]/g,'');
+ return !/^notre(?:levant|velant|velvant|lavant|levent|lev(?:a|e)nt)$/.test(normalized);
+}
 const CLIENT_ID='ba2bc895-4213-447c-ba62-d7edec6e8173';
 const SCOPES=['Files.Read','Files.ReadWrite','Files.ReadWrite.AppFolder'];
 const REDIRECT_URI='https://shammynoor.github.io/weekly-demand-dashboard/index.html';
@@ -2396,12 +2399,12 @@ function urgentClinicianMatches(clinician,person){
 }
 function urgentPurposeMatches(slot){
  const purpose=purposeAssignments[slot];
- return purposeCategoryNames.includes(purpose)&&!urgentPurposeDisabled.has(purpose);
+ return isDashboardToggleOption(purpose)&&purposeCategoryNames.includes(purpose)&&!urgentPurposeDisabled.has(purpose);
 }
 function urgentConsultMatches(slot){
  if(signpostingSlotNames.has(slot))return true;
  const mode=consultAssignments[slot];
- return consultCategoryNames.includes(mode)&&!urgentConsultDisabled.has(mode);
+ return isDashboardToggleOption(mode)&&consultCategoryNames.includes(mode)&&!urgentConsultDisabled.has(mode);
 }
 const urgentCategoryDisabled=new Set();
 let urgentAvailabilityGranularity='day';
@@ -2602,7 +2605,7 @@ function routineDetailedTypes(){
 }
 function renderRoutineCategoryToggles(){
  const root=$('routineCategoryToggles');if(!root)return;
- const names=routineDetailedTypes();
+ const names=routineDetailedTypes().filter(isDashboardToggleOption);
  const old=[...root.querySelectorAll('input[data-filter-name]')].map(el=>el.dataset.filterName);
  if(old.length===names.length&&names.every((name,i)=>name===old[i])){
   root.querySelectorAll('input[data-filter-name]').forEach(input=>input.nextElementSibling?.style.setProperty('--switch-on',urgencyGroupColour(input.dataset.filterName)));
@@ -2626,6 +2629,7 @@ const routineDisabledClinicianGroups=new Set();
 const routineDisabledConsultModes=new Set();
 function renderRoutineAvailabilityFilters(){
  const build=(id,names,disabled,empty)=>{
+  names=names.filter(isDashboardToggleOption);
   const root=$(id);if(!root)return;
   const previous=[...root.querySelectorAll('input')].map(el=>el.getAttribute('data-filter-name'));
   if(previous.length===names.length&&names.every((name,i)=>name===previous[i])){if(id==='routineClinicianFilters')root.querySelectorAll('input[data-filter-name]').forEach(input=>input.nextElementSibling?.style.setProperty('--switch-on',clinicianGroupColour(input.dataset.filterName)));return;}
