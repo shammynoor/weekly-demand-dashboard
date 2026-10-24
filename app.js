@@ -484,7 +484,18 @@ function renderSlotTable(){
   if(stats){const details=document.createElement('span');details.className='slot-type-found-details';details.textContent=` — ${stats.count.toLocaleString('en-GB')} found (${formatSlotMonth(stats.min)} – ${formatSlotMonth(stats.max)})`;slotCell.append(details);}
   const assignedCell=document.createElement('td');assignedCell.className='people-assigned-cell';
   const select=document.createElement('select');select.className='people-clinician-select';select.setAttribute('aria-label','Assigned type for '+slot);
-  for(const name of ['',...categoryNames]){const option=document.createElement('option');option.value=name;option.textContent=name||'Unassigned';select.append(option)}
+  const unassignedOption=document.createElement('option');unassignedOption.value='';unassignedOption.textContent='Unassigned';select.append(unassignedOption);
+  const sortedGroups=[...groupUrgencyNames].sort((a,b)=>a.localeCompare(b,undefined,{sensitivity:'base'}));
+  const groupedTypes=new Set();
+  for(const group of sortedGroups){
+   const names=categoryNames.filter(name=>groupUrgencyAssignments[name]===group).sort((a,b)=>a.localeCompare(b,undefined,{sensitivity:'base'}));
+   if(!names.length)continue;
+   const section=document.createElement('optgroup');section.label=group;
+   for(const name of names){const option=document.createElement('option');option.value=name;option.textContent=name;section.append(option);groupedTypes.add(name)}
+   select.append(section);
+  }
+  const otherTypes=categoryNames.filter(name=>!groupedTypes.has(name)).sort((a,b)=>a.localeCompare(b,undefined,{sensitivity:'base'}));
+  if(otherTypes.length){const section=document.createElement('optgroup');section.label='Other / Ungrouped';for(const name of otherTypes){const option=document.createElement('option');option.value=name;option.textContent=name;section.append(option)}select.append(section)}
   select.value=categoryNames.includes(assignments[slot])?assignments[slot]:'';
   select.addEventListener('change',()=>{
    assignments[slot]=select.value||'Uncategorised';
