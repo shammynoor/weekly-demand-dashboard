@@ -1595,7 +1595,7 @@ function yearBackgroundShapes(periods){
 let demandMonthStart=null,demandMonthEnd=null,demandMonthBounds='';
 function setupDemandMonthSlider(){
  const start=$('demandRangeStart'),end=$('demandRangeEnd');if(!start||!end)return;
- const months=[...new Set(availabilityRecords.map(r=>r.date?.slice(0,7)).filter(Boolean))].sort();
+ const months=[...new Set(availabilityRecords.map(r=>typeof r.date==='string'?r.date.slice(0,7):r.date instanceof Date&&!Number.isNaN(r.date.getTime())?r.date.toISOString().slice(0,7):null).filter(Boolean))].sort();
  if(!months.length)return;
  const first=months[0],last=months[months.length-1];
  const toIndex=m=>Number(m.slice(0,4))*12+Number(m.slice(5,7))-1;
