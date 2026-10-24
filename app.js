@@ -1,6 +1,8 @@
 // Initialise the availability filter before the first category-editor render.
 let selectedAvailabilityUrgency='';
 "use strict";
+// Single rule for every dashboard toggle: exclude this non-actionable mapping value.
+function isDashboardToggleOption(name){return String(name||"").trim().toLowerCase()!=="not relevant";}
 const CLIENT_ID='ba2bc895-4213-447c-ba62-d7edec6e8173';
 const SCOPES=['Files.Read','Files.ReadWrite','Files.ReadWrite.AppFolder'];
 const REDIRECT_URI='https://shammynoor.github.io/weekly-demand-dashboard/index.html';
@@ -1686,6 +1688,7 @@ function demandCategoryAllowed(slot,names,mapping,disabled){
  return !disabled.has(value);
 }
 function renderDemandClassificationToggles(rootId,names,mapping,disabled,colourMap){
+ names=names.filter(isDashboardToggleOption);
  const root=$(rootId);if(!root)return;
  const choices=[...names,'Unassigned'];
  const signature=choices.join('\u0001');
@@ -1827,7 +1830,7 @@ function setupDemandMonthSlider(){
 }
 function renderDemandUrgencyToggles(){
  const root=$('demandUrgencyToggles');if(!root)return;
- const names=[...groupUrgencyNames];
+ const names=groupUrgencyNames.filter(isDashboardToggleOption);
  if(names.length===lastDemandUrgencyGroupNames.length&&names.every((n,i)=>n===lastDemandUrgencyGroupNames[i])){
   root.querySelectorAll('input[data-urgency-group]').forEach(input=>{input.checked=!disabledDemandUrgencyGroups.has(input.dataset.urgencyGroup);input.nextElementSibling?.style.setProperty('--switch-on',urgencyGroupColour(input.dataset.urgencyGroup));});
   return;
@@ -2257,7 +2260,7 @@ function renderClinicianTypeFilters(page){
  const root=$(page+'ClinicianTypeFilters');if(!root)return;
  const disabled=page==='urgent'?urgentDisabledClinicianTypes:routineDisabledClinicianTypes;
  const presentTypes=new Set(availabilityRecordsInRange(page).map(r=>effectiveClinicianType(r.clinician,r.person)));
- const names=selectedClinicianTypes(page).filter(name=>presentTypes.has(name));
+ const names=selectedClinicianTypes(page).filter(name=>presentTypes.has(name)&&isDashboardToggleOption(name));
  const existing=[...root.querySelectorAll('input[data-filter-name]')].map(input=>input.dataset.filterName);
  if(existing.length!==names.length||names.some((name,i)=>name!==existing[i])){
   root.replaceChildren();
@@ -2345,8 +2348,10 @@ function simpleAvailabilityHover(heading,labels,values,total){
  return '<b>'+heading+'</b><br>'+labels.map((label,i)=>label+': '+Number(values[i]||0).toLocaleString('en-GB')).join('<br>')+'<br><b>Total: '+total.toLocaleString('en-GB')+'</b>';
 }
 function renderUrgentSideFilters(){
+
  const build=(id,names,disabled,colour)=>{
   const root=$(id);if(!root)return;
+  names=names.filter(isDashboardToggleOption);
   const previous=[...root.querySelectorAll('input[data-filter-name]')].map(el=>el.dataset.filterName);
   if(previous.length===names.length&&names.every((n,i)=>n===previous[i])){root.querySelectorAll('input[data-filter-name]').forEach(input=>input.nextElementSibling?.style.setProperty('--switch-on',id==='urgentClinicianToggles'?clinicianGroupColour(input.dataset.filterName):'#a1c8e8'));return;}
   root.replaceChildren();
@@ -2416,7 +2421,7 @@ function setupUrgentRangeControls(){
 }
 function urgentCategoryNames(){
  // The capacity chart uses the configured urgency category list, not a legacy "Urgent" group.
- return [...groupUrgencyNames];
+ return groupUrgencyNames.filter(isDashboardToggleOption);
 }
 function capacityUrgencyCategory(slot){
  const detailed=assignments[slot]||'';
