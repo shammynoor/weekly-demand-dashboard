@@ -175,9 +175,60 @@ function urgencyGroupColour(group){
  const i=groupUrgencyNames.indexOf(group);
  return i>=0?URGENCY_GROUP_PALETTE[i%URGENCY_GROUP_PALETTE.length]:'#aab5c1';
 }
+function renderConsultModeCards(){
+ const root=$('slotConsultModeCards'),add=$('slotAddConsultMode');if(!root||!add)return;
+ root.replaceChildren();
+ const edit=(oldName='')=>{
+  const wrapper=document.createElement('div');wrapper.className='slot-mode-editor';
+  const input=document.createElement('input');input.type='text';input.placeholder='e.g. Video';input.value=oldName;
+  const save=document.createElement('button');save.type='button';save.textContent='Save';
+  const cancel=document.createElement('button');cancel.type='button';cancel.textContent='Cancel';
+  const commit=()=>{
+   const name=input.value.trim();
+   if(!name||name.toLowerCase()==='uncategorised'||consultCategoryNames.some(value=>value.toLowerCase()===name.toLowerCase()&&value!==oldName)){alert('Enter a unique consultation mode.');return}
+   if(oldName){
+    consultCategoryNames=consultCategoryNames.map(value=>value===oldName?name:value);
+    for(const slot of Object.keys(consultAssignments))if(consultAssignments[slot]===oldName)consultAssignments[slot]=name;
+   }else consultCategoryNames.push(name);
+   saveCategories();renderConsultModeCards();renderSlotTable();renderConsultEditor();
+  };
+  save.addEventListener('click',commit);cancel.addEventListener('click',renderConsultModeCards);
+  input.addEventListener('keydown',event=>{if(event.key==='Enter')commit();if(event.key==='Escape')renderConsultModeCards()});
+  wrapper.append(input,save,cancel);return {wrapper,input};
+ };
+ for(const name of consultCategoryNames){
+  const row=document.createElement('div');row.className='slot-mode-item';
+  const label=document.createElement('span');label.textContent=name;
+  const rename=document.createElement('button');rename.type='button';rename.textContent='✎';rename.title='Rename '+name;
+  rename.addEventListener('click',()=>{const {wrapper,input}=edit(name);row.replaceChildren(wrapper);input.focus();input.select()});
+  const remove=document.createElement('button');remove.type='button';remove.textContent='×';remove.title='Delete '+name;
+  remove.addEventListener('click',()=>{
+   const count=Object.values(consultAssignments).filter(value=>value===name).length;
+   if(!confirm('Delete consultation mode "'+name+'"? '+count+' assigned slot types will become unassigned.'))return;
+   consultCategoryNames=consultCategoryNames.filter(value=>value!==name);
+   for(const slot of Object.keys(consultAssignments))if(consultAssignments[slot]===name)consultAssignments[slot]='Uncategorised';
+   saveCategories();renderConsultModeCards();renderSlotTable();renderConsultEditor();
+  });
+  row.append(label,rename,remove);root.append(row);
+ }
+ add.onclick=()=>{const {wrapper,input}=edit();root.append(wrapper);input.focus()};
+}
+function suggestConsultMode(slot){
+ const value=slot.toLowerCase();
+ const clues=[
+  {words:/\b(telephone|telephony|phone|phoned|tel(?:e)?|call(?:back)?|t\/c)\b/i,modes:['Phone','Telephone']},
+  {words:/\b(video|virtual video|teams|zoom|webcam)\b/i,modes:['Video','Video call','Video consultation']},
+  {words:/\b(home visit|homevisit|domiciliary|house call|visit at home)\b/i,modes:['Visit','Home visit','Face-to-face']},
+  {words:/\b(face[ -]?to[ -]?face|in[ -]?person|f2f|clinic appointment|surgery appointment)\b/i,modes:['Face-to-face','In person']}
+ ];
+ const matched=clues.filter(rule=>rule.words.test(value));
+ if(matched.length!==1)return '';
+ return matched[0].modes.find(mode=>consultCategoryNames.some(name=>name.toLowerCase()===mode.toLowerCase()))||'';
+}
 function renderSlotGroupBoxes(){
  const root=$('slotGroupBoxes');if(!root)return;
  root.replaceChildren();
+ renderConsultModeCards();
  const groups=[...groupUrgencyNames];
  const make=(tag,cls,value)=>{const element=document.createElement(tag);if(cls)element.className=cls;if(value!==undefined)element.textContent=value;return element};
  const valid=(name,existing)=>name&&name.toLocaleLowerCase('en-GB')!=='uncategorised'&&!existing.some(x=>x.toLocaleLowerCase('en-GB')===name.toLocaleLowerCase('en-GB'));
@@ -520,13 +571,16 @@ function renderSlotTable(){
   const modeSelect=document.createElement('select');modeSelect.className='people-clinician-select';modeSelect.setAttribute('aria-label','Consultation mode for '+slot);
   const modeOptions=[['','Unassigned'],...consultCategoryNames.map(name=>[name,name])];
   for(const [value,label] of modeOptions){const option=document.createElement('option');option.value=value;option.textContent=label;modeSelect.append(option)}
-  modeSelect.value=consultCategoryNames.includes(consultAssignments[slot])?consultAssignments[slot]:'';
+  const savedMode=consultCategoryNames.includes(consultAssignments[slot])?consultAssignments[slot]:'';
+  const suggestedMode=savedMode?'':suggestConsultMode(slot);
+  modeSelect.value=savedMode||suggestedMode||'';
+  if(suggestedMode){modeSelect.title='Suggested from slot name — choose a mode to save your selection';const note=document.createElement('div');note.className='slot-mode-suggested';note.textContent='Suggested — not yet saved';modeCell.append(note)}
   modeSelect.addEventListener('change',()=>{
    consultAssignments[slot]=modeSelect.value||'Uncategorised';
-   saveCategories();renderConsultEditor();
+   saveCategories();renderConsultEditor();renderSlotTable();
    const status=$('slotGroupSaveStatus');if(status)status.textContent='Changes are saving automatically to OneDrive.';
   });
-  modeCell.append(modeSelect);
+  modeCell.prepend(modeSelect);
   tr.append(slotCell,assignedCell,groupCell,modeCell);body.append(tr);
  }
  const count=$('slotTableCount');if(count)count.textContent=rows.length+' of '+types.length+' slot types shown';
