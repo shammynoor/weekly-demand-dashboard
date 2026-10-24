@@ -1619,7 +1619,7 @@ function setupDemandMonthSlider(){
  // The native range thumb travels over the input width MINUS its own diameter.
  // Position the blue fill between the actual thumb centres, not the input edges.
  const trackWidth=fill.parentElement.clientWidth;
- const thumbDiameter=34;
+ const thumbDiameter=24;
  const sliderLeft=start.offsetLeft;
  const travel=Math.max(0,start.clientWidth-thumbDiameter);
  const startCentre=sliderLeft+thumbDiameter/2+((a-low)/span)*travel;
