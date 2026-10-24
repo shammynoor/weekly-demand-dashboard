@@ -612,7 +612,7 @@ function slotBestGuess(slot,names,confirmed){
   if(score>best.score){runner=best.score;best={name,score}}else runner=Math.max(runner,score);
  }
  // Confirmed slot mappings are helpful evidence, but cannot invent categories.
- for(const [other,name] of Object.entries(confirmed)){
+ for(const [other,name] of Object.entries(confirmed).slice(0,250)){
   if(!names.includes(name))continue;
   const similarity=slotSimilarity(slot,other)*.91;
   if(similarity>best.score){runner=best.score;best={name,score:similarity}}
@@ -657,7 +657,7 @@ function renderSlotSuggestions(force=false){
   slotSuggestionCacheKey=signature;slotSuggestionSelected.clear();slotSuggestionCache=[];
   // Limit to unique imported slot names and keep computation bounded.
   const candidates=types.filter(slot=>!categoryNames.includes(assignments[slot])||!consultCategoryNames.includes(consultAssignments[slot])||!purposeCategoryNames.includes(purposeAssignments[slot]));
-  for(const slot of candidates){
+  for(const slot of candidates.slice(0,1000)){
    const urgency=categoryNames.includes(assignments[slot])?'':slotBestGuess(slot,categoryNames,assignments).name;
    const mode=consultCategoryNames.includes(consultAssignments[slot])?'':slotBestGuess(slot,consultCategoryNames,consultAssignments).name;
    const purpose=purposeCategoryNames.includes(purposeAssignments[slot])?'':slotBestGuess(slot,purposeCategoryNames,purposeAssignments).name;
@@ -666,7 +666,7 @@ function renderSlotSuggestions(force=false){
  }
  root.replaceChildren();
  const matches=slotSuggestionCache.slice(0,100);
- if(summary)summary.textContent=slotSuggestionCache.length+' slot names have suggestions. Showing up to 100 at a time; tick to confirm. Suggestions use your category names and previously confirmed mappings.';
+ if(summary)summary.textContent=slotSuggestionCache.length+' slot names have suggestions among the first 1,000 unclassified slot names. Showing up to 100; tick to confirm. Suggestions use your category names and previously confirmed mappings.';
  const makeSelect=(names,value)=>{const sel=document.createElement('select');for(const name of ['',...names]){const o=document.createElement('option');o.value=name;o.textContent=name||'No suggestion';sel.append(o)}sel.value=value;return sel};
  for(const item of matches){
   const row=document.createElement('div');row.className='slot-suggestion-row';
