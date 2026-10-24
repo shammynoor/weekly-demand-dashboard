@@ -2527,13 +2527,22 @@ function renderAvailabilityChart(){
  const weekdays=new Set(dates.filter(d=>{const n=new Date(d+'T12:00:00Z').getUTCDay();return n!==0&&n!==6}));
  const counts=new Map();
  for(const r of availabilityRecords){
-  if(excludedSlotTypes.has(r.slot)||!weekdays.has(r.date))continue;
-  const category=String(assignments[r.slot]||'').trim();
+  if(!weekdays.has(r.date))continue;
+  const capacityStatus=String(capacityAssignments[r.slot]||'').trim().toLowerCase();
+  // Sent External is an additive series, independent of all dashboard filters,
+  // including excluded slot types, urgency, clinician, mode and purpose.
+  if(capacityStatus==='sent external'){
+   if(urgentAddSignposted){
+    const key=JSON.stringify([r.date,'Sent External']);
+    counts.set(key,(counts.get(key)||0)+r.count);
+   }
+   continue; // Never count these records twice in the main capacity series.
+  }
+  if(excludedSlotTypes.has(r.slot))continue;
   if(!names.includes(capacityUrgencyCategory(r.slot))||!urgentClinicianMatches(r.clinician,r.person)||!urgentConsultMatches(r.slot)||!urgentPurposeMatches(r.slot))continue;
   const status=String(r.availability||'').trim().toLowerCase();
-  const isExtra=urgentSplitExtras&&capacityAssignments[r.slot]==='Extra';
-  const isSentExternal=urgentAddSignposted&&capacityAssignments[r.slot]==='Sent external';
-  const label=isSentExternal?'Sent external':isExtra?'Extra':status==='booked'?capacityUrgencyCategory(r.slot):status==='blocked'?(urgentGroupWithheld?'Held Back':'Blocked'):status==='embargoed'?(urgentGroupWithheld?'Held Back':'Embargoed'):status==='available'?'Available':null;
+  const isExtra=urgentSplitExtras&&capacityStatus==='extra';
+  const label=isExtra?'Extra':status==='booked'?capacityUrgencyCategory(r.slot):status==='blocked'?(urgentGroupWithheld?'Held Back':'Blocked'):status==='embargoed'?(urgentGroupWithheld?'Held Back':'Embargoed'):status==='available'?'Available':null;
   if(!label)continue;
   const key=JSON.stringify([r.date,label]);counts.set(key,(counts.get(key)||0)+r.count);
  }
@@ -2546,11 +2555,11 @@ function renderAvailabilityChart(){
   for(const [key,count] of counts){const [date,label]=JSON.parse(key);const k=JSON.stringify([bucketFor(date),label]);aggregated.set(k,(aggregated.get(k)||0)+count);}
   counts.clear();for(const [key,count] of aggregated)counts.set(key,count);
  }
- const labels=[...names,...(urgentSplitExtras?['Extra']:[]),...(urgentGroupWithheld?['Held Back']:['Blocked','Embargoed']),'Available',...(urgentAddSignposted?['Sent external']:[])];
+ const labels=[...names,...(urgentSplitExtras?['Extra']:[]),...(urgentGroupWithheld?['Held Back']:['Blocked','Embargoed']),'Available',...(urgentAddSignposted?['Sent External']:[])];
  const colours=Object.fromEntries(names.map(n=>[n,urgentColour(n)]));
  Object.assign(colours,{Blocked:'#435569',Embargoed:'#586674','Held Back':'#48535f',Available:'#ffffff'});
  if(urgentSplitExtras)colours.Extra=capacityColours.Extra||'#8aa6bd';
- if(urgentAddSignposted)colours['Sent external']=capacityColours['Sent external']||'#8aa6bd';
+ if(urgentAddSignposted)colours['Sent External']=Object.entries(capacityColours).find(([name])=>name.trim().toLowerCase()==='sent external')?.[1]||'#8aa6bd';
  const totals=buckets.map(date=>labels.reduce((a,n)=>a+(counts.get(JSON.stringify([date,n]))||0),0));
  const max=Math.ceil(Math.max(1,...totals)*1.2/10)*10;
  const daySummary=buckets.map(date=>{
