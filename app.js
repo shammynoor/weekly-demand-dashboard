@@ -1547,6 +1547,9 @@ function weeklyUrgencyMatches(slot,category){
  }
  return detailed.trim().toLowerCase().replace(/[\s-]+/g,'')===category;
 }
+let demandMonthStart=null,demandMonthEnd=null,demandMonthBounds='';
+const disabledDemandUrgencyGroups=new Set();
+let lastDemandUrgencyGroupNames=[];
 let demandRefreshQueued=false;
 function scheduleDemandRefresh(){
  if(demandRefreshQueued)return;
@@ -1592,7 +1595,6 @@ function yearBackgroundShapes(periods){
  }
  return shapes;
 }
-let demandMonthStart=null,demandMonthEnd=null,demandMonthBounds='';
 function setupDemandMonthSlider(){
  const start=$('demandRangeStart'),end=$('demandRangeEnd');if(!start||!end)return;
  const months=[...new Set(availabilityRecords.map(r=>typeof r.date==='string'?r.date.slice(0,7):r.date instanceof Date&&!Number.isNaN(r.date.getTime())?r.date.toISOString().slice(0,7):null).filter(Boolean))].sort();
@@ -1629,8 +1631,6 @@ function setupDemandMonthSlider(){
   start.dataset.bound='1';
  }
 }
-const disabledDemandUrgencyGroups=new Set();
-let lastDemandUrgencyGroupNames=[];
 function renderDemandUrgencyToggles(){
  const root=$('demandUrgencyToggles');if(!root)return;
  const names=[...groupUrgencyNames];
