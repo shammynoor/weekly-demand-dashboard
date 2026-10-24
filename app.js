@@ -1704,6 +1704,17 @@ function installDemandCardTooltip(target){
 function drawCombinedDemandChart(){
  renderDemandUrgencyToggles();
  setupDemandMonthSlider();
+ // Compute the population normalisation once per redraw, not for every chart point.
+ const populationMonths=adjustDemandForListSize?practiceMonths():[];
+ const populationValues=populationMonths.length?practiceListValues(populationMonths):[];
+ const populationByMonth=new Map(populationMonths.map((month,i)=>[month,populationValues[i]]));
+ const referencePopulation=populationValues.length?populationValues[populationValues.length-1]:10000;
+ const adjustedCount=(date,count)=>{
+  if(!adjustDemandForListSize||!populationMonths.length)return count;
+  const month=date.slice(0,7);
+  const historical=populationByMonth.get(month)??(month<populationMonths[0]?populationValues[0]:populationValues[populationValues.length-1]);
+  return historical>0?count*referencePopulation/historical:count;
+ };
  const selected=groupUrgencyNames.filter(name=>!disabledDemandUrgencyGroups.has(name));
  const visibleWeeks=selectedWeeks.filter(w=>(!demandMonthStart||w.slice(0,7)>=demandMonthStart)&&(!demandMonthEnd||w.slice(0,7)<=demandMonthEnd));
  const years=[...new Set(visibleWeeks.map(w=>Number(w.slice(0,4))))].sort((a,b)=>a-b);
@@ -1719,7 +1730,7 @@ function drawCombinedDemandChart(){
  let maxCount=0;
  for(const category of selected){
   const totals=demandCategoryTotals[category];
-  const points=[...totals].map(([date,count])=>({date,count:listSizeAdjustedCount(date,count),year:Number(date.slice(0,4))}));
+  const points=[...totals].map(([date,count])=>({date,count:adjustedCount(date,count),year:Number(date.slice(0,4))}));
   for(const [i,year] of years.entries()){
    const data=points.filter(p=>p.year===year&&(!demandMonthStart||p.date.slice(0,7)>=demandMonthStart)&&(!demandMonthEnd||p.date.slice(0,7)<=demandMonthEnd)).sort((a,b)=>a.date.localeCompare(b.date));
    if(!data.length)continue;
@@ -1752,7 +1763,7 @@ function drawCombinedDemandChart(){
  const averageAnnotations=[];
  for(const category of selected){
   const totals=demandCategoryTotals[category];
-  const values=visibleWeeks.map(w=>listSizeAdjustedCount(w,totals.get(w))).filter(Number.isFinite);
+  const values=visibleWeeks.map(w=>adjustedCount(w,totals.get(w))).filter(Number.isFinite);
   if(!values.length)continue;
   const average=values.reduce((sum,value)=>sum+value,0)/values.length;
   maxCount=Math.max(maxCount,average);
@@ -1789,10 +1800,16 @@ let practiceSettings={name:'',anchors:{}},practiceSelectedMonth='';
 try{const stored=JSON.parse(localStorage.getItem(PRACTICE_SETTINGS_KEY)||'{}');if(stored&&typeof stored==='object'){practiceSettings.name=typeof stored.name==='string'?stored.name:'';practiceSettings.anchors=stored.anchors&&typeof stored.anchors==='object'?stored.anchors:{};}}catch(e){}
 function savePracticeSettings(){try{localStorage.setItem(PRACTICE_SETTINGS_KEY,JSON.stringify(practiceSettings));}catch(e){$('practiceListStatus').textContent='Unable to save changes in this browser.';}scheduleCloudSave();scheduleDemandRefresh();}
 function practiceMonths(){
- const dates=availabilityRecords.map(r=>typeof r.date==='string'?r.date.slice(0,7):'').filter(d=>/^\d{4}-\d{2}$/.test(d)).sort();
- if(!dates.length)return [];
- const from=Number(dates[0].slice(0,4))*12+Number(dates[0].slice(5,7))-1;
- const last=dates[dates.length-1],to=Number(last.slice(0,4))*12+Number(last.slice(5,7))-1;
+ let first='',last='';
+ for(const r of availabilityRecords){
+  const d=typeof r.date==='string'?r.date.slice(0,7):'';
+  if(!/^\d{4}-\d{2}$/.test(d))continue;
+  if(!first||d<first)first=d;
+  if(!last||d>last)last=d;
+ }
+ if(!first)return [];
+ const from=Number(first.slice(0,4))*12+Number(first.slice(5,7))-1;
+ const to=Number(last.slice(0,4))*12+Number(last.slice(5,7))-1;
  return Array.from({length:Math.min(1200,to-from+1)},(_,i)=>{const n=from+i;return String(Math.floor(n/12)).padStart(4,'0')+'-'+String(n%12+1).padStart(2,'0')});
 }
 function practiceListValues(months){
