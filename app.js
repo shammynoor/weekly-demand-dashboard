@@ -705,6 +705,11 @@ async function loadCloudCategories(){
  try{
   const data=await cloudFile();
   if(data){
+   if(data.practiceSettings&&typeof data.practiceSettings==='object'){
+    const p=data.practiceSettings;
+    practiceSettings={name:typeof p.name==='string'?p.name:'',anchors:p.anchors&&typeof p.anchors==='object'&&!Array.isArray(p.anchors)?Object.fromEntries(Object.entries(p.anchors).filter(([month,value])=>/^\\d{4}-\\d{2}$/.test(month)&&Number.isFinite(Number(value))&&Number(value)>=0).map(([month,value])=>[month,Number(value)])): {}};
+    try{localStorage.setItem(PRACTICE_SETTINGS_KEY,JSON.stringify(practiceSettings))}catch(e){}
+   }
    peopleLocum=data.peopleLocum&&typeof data.peopleLocum==='object'&&!Array.isArray(data.peopleLocum)?Object.fromEntries(Object.entries(data.peopleLocum).filter(([key,value])=>typeof key==='string'&&(value==='yes'||value==='no'))):peopleLocum;
    peopleClinicianType=data.peopleClinicianType&&typeof data.peopleClinicianType==='object'&&!Array.isArray(data.peopleClinicianType)?data.peopleClinicianType:peopleClinicianType;
    if(data.clinicianTypeColours&&typeof data.clinicianTypeColours==='object')clinicianTypeColours=Object.fromEntries(Object.entries(data.clinicianTypeColours).filter(([k,v])=>/^#[0-9a-f]{6}$/i.test(v)));
@@ -785,7 +790,8 @@ async function saveCloudCategories(options={}){
  const saveSerial=cloudChangeSerial;
  if(manual)cloudNotice('Saving all categories and slot assignments to OneDrive…');
  const snapshot=JSON.stringify({
-  version:6,
+  version:7,
+  practiceSettings:{name:practiceSettings.name,anchors:{...practiceSettings.anchors}},
   peopleLocum:{...peopleLocum},
   peopleClinicianType:{...peopleClinicianType},
   clinicianGroupColours:{...clinicianGroupColours},clinicianTypeColours:{...clinicianTypeColours},urgencyTypeColours:{...urgencyTypeColours},
@@ -1713,7 +1719,7 @@ function drawCombinedDemandChart(){
  let maxCount=0;
  for(const category of selected){
   const totals=demandCategoryTotals[category];
-  const points=[...totals].map(([date,count])=>({date,count,year:Number(date.slice(0,4))}));
+  const points=[...totals].map(([date,count])=>({date,count:listSizeAdjustedCount(date,count),year:Number(date.slice(0,4))}));
   for(const [i,year] of years.entries()){
    const data=points.filter(p=>p.year===year&&(!demandMonthStart||p.date.slice(0,7)>=demandMonthStart)&&(!demandMonthEnd||p.date.slice(0,7)<=demandMonthEnd)).sort((a,b)=>a.date.localeCompare(b.date));
    if(!data.length)continue;
@@ -1746,7 +1752,7 @@ function drawCombinedDemandChart(){
  const averageAnnotations=[];
  for(const category of selected){
   const totals=demandCategoryTotals[category];
-  const values=visibleWeeks.map(w=>totals.get(w)).filter(Number.isFinite);
+  const values=visibleWeeks.map(w=>listSizeAdjustedCount(w,totals.get(w))).filter(Number.isFinite);
   if(!values.length)continue;
   const average=values.reduce((sum,value)=>sum+value,0)/values.length;
   maxCount=Math.max(maxCount,average);
@@ -1781,7 +1787,7 @@ function renderGroupUrgencyEditor(){renderDropEditor('groupUrgency');updateAvail
 const PRACTICE_SETTINGS_KEY='demand-iq-practice-settings-v1';
 let practiceSettings={name:'',anchors:{}},practiceSelectedMonth='';
 try{const stored=JSON.parse(localStorage.getItem(PRACTICE_SETTINGS_KEY)||'{}');if(stored&&typeof stored==='object'){practiceSettings.name=typeof stored.name==='string'?stored.name:'';practiceSettings.anchors=stored.anchors&&typeof stored.anchors==='object'?stored.anchors:{};}}catch(e){}
-function savePracticeSettings(){try{localStorage.setItem(PRACTICE_SETTINGS_KEY,JSON.stringify(practiceSettings));}catch(e){$('practiceListStatus').textContent='Unable to save changes in this browser.';}}
+function savePracticeSettings(){try{localStorage.setItem(PRACTICE_SETTINGS_KEY,JSON.stringify(practiceSettings));}catch(e){$('practiceListStatus').textContent='Unable to save changes in this browser.';}scheduleCloudSave();scheduleDemandRefresh();}
 function practiceMonths(){
  const dates=availabilityRecords.map(r=>typeof r.date==='string'?r.date.slice(0,7):'').filter(d=>/^\d{4}-\d{2}$/.test(d)).sort();
  if(!dates.length)return [];
@@ -1800,6 +1806,23 @@ function practiceListValues(months){
   return Math.round(a.value+(b.value-a.value)*smooth);
  });
 }
+
+let adjustDemandForListSize=false;
+function listSizeAtMonth(month){
+ const months=practiceMonths();if(!months.length)return 10000;
+ const first=months[0],last=months[months.length-1];
+ const values=practiceListValues(months);
+ if(month<=first)return values[0];if(month>=last)return values[values.length-1];
+ const idx=months.indexOf(month);return idx<0?10000:values[idx];
+}
+function listSizeAdjustedCount(date,count){
+ if(!adjustDemandForListSize)return count;
+ const months=practiceMonths();if(!months.length)return count;
+ const reference=listSizeAtMonth(months[months.length-1]);
+ const historical=listSizeAtMonth(date.slice(0,7));
+ return historical>0?count*reference/historical:count;
+}
+$('adjustListSize')?.addEventListener('change',e=>{adjustDemandForListSize=e.target.checked;scheduleDemandRefresh();});
 function renderPracticeSettings(){
  const input=$('practiceNameInput');if(!input)return;
  if(document.activeElement!==input)input.value=practiceSettings.name;
@@ -1833,7 +1856,7 @@ function renderPracticeSettings(){
  root.append(svg);
  $('practiceListSelectedMonth').textContent=new Date(practiceSelectedMonth+'-01T12:00:00Z').toLocaleDateString('en-GB',{month:'long',year:'numeric',timeZone:'UTC'});
  $('practiceListValue').value=values[selectedIndex];$('practiceListClear').disabled=!(practiceSelectedMonth in practiceSettings.anchors);
- $('practiceListStatus').textContent='Showing '+months[0]+' to '+months[months.length-1]+' · '+Object.keys(practiceSettings.anchors).length+' manually set months · Saved in this browser.';
+ $('practiceListStatus').textContent='Showing '+months[0]+' to '+months[months.length-1]+' · '+Object.keys(practiceSettings.anchors).length+' manually set months · Saved to OneDrive when connected.';
 }
 $('practiceNameInput')?.addEventListener('input',e=>{practiceSettings.name=e.target.value;savePracticeSettings();});
 $('practiceListValue')?.addEventListener('change',e=>{if(!practiceSelectedMonth)return;const value=Number(e.target.value);if(!Number.isFinite(value)||value<0)return;practiceSettings.anchors[practiceSelectedMonth]=Math.round(value);savePracticeSettings();renderPracticeSettings();});
