@@ -1657,7 +1657,7 @@ function renderDemandUrgencyToggles(){
  }
  if(!demandUrgencyDefaultsApplied&&names.length){
   disabledDemandUrgencyGroups.clear();
-  for(const name of names)if(!['urgent','routine','follow up','follow-up','followup'].includes(name.trim().toLowerCase()))disabledDemandUrgencyGroups.add(name);
+  for(const name of names)if(!['urgent','urgent care','routine','follow up','follow-up','followup'].includes(name.trim().toLowerCase()))disabledDemandUrgencyGroups.add(name);
   demandUrgencyDefaultsApplied=true;
  }
  lastDemandUrgencyGroupNames=names;
@@ -1692,7 +1692,14 @@ function installDemandCardTooltip(target){
   if(!point){card.hidden=true;return;}
   const name=point.data.name;
   const date=typeof point.customdata==='string'?point.customdata:'';
-  const formatted=/^\\d{4}-\\d{2}-\\d{2}$/.test(date)?new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'}):date;
+  const rawDate=date||((typeof point.x==='string'&&/^\\d{4}-\\d{2}/.test(point.x))?point.x:'');
+  let formatted=rawDate;
+  if(/^\\d{4}-\\d{2}(?:-\\d{2})?$/.test(rawDate)){
+   const iso=rawDate.length===7?rawDate+'-01':rawDate;
+   const d=new Date(iso+'T12:00:00Z');
+   if(monthlyMode)formatted=d.toLocaleDateString('en-GB',{month:'long',year:'numeric',timeZone:'UTC'});
+   else {const weekStart=mondayOf(iso);formatted='w/b '+new Date(weekStart+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric',timeZone:'UTC'});}
+  }
   card.replaceChildren();
   const heading=document.createElement('div');heading.className='availability-tooltip-heading';
   heading.textContent=formatted||(name.match(/\\d{4}$/)?.[0]||'Appointment demand');card.append(heading);
@@ -1765,6 +1772,7 @@ function drawCombinedDemandChart(){
     hoverinfo:'none'});
    if(partial)traces.push({name:category+' '+year+' (incomplete)',showlegend:false,
     x:complete.length?[x(complete[complete.length-1]),x(last)]:[x(last)],
+    customdata:complete.length?[complete[complete.length-1].date,last.date]:[last.date],
     y:complete.length?[complete[complete.length-1].count,last.count]:[last.count],
     type:'scatter',mode:'lines+markers',opacity,
     line:{color:urgencyGroupColour(category),width,dash:'dot'},marker:{size:7,symbol:'circle-open'},
