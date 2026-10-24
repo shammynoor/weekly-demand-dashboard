@@ -214,16 +214,20 @@ function renderConsultModeCards(){
  add.onclick=()=>{const {wrapper,input}=edit();root.append(wrapper);input.focus()};
 }
 function suggestConsultMode(slot){
- const value=slot.toLowerCase();
- const clues=[
-  {words:/\b(telephone|telephony|phone|phoned|tel(?:e)?|call(?:back)?|t\/c)\b/i,modes:['Phone','Telephone']},
-  {words:/\b(video|virtual video|teams|zoom|webcam)\b/i,modes:['Video','Video call','Video consultation']},
-  {words:/\b(home visit|homevisit|domiciliary|house call|visit at home)\b/i,modes:['Visit','Home visit','Face-to-face']},
-  {words:/\b(face[ -]?to[ -]?face|in[ -]?person|f[ .-]?2[ .-]?f|clinic appointment|surgery appointment)\b/i,modes:['Face-to-face','In person']}
- ];
- const matched=clues.filter(rule=>rule.words.test(value));
- if(matched.length!==1)return '';
- return matched[0].modes.find(mode=>consultCategoryNames.some(name=>name.toLowerCase()===mode.toLowerCase()))||'';
+ // Underscores are word characters in JavaScript, so use alphanumeric boundaries
+ // to recognise names such as GP_F2F, F2F_15, and F2F-urgent.
+ const value=String(slot||'').toLowerCase();
+ const token=pattern=>new RegExp('(^|[^a-z0-9])(?:'+pattern+')(?=$|[^a-z0-9])','i').test(value);
+ const matches=[
+  {found:token('telephone|telephony|phone|phoned|tel|tele|t\\/c|callback|call[ -]?back|telephone[ -]?triage|remote[ -]?phone'),modes:['Phone','Telephone','Telephone consultation']},
+  {found:token('video|video[ -]?call|video[ -]?consultation|virtual[ -]?video|teams|zoom|webcam'),modes:['Video','Video call','Video consultation']},
+  {found:token('home[ -]?visit|homevisit|domiciliary|house[ -]?call|visit[ -]?at[ -]?home|hv'),modes:['Visit','Home visit']},
+  {found:token('f[ .-]?2[ .-]?f|face[ -]?to[ -]?face|in[ -]?person|clinic[ -]?appointment|surgery[ -]?appointment|in[ -]?clinic'),modes:['Face-to-face','Face to face','F2F','In person']}
+ ].filter(rule=>rule.found);
+ // Do not guess when the slot name explicitly signals conflicting modes.
+ if(matches.length!==1)return '';
+ const configured=matches[0].modes.map(mode=>consultCategoryNames.find(name=>name.toLowerCase()===mode.toLowerCase())).find(Boolean);
+ return configured||'';
 }
 function renderSlotGroupBoxes(){
  const root=$('slotGroupBoxes');if(!root)return;
