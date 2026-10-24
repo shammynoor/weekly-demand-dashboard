@@ -1651,7 +1651,7 @@ function drawCombinedDemandChart(){
     y:complete.length?[complete[complete.length-1].count,last.count]:[last.count],
     type:'scatter',mode:'lines+markers',opacity,
     line:{color:urgencyGroupColour(category),width,dash:'dot'},marker:{size:7,symbol:'circle-open'},
-    hovertemplate:'<b>'+urgencyLabels[category]+': %{y:,} appointments</b><br>Incomplete period<extra>'+year+'</extra>'});
+    hovertemplate:'<b>'+category+': %{y:,} appointments</b><br>Incomplete period<extra>'+year+'</extra>'});
   }
  }
  const rawStep=Math.max(1,maxCount/5),magnitude=Math.pow(10,Math.floor(Math.log10(rawStep)));
