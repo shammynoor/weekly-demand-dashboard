@@ -219,7 +219,7 @@ function suggestConsultMode(slot){
   {words:/\b(telephone|telephony|phone|phoned|tel(?:e)?|call(?:back)?|t\/c)\b/i,modes:['Phone','Telephone']},
   {words:/\b(video|virtual video|teams|zoom|webcam)\b/i,modes:['Video','Video call','Video consultation']},
   {words:/\b(home visit|homevisit|domiciliary|house call|visit at home)\b/i,modes:['Visit','Home visit','Face-to-face']},
-  {words:/\b(face[ -]?to[ -]?face|in[ -]?person|f2f|clinic appointment|surgery appointment)\b/i,modes:['Face-to-face','In person']}
+  {words:/\b(face[ -]?to[ -]?face|in[ -]?person|f[ .-]?2[ .-]?f|clinic appointment|surgery appointment)\b/i,modes:['Face-to-face','In person']}
  ];
  const matched=clues.filter(rule=>rule.words.test(value));
  if(matched.length!==1)return '';
