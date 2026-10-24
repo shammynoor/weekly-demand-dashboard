@@ -461,6 +461,9 @@ function renderSlotInclusion(){
   input.addEventListener('change',()=>{
    if(input.checked)excludedSlotTypes.delete(slot);else excludedSlotTypes.add(slot);
    saveCategories();renderSlotTable();refresh();
+   if(!$('availabilityPage').classList.contains('hidden'))renderAvailabilityChart();
+   if(!$('routineAvailabilityPage').classList.contains('hidden'))renderRoutineAvailabilityChart();
+   if(!$('bookingTimesPage').classList.contains('hidden'))renderBookingTimesChart();
    const summary=$('slotInclusionSummary');if(summary)summary.textContent=(types.length-excludedSlotTypes.size)+' of '+types.length+' slot types included';
   });
  }
@@ -2164,6 +2167,7 @@ function availabilityRecordsInRange(page){
  const first=start.toISOString().slice(0,10),last=finish.toISOString().slice(0,10);
  const urgentNames=urgent?new Set(urgentCategoryNames()):null;
  return availabilityRecords.filter(r=>{
+  if(excludedSlotTypes.has(r.slot))return false;
   if(!(r.count>0)||r.date<first||r.date>=last)return false;
   const category=String(assignments[r.slot]||'').trim();
   if(urgent?!urgentNames.has(category):String(groupUrgencyAssignments[category]||'').trim().toLowerCase()!==page)return false;
@@ -2489,7 +2493,7 @@ function renderAvailabilityChart(){
  const weekdays=new Set(dates.filter(d=>{const n=new Date(d+'T12:00:00Z').getUTCDay();return n!==0&&n!==6}));
  const counts=new Map();
  for(const r of availabilityRecords){
-  if(!weekdays.has(r.date))continue;
+  if(excludedSlotTypes.has(r.slot)||!weekdays.has(r.date))continue;
   const category=String(assignments[r.slot]||'').trim();
   if(!names.includes(category)||!urgentClinicianMatches(r.clinician,r.person)||!urgentConsultMatches(r.slot))continue;
   const status=String(r.availability||'').trim().toLowerCase();
@@ -2653,6 +2657,7 @@ function renderRoutineAvailabilityChart(){
  let matched=0;
  const bucketSet=new Set(dates);
  for(const r of availabilityRecords){
+  if(excludedSlotTypes.has(r.slot))continue;
   const detailed=String(assignments[r.slot]||'').trim();
   const group=String(groupUrgencyAssignments[detailed]||'').trim();
   if(group.toLowerCase()!=='routine'||routineDisabledTypes.has(detailed)||!routineClinicianMatches(r.clinician,r.person)||!routineConsultMatches(r.slot))continue;
@@ -2787,6 +2792,7 @@ function renderBookingTimesChart(){
  const bins=Array(96).fill(0);
  let count=0;
  for(const r of bookingTimeRecords){
+  if(excludedSlotTypes.has(r.slot))continue;
   const detailedUrgency=assignments[r.slot];
   const urgency=groupUrgencyAssignments[detailedUrgency];
   const detailedClinician=effectiveClinicianType(r.clinician,r.person);
