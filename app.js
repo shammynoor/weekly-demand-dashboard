@@ -859,6 +859,7 @@ async function loadCloudCategories(){
   renderPeopleGroups();
   renderSlotGroupBoxes();
   renderSlotPurposeCategories();
+  renderCapacityStatusCategories();
   renderPeople();
  }catch(e){
   cloudNotice('Could not load cloud categories: '+e.message+' (local settings retained)');
