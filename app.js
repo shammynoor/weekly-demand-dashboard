@@ -1616,8 +1616,8 @@ function setupDemandMonthSlider(){
  const label=i=>new Date(Date.UTC(Math.floor(i/12),i%12,1)).toLocaleDateString('en-GB',{month:'short',year:'numeric',timeZone:'UTC'});
  $('demandRangeFromLabel').textContent=label(a);$('demandRangeToLabel').textContent=label(b);
  const span=Math.max(1,high-low),fill=$('demandRangeFill');
- fill.style.left='calc(16px + (100% - 32px) * '+((a-low)/span)+')';
- fill.style.right='calc(16px + (100% - 32px) * '+((high-b)/span)+')';
+ fill.style.left='calc('+((a-low)/span*100).toFixed(3)+'% + '+(16-32*(a-low)/span).toFixed(3)+'px)';
+ fill.style.right='calc('+((high-b)/span*100).toFixed(3)+'% + '+(16-32*(high-b)/span).toFixed(3)+'px)';
  if(!start.dataset.bound){
   const changed=which=>{
    let x=Number(start.value),y=Number(end.value);
@@ -1682,11 +1682,15 @@ function drawCombinedDemandChart(){
    const last=data[data.length-1];
    const partial=showCurrentWeek&&periodIsCurrent(last.date);
    const complete=partial?data.slice(0,-1):data;
+   // Continuous mode must join December to January, even though the year traces
+   // use different widths. Include the previous year's final point as a bridge.
+   const previousPoint=continuousMode?points.filter(p=>p.year===year-1&&(!demandMonthStart||p.date.slice(0,7)>=demandMonthStart)&&(!demandMonthEnd||p.date.slice(0,7)<=demandMonthEnd)).sort((a,b)=>a.date.localeCompare(b.date)).at(-1):null;
+   const plotPoints=previousPoint&&complete.length?[previousPoint,...complete]:complete;
    const width=yearWidth(year);
    const opacity=year===latestYear?1:Math.max(0.4,0.78-(latestYear-year)*0.08);
    for(const p of data)maxCount=Math.max(maxCount,p.count);
    traces.push({name:category+' '+year,legendgroup:String(year),showlegend:false,
-    x:complete.map(x),y:complete.map(p=>p.count),customdata:complete.map(p=>p.date),
+    x:plotPoints.map(x),y:plotPoints.map(p=>p.count),customdata:plotPoints.map(p=>p.date),
     type:'scatter',mode:'lines',connectgaps:false,opacity,
     line:{color:urgencyGroupColour(category),width,shape:'spline',smoothing:0.5},
     hovertemplate:'%{customdata}<br><b>'+category+': %{y:,} appointments</b><extra>'+year+'</extra>'});
