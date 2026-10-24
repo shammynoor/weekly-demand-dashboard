@@ -1523,7 +1523,7 @@ async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;
  // Assign obvious names on first encounter; retain any existing manual choices.
  // Do not guess assignments: unknown slot types stay Uncategorised until manually assigned.
 
- saveCategories(false);renderSlotTable();lastFingerprint=fingerprint;
+ saveCategories(false);renderSlotInclusion();renderSlotTable();lastFingerprint=fingerprint;
 const drawingErrors=[];
  for(const [label,draw] of [
   ['category filters',()=>rebuildCategoryFilter()],
