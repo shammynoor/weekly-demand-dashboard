@@ -1409,7 +1409,7 @@ $('pickerUp').onclick=async()=>{if(!folderView.trail.length)return;const parent=
 $('selectFolder').onclick=async()=>{if(!isOwner)return;selectedFolder={id:folderView.id,name:[...folderView.trail.map(x=>x.name),folderView.name].join(' / ')};localStorage.setItem(FOLDER_KEY,JSON.stringify(selectedFolder));$('folderStatus').textContent='Selected folder: '+selectedFolder.name;$('folderPicker').classList.add('hidden');$('onedrivePanel').classList.add('hidden');$('sourceSetup').classList.add('hidden');cloudFolder=selectedFolder;await saveCloudCategories();lastFingerprint='';await loadFolder(true)};
 $('refreshData').onclick=()=>loadFolder(true);
 setInterval(()=>{if(activeAccount&&selectedFolder&&!busy)loadFolder(false)},5*60*1000);
-const holidayDates=['2025-01-01','2025-04-18','2025-04-21','2025-05-05','2025-05-26','2025-08-25','2025-12-25','2025-12-26','2026-01-01','2026-04-03','2026-04-06','2026-05-04','2026-05-25','2026-08-31','2026-12-25','2026-12-28'];
+const holidayDates=['2024-01-01','2024-03-29','2024-04-01','2024-05-06','2024-05-27','2024-08-26','2024-12-25','2024-12-26','2025-01-01','2025-04-18','2025-04-21','2025-05-05','2025-05-26','2025-08-25','2025-12-25','2025-12-26','2026-01-01','2026-04-03','2026-04-06','2026-05-04','2026-05-25','2026-08-31','2026-12-25','2026-12-28'];
 function mondayOf(dateString){const d=new Date(dateString+'T12:00:00Z');const day=d.getUTCDay();d.setUTCDate(d.getUTCDate()-((day+6)%7));return d.toISOString().slice(0,10)}
 // Individual clinician category switches; every named category starts enabled.
 const disabledClinicianTypes=new Set();
@@ -1476,8 +1476,6 @@ document.getElementById('excludeBH').onchange=e=>{excludeBankHolidays=!e.target.
 function isoWeek(weekStart){const d=new Date(weekStart+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+3);const year=d.getUTCFullYear();const jan4=new Date(Date.UTC(year,0,4,12));jan4.setUTCDate(jan4.getUTCDate()-((jan4.getUTCDay()+6)%7));const week=1+Math.round((d-jan4)/604800000);return {year,week}}
 const colours=['#1475b8','#e57a28','#159a78','#9053b4','#c64c69','#65748b'];
 let current=[];let continuousMode=false;let showCurrentWeek=true;let monthlyMode=false;
-let shadeSeasons=document.getElementById('shadeSeasons').checked;
-document.getElementById('shadeSeasons').onchange=e=>{shadeSeasons=e.target.checked;scheduleDemandRefresh()};
 const todayLondon=(()=>{const parts=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/London',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());const v=Object.fromEntries(parts.map(p=>[p.type,p.value]));return `${v.year}-${v.month}-${v.day}`})();
 const thisWeek=mondayOf(todayLondon),thisMonth=todayLondon.slice(0,7);
 let savedWeeklyIncludeBankHolidays=document.getElementById('excludeBH').checked;
@@ -1523,7 +1521,12 @@ function refresh(){
 const activeWeekSet=new Set();
 for(const r of records){if(includedRecord(r)){const key=periodKey(r);if(key)activeWeekSet.add(key)}}
 const activeWeeks=[...activeWeekSet].sort();
-const selectedWeeks=activeWeeks.filter(w=>w<=(monthlyMode?thisMonth:thisWeek)&&(showCurrentWeek||!periodIsCurrent(w)));
+const appointmentDates=availabilityRecords.map(r=>r.date).filter(Boolean).sort();
+const firstAppointmentDate=appointmentDates[0]||'';
+const lastAppointmentDate=appointmentDates[appointmentDates.length-1]||'';
+const firstPeriod=firstAppointmentDate?(monthlyMode?firstAppointmentDate.slice(0,7):mondayOf(firstAppointmentDate)):'';
+const lastPeriod=lastAppointmentDate?(monthlyMode?lastAppointmentDate.slice(0,7):mondayOf(lastAppointmentDate)):'';
+const selectedWeeks=activeWeeks.filter(w=>(!firstPeriod||w>=firstPeriod)&&(!lastPeriod||w<=lastPeriod)&&w<=(monthlyMode?thisMonth:thisWeek)&&(showCurrentWeek||!periodIsCurrent(w)));
 const sums=new Map(selectedWeeks.map(w=>[w,0]));
 const demandCategoryTotals=Object.fromEntries(['urgent','routine','followup'].map(c=>[c,new Map(selectedWeeks.map(w=>[w,0]))]));
 for(const r of records){
@@ -1541,19 +1544,12 @@ const total=current.reduce((a,r)=>a+r.count,0);
 const yearColours={urgent:['#8b111e','#d43846','#f08088','#6f0712'],routine:['#075d34','#199c5a','#79c99c','#a1d9b4'],followup:['#124b9b','#2675d2','#79acee','#a9cdf6']};
 function monthPosition(date){const d=new Date(date+'T12:00:00Z');const month=d.getUTCMonth();const days=new Date(Date.UTC(d.getUTCFullYear(),month+1,0)).getUTCDate();return month+(d.getUTCDate()-1)/days}
 const axis={type:'linear',range:[0,12],title:'Month of year',tickmode:'array',tickvals:Array.from({length:12},(_,i)=>i+0.5),ticktext:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],gridcolor:'#edf1f5'};
-function seasonBackgroundShapes(periods){
- const shades=['#f3f5f7','#fafbfc','#f1f3f5','#f7f8fa'];
+function yearBackgroundShapes(periods){
+ if(!continuousMode||!periods.length)return [];
+ const years=periods.map(v=>Number(v.slice(0,4)));
  const shapes=[];
- if(!continuousMode){
-  const groups=[[[0,2],[11,12]],[[2,5]],[[5,8]],[[8,11]]];
-  groups.forEach((intervals,season)=>intervals.forEach(([x0,x1])=>shapes.push({type:'rect',xref:'x',yref:'paper',x0,x1,y0:0,y1:1,fillcolor:shades[season],line:{width:0},layer:'below'})));
- }else{
-  const years=periods.map(v=>Number(v.slice(0,4)));
-  const start=Math.min(...years,2025)-1,end=Math.max(...years,2025)+1;
-  for(let year=start;year<=end;year++){
-   const bands=[[0,`${year}-01-01`,`${year}-03-01`],[1,`${year}-03-01`,`${year}-06-01`],[2,`${year}-06-01`,`${year}-09-01`],[3,`${year}-09-01`,`${year}-12-01`],[0,`${year}-12-01`,`${year+1}-01-01`]];
-   for(const [season,x0,x1] of bands)shapes.push({type:'rect',xref:'x',yref:'paper',x0,x1,y0:0,y1:1,fillcolor:shades[season],line:{width:0},layer:'below'});
-  }
+ for(let year=Math.min(...years);year<=Math.max(...years);year++){
+  if(year%2===0)shapes.push({type:'rect',xref:'x',yref:'paper',x0:year+'-01-01',x1:(year+1)+'-01-01',y0:0,y1:1,fillcolor:'#f2f5f8',opacity:0.65,line:{width:0},layer:'below'});
  }
  return shapes;
 }
@@ -1607,9 +1603,9 @@ function drawCategoryChart(target,category,palette,sharedMax){
  // One flat average, calculated from every displayed week across every year.
  traces.push({name:'All-years '+(monthlyMode?'monthly':'weekly')+' average ('+Math.round(average).toLocaleString('en-GB')+')',x:continuousMode?[monthOfPeriod(selectedWeeks[0]||'2024-12-30'),monthOfPeriod(selectedWeeks[selectedWeeks.length-1]||'2025-07-14')]:[0,12],y:[average,average],type:'scatter',mode:'lines',hoverinfo:'skip',opacity:0.58,line:{color:category==='urgent'?'#9c2633':category==='followup'?'#286cb8':'#23885b',width:2,dash:'dash'},showlegend:true});
  const visibleDates=selectedWeeks.map(monthOfPeriod).sort();
- const continuousRange=visibleDates.length?[visibleDates[0],visibleDates[visibleDates.length-1]]:null;
+ const continuousRange=firstAppointmentDate&&lastAppointmentDate?[firstAppointmentDate,lastAppointmentDate]:visibleDates.length?[visibleDates[0],visibleDates[visibleDates.length-1]]:null;
  const chartEl=$(target);
- Plotly.react(target,traces,{dragmode:false,autosize:true,margin:{l:58,r:12,t:32,b:65},paper_bgcolor:'white',plot_bgcolor:'white',shapes:shadeSeasons?seasonBackgroundShapes(selectedWeeks):[],legend:{orientation:'h',y:1.17,x:0},xaxis:continuousMode?{type:'date',title:monthlyMode?'Booking month':'Booking date',tickformat:'%b %Y',gridcolor:'#edf1f5',...(continuousRange?{range:continuousRange}: {})}:axis,yaxis:{title:'Appointments',range:[0,sharedMax],dtick:sharedMax/5,gridcolor:'#edf1f5'},hovermode:'closest',annotations:!hasAppointments&&category==='followup'?[{text:'No follow-up appointments found. In Manage Categories, assign slot types to Follow up and click Save.',xref:'paper',yref:'paper',x:.5,y:.55,showarrow:false,align:'center',font:{size:13,color:'#286cb8'}}]:[]},{responsive:true,displaylogo:false,displayModeBar:false,scrollZoom:false,doubleClick:false});
+ Plotly.react(target,traces,{dragmode:false,autosize:true,margin:{l:58,r:12,t:32,b:65},paper_bgcolor:'white',plot_bgcolor:'white',shapes:yearBackgroundShapes(selectedWeeks),legend:{orientation:'h',y:1.17,x:0},xaxis:continuousMode?{type:'date',title:monthlyMode?'Booking month':'Booking date',tickformat:'%b %Y',gridcolor:'#edf1f5',...(continuousRange?{range:continuousRange}: {})}:axis,yaxis:{title:'Appointments',range:[0,sharedMax],dtick:sharedMax/5,gridcolor:'#edf1f5'},hovermode:'closest',annotations:!hasAppointments&&category==='followup'?[{text:'No follow-up appointments found. In Manage Categories, assign slot types to Follow up and click Save.',xref:'paper',yref:'paper',x:.5,y:.55,showarrow:false,align:'center',font:{size:13,color:'#286cb8'}}]:[]},{responsive:true,displaylogo:false,displayModeBar:false,scrollZoom:false,doubleClick:false});
 }
 let maximum=0;
 let followupMaximum=0;
