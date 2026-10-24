@@ -1409,7 +1409,46 @@ $('pickerUp').onclick=async()=>{if(!folderView.trail.length)return;const parent=
 $('selectFolder').onclick=async()=>{if(!isOwner)return;selectedFolder={id:folderView.id,name:[...folderView.trail.map(x=>x.name),folderView.name].join(' / ')};localStorage.setItem(FOLDER_KEY,JSON.stringify(selectedFolder));$('folderStatus').textContent='Selected folder: '+selectedFolder.name;$('folderPicker').classList.add('hidden');$('onedrivePanel').classList.add('hidden');$('sourceSetup').classList.add('hidden');cloudFolder=selectedFolder;await saveCloudCategories();lastFingerprint='';await loadFolder(true)};
 $('refreshData').onclick=()=>loadFolder(true);
 setInterval(()=>{if(activeAccount&&selectedFolder&&!busy)loadFolder(false)},5*60*1000);
-const holidayDates=['2023-01-02','2023-04-07','2023-04-10','2023-05-01','2023-05-08','2023-05-29','2023-08-28','2023-12-25','2023-12-26','2024-01-01','2024-03-29','2024-04-01','2024-05-06','2024-05-27','2024-08-26','2024-12-25','2024-12-26','2025-01-01','2025-04-18','2025-04-21','2025-05-05','2025-05-26','2025-08-25','2025-12-25','2025-12-26','2026-01-01','2026-04-03','2026-04-06','2026-05-04','2026-05-25','2026-08-31','2026-12-25','2026-12-28'];
+// England and Wales bank holidays, calculated for every year present in the booking data.
+// Includes regular holidays, weekend substitute days and recent exceptional changes.
+function englandWalesBankHolidays(year){
+ const dates=new Set();
+ const iso=d=>d.toISOString().slice(0,10);
+ const date=(month,day)=>new Date(Date.UTC(year,month-1,day,12));
+ const add=d=>dates.add(iso(d));
+ const shift=(d,days)=>{const x=new Date(d);x.setUTCDate(x.getUTCDate()+days);return x};
+ const weekday=(month,day)=>{const d=date(month,day);return d.getUTCDay()};
+ const firstMonday=month=>{const d=date(month,1);return shift(d,(8-d.getUTCDay())%7)};
+ const lastMonday=month=>{const d=date(month+1,0);return shift(d,-((d.getUTCDay()+6)%7))};
+ // Gregorian computus (Easter Sunday).
+ const a=year%19,b=Math.floor(year/100),c=year%100,d=Math.floor(b/4),e=b%4;
+ const f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),h=(19*a+b-d-g+15)%30;
+ const i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h-k+7)%7;
+ const m=Math.floor((a+11*h+22*l)/451),n=h+l-7*m+114;
+ const easter=date(Math.floor(n/31),n%31+1);
+ add(shift(easter,-2));add(shift(easter,1));
+ // New Year: Monday substitute if it falls at a weekend.
+ const newYear=date(1,1);add(shift(newYear,newYear.getUTCDay()===6?2:newYear.getUTCDay()===0?1:0));
+ add(firstMonday(5));add(lastMonday(5));add(lastMonday(8));
+ // Christmas and Boxing Day, including both substitutes.
+ const christmas=date(12,25),boxing=date(12,26);
+ add(shift(christmas,christmas.getUTCDay()===6?2:christmas.getUTCDay()===0?2:0));
+ add(shift(boxing,boxing.getUTCDay()===6?2:boxing.getUTCDay()===0?2:0));
+ // Exceptional England/Wales holidays and moved spring bank holidays.
+ if(year===2020){dates.delete(iso(firstMonday(5)));add(date(5,8));}
+ if(year===2022){dates.delete(iso(lastMonday(5)));add(date(6,2));add(date(6,3));add(date(9,19));}
+ if(year===2023)add(date(5,8));
+ if(year===2012){dates.delete(iso(lastMonday(5)));add(date(6,4));add(date(6,5));}
+ if(year===2011)add(date(4,29));
+ if(year===2002){dates.delete(iso(lastMonday(5)));add(date(6,3));add(date(6,4));}
+ return dates;
+}
+const bankHolidayWeeks=new Set();
+function refreshBankHolidayWeeks(){
+ bankHolidayWeeks.clear();
+ const years=new Set(records.map(r=>Number((r.bookedWeek||'').slice(0,4))).filter(Number.isInteger));
+ for(const year of years)for(const y of [year-1,year,year+1])for(const day of englandWalesBankHolidays(y))bankHolidayWeeks.add(mondayOf(day));
+}
 function mondayOf(dateString){const d=new Date(dateString+'T12:00:00Z');const day=d.getUTCDay();d.setUTCDate(d.getUTCDate()-((day+6)%7));return d.toISOString().slice(0,10)}
 // Individual clinician category switches; every named category starts enabled.
 const disabledClinicianTypes=new Set();
@@ -1471,7 +1510,7 @@ function consultMatches(slot){
  const mode=saved||suggestConsultMode(slot);
  return !mode||!disabledConsultModes.has(mode);
 }
-const bankHolidayWeeks=new Set(holidayDates.map(mondayOf));let excludeBankHolidays=true;
+let excludeBankHolidays=true;
 document.getElementById('excludeBH').onchange=e=>{excludeBankHolidays=!e.target.checked;scheduleDemandRefresh()};
 function isoWeek(weekStart){const d=new Date(weekStart+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+3);const year=d.getUTCFullYear();const jan4=new Date(Date.UTC(year,0,4,12));jan4.setUTCDate(jan4.getUTCDate()-((jan4.getUTCDay()+6)%7));const week=1+Math.round((d-jan4)/604800000);return {year,week}}
 const colours=['#1475b8','#e57a28','#159a78','#9053b4','#c64c69','#65748b'];
@@ -1515,6 +1554,7 @@ function scheduleDemandRefresh(){
  requestAnimationFrame(()=>{demandRefreshQueued=false;refresh()});
 }
 function refresh(){
+ refreshBankHolidayWeeks();
  updateClinicianChartFilter();updateConsultChartFilter();
  demandFilterCache=new WeakMap();
  clinicianMatchCache=new Map();
