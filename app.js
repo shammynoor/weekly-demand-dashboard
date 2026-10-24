@@ -117,7 +117,7 @@ function installDashboardColourPicker(wrap,input){
 
 const TYPE_PALETTE=['#d4777e','#9978c8','#e4b94f','#72a9d5','#6eaea6','#cf8eb7','#82b789','#c79c70'];
 function typeColour(name,overrides){if(/^#[0-9a-f]{6}$/i.test(overrides[name]||''))return overrides[name];let hash=0;for(const c of String(name).toLowerCase())hash=(hash*31+c.charCodeAt(0))>>>0;return TYPE_PALETTE[hash%TYPE_PALETTE.length]}
-function urgencyTypeColour(name){return typeColour(name,urgencyTypeColours)}
+function urgencyGroupColour(name){return typeColour(name,urgencyTypeColours)}
 function clinicianTypeColour(name){return typeColour(name,clinicianTypeColours)}
 function typeColourPicker(type,kind,onChanged){const colour=kind==='urgency'?urgencyTypeColours:clinicianTypeColours;const current=kind==='urgency'?urgencyTypeColour(type):clinicianTypeColour(type);const wrap=document.createElement('label');wrap.className='people-colour-control people-type-colour-control';wrap.title='Change colour for '+type;wrap.draggable=false;const dot=document.createElement('span');dot.className='clinician-colour-dot';dot.style.backgroundColor=current;const input=document.createElement('input');input.className='people-colour-picker';input.type='color';input.value=current;input.setAttribute('aria-label','Choose colour for '+type);input.addEventListener('change',()=>{colour[type]=input.value;onChanged()});wrap.append(dot,input);installDashboardColourPicker(wrap,input);return wrap}
 
@@ -2592,20 +2592,18 @@ setupUrgentRangeControls();
 // Independent filters for Routine Appointment Availability.
 const routineDisabledTypes=new Set();
 function routineDetailedTypes(){
- return [...new Set([...Object.keys(groupUrgencyAssignments),...Object.values(assignments)])]
-  .filter(name=>name&&String(groupUrgencyAssignments[name]||'').trim().toLowerCase()==='routine')
-  .sort((a,b)=>a.localeCompare(b));
+ return groupUrgencyNames.filter(isDashboardToggleOption);
 }
 function renderRoutineCategoryToggles(){
  const root=$('routineCategoryToggles');if(!root)return;
  const names=routineDetailedTypes();
  const old=[...root.querySelectorAll('input[data-filter-name]')].map(el=>el.dataset.filterName);
  if(old.length===names.length&&names.every((name,i)=>name===old[i])){
-  root.querySelectorAll('input[data-filter-name]').forEach(input=>input.nextElementSibling?.style.setProperty('--switch-on',urgencyTypeColour(input.dataset.filterName)));
+  root.querySelectorAll('input[data-filter-name]').forEach(input=>input.nextElementSibling?.style.setProperty('--switch-on',urgencyGroupColour(input.dataset.filterName)));
   return;
  }
  root.replaceChildren();
- if(!names.length){root.textContent='Assign detailed types to the Routine urgency group in Slot settings.';return}
+ if(!names.length){root.textContent='Create urgency categories in Slot Settings.';return}
  for(const name of names){
   const row=document.createElement('label');row.className='filter-row';
   const sw=document.createElement('span');sw.className='switch';
@@ -2707,8 +2705,8 @@ function renderRoutineAvailabilityChart(){
  for(const r of availabilityRecords){
   if(excludedSlotTypes.has(r.slot))continue;
   const detailed=String(assignments[r.slot]||'').trim();
-  const group=String(groupUrgencyAssignments[detailed]||'').trim();
-  if(group.toLowerCase()!=='routine'||routineDisabledTypes.has(detailed)||!routineClinicianMatches(r.clinician,r.person)||!routineConsultMatches(r.slot))continue;
+  const group=capacityUrgencyCategory(r.slot);
+  if(!routineDetailedTypes().includes(group)||routineDisabledTypes.has(group)||!routineClinicianMatches(r.clinician,r.person)||!routineConsultMatches(r.slot))continue;
   const bucket=isDaily?r.date:mondayOf(r.date);
   if(!bucketSet.has(bucket))continue;
   const status=String(r.availability||'').trim().toLowerCase();
@@ -2716,7 +2714,7 @@ function renderRoutineAvailabilityChart(){
   if(!label)continue;
   matched+=r.count;
   const key=JSON.stringify([bucket,label]);byBucket.set(key,(byBucket.get(key)||0)+r.count);
-  if(label==='Booked'){const typeKey=JSON.stringify([bucket,'Booked',detailed]);byBucket.set(typeKey,(byBucket.get(typeKey)||0)+r.count);}
+  if(label==='Booked'){const typeKey=JSON.stringify([bucket,'Booked',group]);byBucket.set(typeKey,(byBucket.get(typeKey)||0)+r.count);}
  }
  const labels=['Booked',...(routineGroupWithheld?['Held Back']:['Blocked','Embargoed']),'Available'];
  const colours={'Booked':'#5fc18a','Blocked':'#435569','Embargoed':'#586674','Held Back':'#48535f','Available':'#ffffff'};
