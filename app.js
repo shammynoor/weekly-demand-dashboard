@@ -1929,7 +1929,7 @@ function drawCombinedDemandChart(){
   const historical=populationByMonth.get(month)??(month<populationMonths[0]?populationValues[0]:populationValues[populationValues.length-1]);
   return historical>0?count*referencePopulation/historical:count;
  };
- const selected=groupUrgencyNames.filter(name=>!disabledDemandUrgencyGroups.has(name));
+ const selected=groupUrgencyNames.filter(name=>isDashboardToggleOption(name)&&!disabledDemandUrgencyGroups.has(name));
  const additiveTitle=$('demandAdditiveTitle');if(additiveTitle){additiveTitle.textContent=additiveLines?selected.join(' + '):'';additiveTitle.hidden=!additiveLines||!selected.length;}
  const visibleWeeks=selectedWeeks.filter(w=>(!demandMonthStart||w.slice(0,7)>=demandMonthStart)&&(!demandMonthEnd||w.slice(0,7)<=demandMonthEnd));
  const years=[...new Set(visibleWeeks.map(w=>Number(w.slice(0,4))))].sort((a,b)=>a-b);
@@ -1992,7 +1992,7 @@ function drawCombinedDemandChart(){
    line:{color:colour,width:1.8,dash:'dot'},layer:'above'});
   averageAnnotations.push({xref:'paper',yref:'y',x:1,y:average,xanchor:'right',yanchor:'bottom',
    text:(additiveLines?'Combined':category)+' average · '+Math.round(average).toLocaleString('en-GB'),showarrow:false,
-   font:{size:11,color:colour},bgcolor:'rgba(255,255,255,0.55)',bordercolor:'rgba(170,185,200,0.65)',borderwidth:1,borderpad:6});
+   font:{size:11,color:colour},bgcolor:'rgba(255,255,255,0.90)',bordercolor:'rgba(170,185,200,0.65)',borderwidth:1,borderpad:6});
  }
  // Fit the axis closely to the visible series and average lines, retaining a zero baseline.
  const yAxisTop=Math.max(5,Math.ceil(maxCount*1.08));
@@ -2004,7 +2004,7 @@ function drawCombinedDemandChart(){
   xaxis:continuousMode?{type:'date',title:monthlyMode?'Booking month':'Booking date',tickformat:'%b %Y',gridcolor:'#edf1f5',...(range?{range}: {})}:axis,
   yaxis:{title:'Appointments',range:[0,yAxisTop],nticks:6,gridcolor:'#edf1f5'},hovermode:'closest',
   annotations:!selected.length?[{text:'Select an urgency type to display appointments',xref:'paper',yref:'paper',x:.5,y:.5,showarrow:false}]:averageAnnotations
- },{responsive:true,displaylogo:false,displayModeBar:false,scrollZoom:false,doubleClick:false}).then(()=>installDemandCardTooltip($('combinedDemandChart')));
+ },{responsive:true,displaylogo:false,displayModeBar:false,scrollZoom:false,doubleClick:false}).then(()=>{installDemandCardTooltip($('combinedDemandChart'));$('combinedDemandChart')?.querySelectorAll('.annotation rect').forEach(rect=>{rect.setAttribute('rx','14');rect.setAttribute('ry','14');});});
 }
 drawCombinedDemandChart();
 }
