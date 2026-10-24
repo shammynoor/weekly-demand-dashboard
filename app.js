@@ -445,6 +445,11 @@ function renderSlotTableGroupFilter(){
 let slotTypeFileStats=new Map();
 function formatSlotMonth(date){const [year,month]=date.split('-');return new Date(Date.UTC(Number(year),Number(month)-1,1)).toLocaleDateString('en-GB',{month:'short',year:'numeric',timeZone:'UTC'});}
 function ensureCoreConsultModes(){if(!consultCategoryNames.length)consultCategoryNames=['Phone','Face-to-face']}
+let slotMappingSort='name';
+function setSlotMappingSort(value){
+ slotMappingSort=value;
+ renderSlotTable();
+}
 function renderSlotTable(){
  const body=$('slotTableBody');if(!body)return;
  renderSlotTableGroupFilter();
@@ -459,7 +464,18 @@ function renderSlotTable(){
   if(unassignedModeOnly&&consultCategoryNames.includes(consultAssignments[slot]))return false;
   if(filter&&group!==filter)return false;
   return !query||(slot+' '+assigned+' '+group).toLowerCase().includes(query);
- }).sort((a,b)=>a.localeCompare(b,undefined,{sensitivity:'base'}));
+ }).sort((a,b)=>{
+  if(slotMappingSort==='count-desc'||slotMappingSort==='count-asc'){
+   const difference=(slotTypeFileStats.get(a)?.count||0)-(slotTypeFileStats.get(b)?.count||0);
+   if(difference)return slotMappingSort==='count-desc'?-difference:difference;
+  }
+  return a.localeCompare(b,undefined,{sensitivity:'base'});
+ });
+ const countSortButton=$('slotCountSort');
+ if(countSortButton){
+  countSortButton.textContent=slotMappingSort==='count-desc'?'Slots found ▼':slotMappingSort==='count-asc'?'Slots found ▲':'Slots found ⇅';
+  countSortButton.setAttribute('aria-label',slotMappingSort==='count-desc'?'Sort slots found ascending':slotMappingSort==='count-asc'?'Sort by slot type name':'Sort slots found highest first');
+ }
  body.replaceChildren();
  const attachInlineSuggestion=(slot,key,cell,select)=>{
   const dim=smartDimensions().find(d=>d.key===key);
@@ -490,6 +506,7 @@ function renderSlotTable(){
   const slotName=document.createElement('span');slotName.textContent=slot;slotCell.append(slotName);
   const stats=slotTypeFileStats.get(slot);
   if(stats){const details=document.createElement('span');details.className='slot-type-found-details';details.style.display='block';details.textContent=` — ${stats.count.toLocaleString('en-GB')} found (${formatSlotMonth(stats.min)} – ${formatSlotMonth(stats.max)})`;slotCell.append(details);}
+  const countCell=document.createElement('td');countCell.className='slot-found-count';countCell.textContent=(stats?.count||0).toLocaleString('en-GB');
   const urgencyCell=document.createElement('td');urgencyCell.className='people-assigned-cell';
   const urgencySelect=document.createElement('select');urgencySelect.className='people-clinician-select';urgencySelect.setAttribute('aria-label','Urgency for '+slot);
   for(const name of ['',...groupUrgencyNames]){const option=document.createElement('option');option.value=name;option.textContent=name||'Unassigned';urgencySelect.append(option)}
@@ -525,7 +542,7 @@ function renderSlotTable(){
   capacitySelect.value=capacityCategoryNames.includes(capacityAssignments[slot])?capacityAssignments[slot]:'';
   capacitySelect.addEventListener('change',()=>{capacityAssignments[slot]=capacitySelect.value||'Uncategorised';saveCategories();const status=$('slotGroupSaveStatus');if(status)status.textContent='Changes are saving automatically to OneDrive.'});
   capacityCell.append(capacitySelect);attachInlineSuggestion(slot,'capacity',capacityCell,capacitySelect);
-  tr.append(slotCell,urgencyCell,modeCell,purposeCell,capacityCell);body.append(tr);
+  tr.append(slotCell,countCell,urgencyCell,modeCell,purposeCell,capacityCell);body.append(tr);
  }
  const count=$('slotTableCount');if(count)count.textContent=rows.length+' of '+types.length+' slot types shown';
 }
@@ -2027,7 +2044,7 @@ $('consultSlotSearch').addEventListener('input',renderConsultEditor);
 $('addGroupUrgencyCategory').onclick=()=>{const el=$('newGroupUrgencyCategory');const c=el.value.trim();if(!c)return;if(c.toLowerCase()==='uncategorised'||groupUrgencyNames.some(x=>x.toLowerCase()===c.toLowerCase())){alert('This group name already exists or is reserved.');return}groupUrgencyNames.push(c);el.value='';saveCategories();renderGroupUrgencyEditor();renderAvailabilityChart()};
 $('newGroupUrgencyCategory').addEventListener('keydown',e=>{if(e.key==='Enter')$('addGroupUrgencyCategory').click()});
 $('groupUrgencySearch').addEventListener('input',renderGroupUrgencyEditor);
-rebuildCategoryFilter();renderEditor();renderGroupUrgencyEditor();renderClinicianEditor();renderClinicianGroupEditor();renderConsultEditor();consolidateUrgencyGroups();renderConsultModeCards();renderSlotGroupBoxes();renderSlotPurposeCategories();renderCapacityStatusCategories();
+rebuildCategoryFilter();renderEditor();renderGroupUrgencyEditor();renderClinicianEditor();renderClinicianGroupEditor();renderConsultEditor();consolidateUrgencyGroups();$('slotCountSort')?.addEventListener('click',()=>setSlotMappingSort(slotMappingSort==='count-desc'?'count-asc':slotMappingSort==='count-asc'?'name':'count-desc'));renderConsultModeCards();renderSlotGroupBoxes();renderSlotPurposeCategories();renderCapacityStatusCategories();
 refresh();
 
 initAuth();
