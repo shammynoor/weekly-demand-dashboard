@@ -1627,7 +1627,7 @@ function setupDemandMonthSlider(){
  // The native range thumb travels over the input width MINUS its own diameter.
  // Position the blue fill between the actual thumb centres, not the input edges.
  const trackWidth=fill.parentElement.clientWidth;
- const thumbDiameter=24;
+ const thumbDiameter=20;
  const sliderLeft=start.getBoundingClientRect().left-fill.parentElement.getBoundingClientRect().left;
  const travel=Math.max(0,start.clientWidth-thumbDiameter);
  const startCentre=sliderLeft+thumbDiameter/2+((a-low)/span)*travel;
@@ -1981,7 +1981,7 @@ function availabilityRecordsInRange(page){
  return availabilityRecords.filter(r=>{
   if(!(r.count>0)||r.date<first||r.date>=last)return false;
   const category=String(assignments[r.slot]||'').trim();
-  if(String(groupUrgencyAssignments[category]||'').trim().toLowerCase()!==page)return false;
+  if(page==='urgent'?!urgentCategoryNames().includes(category):String(groupUrgencyAssignments[category]||'').trim().toLowerCase()!==page)return false;
   if(urgent){const day=new Date(r.date+'T12:00:00Z').getUTCDay();if(day===0||day===6)return false;}
   return true;
  });
@@ -2210,7 +2210,13 @@ function setupUrgentRangeControls(){
  update();
 }
 function urgentCategoryNames(){
- return categoryNames.filter(name=>String(groupUrgencyAssignments[name]||'').trim().toLowerCase()==='urgent');
+ // Use categories actually assigned to slots as well as the category catalogue.
+ // Older OneDrive settings may have a partial category list even though slot mappings exist.
+ const configured=[...new Set([...categoryNames,...Object.values(assignments)])].filter(name=>name&&name!=='Uncategorised');
+ const mapped=configured.filter(name=>String(groupUrgencyAssignments[name]||'').trim().toLowerCase()==='urgent');
+ if(mapped.length)return mapped;
+ // Backwards compatibility: legacy categories can be called Urgent without a group mapping.
+ return configured.filter(name=>/^urgent(?:$|[\\s_-])/i.test(name));
 }
 function renderUrgentCategoryToggles(){
  const root=$('urgentCategoryToggles');if(!root)return;
