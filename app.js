@@ -436,13 +436,23 @@ function renderPeopleGroups(){
  root.append(add);
 }
 function renderSlotTableGroupFilter(){
- const select=$('slotGroupFilter');if(!select)return;
- const old=select.value||'';
- select.replaceChildren();
- for(const [value,label] of [['','All urgency groups'],...groupUrgencyNames.map(g=>[g,g])]){
-  const option=document.createElement('option');option.value=value;option.textContent=label;select.append(option);
+ const dimensions=[
+  ['slotGroupFilter',groupUrgencyNames],
+  ['slotModeFilter',consultCategoryNames],
+  ['slotPurposeFilter',purposeCategoryNames],
+  ['slotCapacityFilter',capacityCategoryNames]
+ ];
+ for(const [id,names] of dimensions){
+  const select=$(id);if(!select)continue;
+  const old=select.value||'';
+  select.replaceChildren();
+  for(const value of ['',...names]){
+   const option=document.createElement('option');option.value=value;
+   option.textContent=value||'All';
+   select.append(option);
+  }
+  select.value=names.includes(old)?old:'';
  }
- select.value=groupUrgencyNames.includes(old)?old:'';
 }
 let slotTypeFileStats=new Map();
 let excludedSlotTypes=new Set();
@@ -483,7 +493,7 @@ function renderSlotTable(){
  const body=$('slotTableBody');if(!body)return;
  renderSlotTableGroupFilter();
  const query=String($('slotTableSearch')?.value||'').trim().toLowerCase();
- const filter=$('slotGroupFilter')?.value||'';
+ const filters=[['slotGroupFilter',assignments],['slotModeFilter',consultAssignments],['slotPurposeFilter',purposeAssignments],['slotCapacityFilter',capacityAssignments]];
  const unassignedTypeOnly=!!$('slotUnassignedOnly')?.checked;
  const unassignedModeOnly=!!$('slotModeUnassignedOnly')?.checked;
  const unassignedPurposeOnly=!!$('slotPurposeUnassignedOnly')?.checked;
@@ -496,7 +506,7 @@ function renderSlotTable(){
   if(unassignedModeOnly&&consultCategoryNames.includes(consultAssignments[slot]))return false;
   if(unassignedPurposeOnly&&purposeCategoryNames.includes(purposeAssignments[slot]))return false;
   if(unassignedCapacityOnly&&capacityCategoryNames.includes(capacityAssignments[slot]))return false;
-  if(filter&&group!==filter)return false;
+  if(filters.some(([id,mapping])=>$(id)?.value&&mapping[slot]!==$(id).value))return false;
   return !query||(slot+' '+assigned+' '+group).toLowerCase().includes(query);
  }).sort((a,b)=>{
   if(slotMappingSort==='count-desc'||slotMappingSort==='count-asc'){
@@ -2101,7 +2111,7 @@ function showPage(which){
  else if(which==='people'){renderPeopleGroups();renderPeopleGroupFilter();renderPeople();}
  else if(which==='practiceSettings'){renderPracticeSettings();}
  else {renderSlotGroupBoxes();renderSlotTable();renderEditor();renderGroupUrgencyEditor();renderClinicianEditor();renderClinicianGroupEditor();renderConsultEditor()}
-}document.getElementById('navHome').onclick=()=>showPage('home');document.getElementById('navChart').onclick=()=>showPage('chart');document.getElementById('navCategories').onclick=()=>showPage('categories');document.getElementById('navAvailability').onclick=()=>showPage('availability');document.getElementById('navRoutineAvailability').onclick=()=>showPage('routineAvailability');document.getElementById('navBookingTimes').onclick=()=>showPage('bookingTimes');document.getElementById('navSignposting').onclick=()=>showPage('signposting');document.getElementById('navPeople').onclick=()=>showPage('people');document.getElementById('navPracticeSettings').onclick=()=>showPage('practiceSettings');$('slotTableSearch').addEventListener('input',renderSlotTable);$('slotGroupFilter').addEventListener('change',renderSlotTable);$('slotUnassignedOnly').addEventListener('change',renderSlotTable);$('slotModeUnassignedOnly').addEventListener('change',renderSlotTable);$('slotPurposeUnassignedOnly').addEventListener('change',renderSlotTable);$('slotCapacityUnassignedOnly').addEventListener('change',renderSlotTable);$('peopleSearch').addEventListener('input',renderPeople);$('peopleGroupFilter').addEventListener('change',renderPeople);$('peopleUnassignedOnly').addEventListener('change',()=>{const only=$('peopleUnassignedOnly').checked;$('peopleGroupFilter').disabled=only;renderPeople()});
+}document.getElementById('navHome').onclick=()=>showPage('home');document.getElementById('navChart').onclick=()=>showPage('chart');document.getElementById('navCategories').onclick=()=>showPage('categories');document.getElementById('navAvailability').onclick=()=>showPage('availability');document.getElementById('navRoutineAvailability').onclick=()=>showPage('routineAvailability');document.getElementById('navBookingTimes').onclick=()=>showPage('bookingTimes');document.getElementById('navSignposting').onclick=()=>showPage('signposting');document.getElementById('navPeople').onclick=()=>showPage('people');document.getElementById('navPracticeSettings').onclick=()=>showPage('practiceSettings');$('slotTableSearch').addEventListener('input',renderSlotTable);for(const id of ['slotGroupFilter','slotModeFilter','slotPurposeFilter','slotCapacityFilter'])$(id)?.addEventListener('change',renderSlotTable);$('slotUnassignedOnly').addEventListener('change',renderSlotTable);$('slotModeUnassignedOnly').addEventListener('change',renderSlotTable);$('slotPurposeUnassignedOnly').addEventListener('change',renderSlotTable);$('slotCapacityUnassignedOnly').addEventListener('change',renderSlotTable);$('peopleSearch').addEventListener('input',renderPeople);$('peopleGroupFilter').addEventListener('change',renderPeople);$('peopleUnassignedOnly').addEventListener('change',()=>{const only=$('peopleUnassignedOnly').checked;$('peopleGroupFilter').disabled=only;renderPeople()});
 function renderClinicianEditor(){renderDropEditor('clinician');updateClinicianChartFilter()}
 function renderClinicianGroupEditor(){renderDropEditor('clinicianGroup');if(!$('peoplePage')?.classList.contains('hidden'))renderPeopleGroups()}
 $('addClinicianCategory').onclick=()=>{const el=$('newClinicianCategory');const c=el.value.trim();if(!c)return;if(c.toLowerCase()==='uncategorised'||clinicianCategoryNames.some(x=>x.toLowerCase()===c.toLowerCase())){alert('This clinician category name already exists or is reserved.');return}clinicianCategoryNames.push(c);el.value='';saveCategories();renderClinicianEditor();renderClinicianGroupEditor()};
