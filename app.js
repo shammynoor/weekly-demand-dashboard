@@ -1666,6 +1666,35 @@ function renderDemandUrgencyToggles(){
   });
  }
 }
+function installDemandCardTooltip(target){
+ if(!target||typeof target.on!=='function')return;
+ target.querySelector('.availability-tooltip-card')?.remove();
+ const card=document.createElement('div');card.className='availability-tooltip-card';card.hidden=true;
+ target.appendChild(card);
+ if(typeof target.removeAllListeners==='function'){
+  target.removeAllListeners('plotly_hover');target.removeAllListeners('plotly_unhover');
+ }
+ target.on('plotly_hover',data=>{
+  const point=data.points?.find(p=>Number.isFinite(p.y)&&p.data?.line?.color&&typeof p.data?.name==='string');
+  if(!point){card.hidden=true;return;}
+  const name=point.data.name;
+  const date=typeof point.customdata==='string'?point.customdata:'';
+  const formatted=/^\\d{4}-\\d{2}-\\d{2}$/.test(date)?new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'}):date;
+  card.replaceChildren();
+  const heading=document.createElement('div');heading.className='availability-tooltip-heading';
+  heading.textContent=formatted||(name.match(/\\d{4}$/)?.[0]||'Appointment demand');card.append(heading);
+  const row=document.createElement('div');row.className='availability-tooltip-line';
+  const dot=document.createElement('span');dot.className='availability-tooltip-dot';dot.style.backgroundColor=point.data.line.color;
+  const value=document.createElement('span');value.textContent=name+': '+Number(point.y).toLocaleString('en-GB')+' appointments';
+  row.append(dot,value);card.append(row);card.hidden=false;
+  const rect=target.getBoundingClientRect(),event=data.event;
+  const x=event?.clientX!=null?event.clientX-rect.left:rect.width/2;
+  const y=event?.clientY!=null?event.clientY-rect.top:rect.height/2;
+  card.style.left=Math.max(8,Math.min(rect.width-card.offsetWidth-8,x+18))+'px';
+  card.style.top=Math.max(8,y+card.offsetHeight+18>rect.height?y-card.offsetHeight-16:y+14)+'px';
+ });
+ target.on('plotly_unhover',()=>{card.hidden=true});
+}
 function drawCombinedDemandChart(){
  renderDemandUrgencyToggles();
  setupDemandMonthSlider();
@@ -1702,13 +1731,13 @@ function drawCombinedDemandChart(){
     x:plotPoints.map(x),y:plotPoints.map(p=>p.count),customdata:plotPoints.map(p=>p.date),
     type:'scatter',mode:'lines',connectgaps:false,opacity,
     line:{color:urgencyGroupColour(category),width,shape:'spline',smoothing:0.5},
-    hovertemplate:'%{customdata}<br><b>'+category+': %{y:,} appointments</b><extra>'+year+'</extra>'});
+    hoverinfo:'none'});
    if(partial)traces.push({name:category+' '+year+' (incomplete)',showlegend:false,
     x:complete.length?[x(complete[complete.length-1]),x(last)]:[x(last)],
     y:complete.length?[complete[complete.length-1].count,last.count]:[last.count],
     type:'scatter',mode:'lines+markers',opacity,
     line:{color:urgencyGroupColour(category),width,dash:'dot'},marker:{size:7,symbol:'circle-open'},
-    hovertemplate:'<b>'+category+': %{y:,} appointments</b><br>Incomplete period<extra>'+year+'</extra>'});
+    hoverinfo:'none'});
   }
  }
  // One horizontal mean for each visible urgency group, calculated over the
@@ -1738,7 +1767,7 @@ function drawCombinedDemandChart(){
   xaxis:continuousMode?{type:'date',title:monthlyMode?'Booking month':'Booking date',tickformat:'%b %Y',gridcolor:'#edf1f5',...(range?{range}: {})}:axis,
   yaxis:{title:'Appointments',range:[0,Math.max(5,step*5)],gridcolor:'#edf1f5'},hovermode:'closest',
   annotations:!selected.length?[{text:'Select an urgency type to display appointments',xref:'paper',yref:'paper',x:.5,y:.5,showarrow:false}]:averageAnnotations
- },{responsive:true,displaylogo:false,displayModeBar:false,scrollZoom:false,doubleClick:false});
+ },{responsive:true,displaylogo:false,displayModeBar:false,scrollZoom:false,doubleClick:false}).then(()=>installDemandCardTooltip($('combinedDemandChart')));
 }
 drawCombinedDemandChart();
 }
