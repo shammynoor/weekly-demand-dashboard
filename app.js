@@ -462,7 +462,9 @@ function renderSlotTableGroupFilter(){
 }
 let slotTypeFileStats=new Map();
 function formatSlotMonth(date){const [year,month]=date.split('-');return new Date(Date.UTC(Number(year),Number(month)-1,1)).toLocaleDateString('en-GB',{month:'short',year:'numeric',timeZone:'UTC'});}
+function ensureCoreConsultModes(){for(const name of ['Phone','Face-to-face'])if(!consultCategoryNames.some(value=>value.toLowerCase()===name.toLowerCase()))consultCategoryNames.push(name)}
 function renderSlotTable(){
+ ensureCoreConsultModes();
  const body=$('slotTableBody');if(!body)return;
  renderSlotTableGroupFilter();
  const query=String($('slotTableSearch')?.value||'').trim().toLowerCase();
@@ -514,7 +516,18 @@ function renderSlotTable(){
   const badge=document.createElement('span');badge.className='people-clinician-group-badge';
   const dot=document.createElement('span');dot.className='clinician-colour-dot';dot.style.backgroundColor=group?urgencyGroupColour(group):'#b6c0ca';
   badge.append(dot,document.createTextNode(group||'Unassigned'));groupCell.append(badge);
-  tr.append(slotCell,assignedCell,groupCell);body.append(tr);
+  const modeCell=document.createElement('td');modeCell.className='people-assigned-cell';
+  const modeSelect=document.createElement('select');modeSelect.className='people-clinician-select';modeSelect.setAttribute('aria-label','Consultation mode for '+slot);
+  const modeOptions=[['','Unassigned'],...consultCategoryNames.map(name=>[name,name])];
+  for(const [value,label] of modeOptions){const option=document.createElement('option');option.value=value;option.textContent=label;modeSelect.append(option)}
+  modeSelect.value=consultCategoryNames.includes(consultAssignments[slot])?consultAssignments[slot]:'';
+  modeSelect.addEventListener('change',()=>{
+   consultAssignments[slot]=modeSelect.value||'Uncategorised';
+   saveCategories();renderConsultEditor();
+   const status=$('slotGroupSaveStatus');if(status)status.textContent='Changes are saving automatically to OneDrive.';
+  });
+  modeCell.append(modeSelect);
+  tr.append(slotCell,assignedCell,groupCell,modeCell);body.append(tr);
  }
  const count=$('slotTableCount');if(count)count.textContent=rows.length+' of '+types.length+' slot types shown';
 }
@@ -556,9 +569,16 @@ function renderPeople(){
   const assigned=document.createElement('select');assigned.className='people-clinician-select';
   assigned.setAttribute('aria-label','Assigned Clinician Type for '+person.name);
   const unassigned=document.createElement('option');unassigned.value='';unassigned.textContent='Unassigned';assigned.append(unassigned);
-  for(const value of clinicianCategoryNames){
-   const option=document.createElement('option');option.value=value;option.textContent=value;assigned.append(option);
+  const clinicianGrouped=new Set();
+  for(const groupName of [...clinicianGroupNames].sort((a,b)=>a.localeCompare(b,undefined,{sensitivity:'base'}))){
+   const names=clinicianCategoryNames.filter(name=>clinicianGroupAssignments[name]===groupName).sort((a,b)=>a.localeCompare(b,undefined,{sensitivity:'base'}));
+   if(!names.length)continue;
+   const section=document.createElement('optgroup');section.label=groupName;
+   for(const value of names){const option=document.createElement('option');option.value=value;option.textContent=value;section.append(option);clinicianGrouped.add(value)}
+   assigned.append(section);
   }
+  const ungrouped=clinicianCategoryNames.filter(name=>!clinicianGrouped.has(name)).sort((a,b)=>a.localeCompare(b,undefined,{sensitivity:'base'}));
+  if(ungrouped.length){const section=document.createElement('optgroup');section.label='Other / Ungrouped';for(const value of ungrouped){const option=document.createElement('option');option.value=value;option.textContent=value;section.append(option)}assigned.append(section)}
   const stored=peopleClinicianType[key];
   assigned.value=stored!==undefined&&clinicianCategoryNames.includes(stored)?stored:suggestedClinicianType(person.type);
   assigned.addEventListener('change',()=>{
@@ -637,7 +657,7 @@ async function loadCloudCategories(){
    clinicianCategoryNames=Array.isArray(data.clinicianCategories)?validCategoryNames(data.clinicianCategories):clinicianCategoryNames;
    clinicianAssignments=data.clinicianAssignments?validAssignments(data.clinicianAssignments,clinicianCategoryNames):clinicianAssignments;
    consultCategoryNames=Array.isArray(data.consultCategories)?validCategoryNames(data.consultCategories):[];
-   consultAssignments=data.consultAssignments?validAssignments(data.consultAssignments,consultCategoryNames):{};lastConsultFilterNames=[];
+   consultAssignments=data.consultAssignments?validAssignments(data.consultAssignments,consultCategoryNames):{};ensureCoreConsultModes();lastConsultFilterNames=[];
    if(Array.isArray(data.clinicianGroupCategories)){clinicianGroupNames=validCategoryNames(data.clinicianGroupCategories);clinicianGroupAssignments=data.clinicianGroupAssignments?validAssignments(data.clinicianGroupAssignments,clinicianGroupNames):{};}
    if(data.urgencyGroupColours&&typeof data.urgencyGroupColours==='object'&&!Array.isArray(data.urgencyGroupColours))urgencyGroupColours=Object.fromEntries(Object.entries(data.urgencyGroupColours).filter(([key,value])=>typeof key==='string'&&/^#[0-9a-f]{6}$/i.test(value)));
    if(Array.isArray(data.groupUrgencyCategories)){
