@@ -1604,8 +1604,8 @@ function setupDemandMonthSlider(){
  const bounds=first+'|'+last;
  if(demandMonthBounds!==bounds){
   demandMonthBounds=bounds;
-  demandMonthStart=demandMonthStart?Math.max(low,Math.min(high,toIndex(demandMonthStart))):low;
-  demandMonthEnd=demandMonthEnd?Math.max(low,Math.min(high,toIndex(demandMonthEnd))):high;
+  demandMonthStart=toMonth(demandMonthStart?Math.max(low,Math.min(high,toIndex(demandMonthStart))):low);
+  demandMonthEnd=toMonth(demandMonthEnd?Math.max(low,Math.min(high,toIndex(demandMonthEnd))):high);
  }
  for(const input of [start,end]){input.min=String(low);input.max=String(high);input.step='1';input.disabled=low===high;}
  let a=demandMonthStart?toIndex(demandMonthStart):low,b=demandMonthEnd?toIndex(demandMonthEnd):high;
