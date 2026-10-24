@@ -3,9 +3,10 @@ let selectedAvailabilityUrgency='';
 "use strict";
 // Single rule for every dashboard toggle: exclude this non-actionable mapping value.
 function isDashboardToggleOption(name){
- const normalized=String(name||'').toLowerCase().replace(/[^a-z]/g,'');
- return !/^notre(?:levant|velant|velvant|lavant|levent|lev(?:a|e)nt)$/.test(normalized);
+ const value=String(name||'').toLowerCase().replace(/[^a-z]/g,'');
+ return value!=='unassigned' && !value.startsWith('notre') && !value.startsWith('notrv');
 }
+
 const CLIENT_ID='ba2bc895-4213-447c-ba62-d7edec6e8173';
 const SCOPES=['Files.Read','Files.ReadWrite','Files.ReadWrite.AppFolder'];
 const REDIRECT_URI='https://shammynoor.github.io/weekly-demand-dashboard/index.html';
@@ -1703,7 +1704,7 @@ function demandCategoryAllowed(slot,names,mapping,disabled){
 function renderDemandClassificationToggles(rootId,names,mapping,disabled,colourMap){
  names=names.filter(isDashboardToggleOption);
  const root=$(rootId);if(!root)return;
- const choices=[...names,'Unassigned'];
+ const choices=[...names];
  const signature=choices.join('\u0001');
  if(root.dataset.choices===signature){
   for(const input of root.querySelectorAll('input[data-classification]')){
@@ -2237,7 +2238,17 @@ function changeAvailabilityFilter(page,disabled,name,checked,checkbox){
  }
  (page==='urgent'?renderAvailabilityChart:renderRoutineAvailabilityChart)();
 }
+function removeInvalidDashboardToggles(){
+ document.querySelectorAll('input[data-filter-name],input[data-classification],input[data-urgency-group]').forEach(input=>{
+  const name=input.dataset.filterName||input.dataset.classification||input.dataset.urgencyGroup;
+  if(!isDashboardToggleOption(name)){
+   input.checked=false;
+   input.closest('label.filter-row')?.remove();
+  }
+ });
+}
 function refreshAvailabilityOptionStates(page){
+ removeInvalidDashboardToggles();
  const configs=page==='urgent'?
   [['urgentCategoryToggles','category',urgentCategoryDisabled],['urgentClinicianToggles','clinician',urgentClinicianDisabled],['urgentConsultToggles','consult',urgentConsultDisabled],['urgentPurposeToggles','purpose',urgentPurposeDisabled]]:
   [['routineClinicianFilters','clinician',routineDisabledClinicianGroups],['routineConsultFilters','consult',routineDisabledConsultModes]];
