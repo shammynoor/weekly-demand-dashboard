@@ -1616,14 +1616,23 @@ function setupDemandMonthSlider(){
  const label=i=>new Date(Date.UTC(Math.floor(i/12),i%12,1)).toLocaleDateString('en-GB',{month:'short',year:'numeric',timeZone:'UTC'});
  $('demandRangeFromLabel').textContent=label(a);$('demandRangeToLabel').textContent=label(b);
  const span=Math.max(1,high-low),fill=$('demandRangeFill');
- fill.style.left='calc('+((a-low)/span*100).toFixed(3)+'% + '+(16-32*(a-low)/span).toFixed(3)+'px)';
- fill.style.right='calc('+((high-b)/span*100).toFixed(3)+'% + '+(16-32*(high-b)/span).toFixed(3)+'px)';
+ // The native range thumb travels over the input width MINUS its own diameter.
+ // Position the blue fill between the actual thumb centres, not the input edges.
+ const trackWidth=fill.parentElement.clientWidth;
+ const thumbDiameter=34;
+ const sliderLeft=start.offsetLeft;
+ const travel=Math.max(0,start.clientWidth-thumbDiameter);
+ const startCentre=sliderLeft+thumbDiameter/2+((a-low)/span)*travel;
+ const endCentre=sliderLeft+thumbDiameter/2+((b-low)/span)*travel;
+ fill.style.left=startCentre+'px';
+ fill.style.right=Math.max(0,trackWidth-endCentre)+'px';
  if(!start.dataset.bound){
   const changed=which=>{
    let x=Number(start.value),y=Number(end.value);
    if(which==='start'&&x>y){y=x;end.value=String(y)}
    if(which==='end'&&y<x){x=y;start.value=String(x)}
    demandMonthStart=toMonth(x);demandMonthEnd=toMonth(y);
+   setupDemandMonthSlider();
    scheduleDemandRefresh();
   };
   start.addEventListener('input',()=>changed('start'));
