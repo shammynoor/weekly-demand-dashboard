@@ -2170,7 +2170,7 @@ function availabilityRecordsInRange(page){
   if(excludedSlotTypes.has(r.slot))return false;
   if(!(r.count>0)||r.date<first||r.date>=last)return false;
   const category=String(assignments[r.slot]||'').trim();
-  if(urgent?!urgentNames.has(category):String(groupUrgencyAssignments[category]||'').trim().toLowerCase()!==page)return false;
+  if(urgent?!urgentNames.has(capacityUrgencyCategory(r.slot)):String(groupUrgencyAssignments[category]||'').trim().toLowerCase()!==page)return false;
   if(urgent){const day=new Date(r.date+'T12:00:00Z').getUTCDay();if(day===0||day===6)return false;}
   return true;
  });
@@ -2180,7 +2180,7 @@ function availabilityOptionHasData(page,kind,name){
   const category=String(assignments[r.slot]||'').trim();
   const clinician=clinicianGroupAssignments[effectiveClinicianType(r.clinician,r.person)];
   const consult=consultAssignments[r.slot];
-  return kind==='category'?category===name:kind==='clinician'?clinician===name:consult===name;
+  return kind==='category'?(page==='urgent'?capacityUrgencyCategory(r.slot):category)===name:kind==='clinician'?clinician===name:consult===name;
  });
 }
 function availabilityHasVisibleRecords(page){
@@ -2189,7 +2189,7 @@ function availabilityHasVisibleRecords(page){
   const clinician=clinicianGroupAssignments[effectiveClinicianType(r.clinician,r.person)];
   const consult=consultAssignments[r.slot];
   return page==='urgent'?
-   !urgentCategoryDisabled.has(category)&&urgentCategoryNames().includes(category)&&
+   !urgentCategoryDisabled.has(capacityUrgencyCategory(r.slot))&&urgentCategoryNames().includes(capacityUrgencyCategory(r.slot))&&
    clinicianGroupNames.includes(clinician)&&!urgentClinicianDisabled.has(clinician)&&
    consultCategoryNames.includes(consult)&&!urgentConsultDisabled.has(consult):
    clinicianGroupNames.includes(clinician)&&!routineDisabledClinicianGroups.has(clinician)&&
@@ -2399,13 +2399,12 @@ function setupUrgentRangeControls(){
  update();
 }
 function urgentCategoryNames(){
- // Use categories actually assigned to slots as well as the category catalogue.
- // Older OneDrive settings may have a partial category list even though slot mappings exist.
- const configured=[...new Set([...categoryNames,...Object.values(assignments)])].filter(name=>name&&name!=='Uncategorised');
- const mapped=configured.filter(name=>String(groupUrgencyAssignments[name]||'').trim().toLowerCase()==='urgent');
- if(mapped.length)return mapped;
- // Backwards compatibility: legacy categories can be called Urgent without a group mapping.
- return configured.filter(name=>/^urgent(?:$|[\\s_-])/i.test(name));
+ // The capacity chart uses the configured urgency category list, not a legacy "Urgent" group.
+ return [...groupUrgencyNames];
+}
+function capacityUrgencyCategory(slot){
+ const detailed=assignments[slot]||'';
+ return groupUrgencyNames.includes(detailed)?detailed:(groupUrgencyAssignments[detailed]||'');
 }
 function renderUrgentCategoryToggles(){
  const root=$('urgentCategoryToggles');if(!root)return;
@@ -2413,7 +2412,7 @@ function renderUrgentCategoryToggles(){
  const current=[...root.querySelectorAll('input[data-filter-name]')].map(x=>x.dataset.filterName);
  if(current.length===names.length&&current.every((x,i)=>x===names[i])){root.querySelectorAll('input[data-filter-name]').forEach(input=>input.nextElementSibling?.style.setProperty('--switch-on',urgentColour(input.dataset.filterName)));return;}
  root.replaceChildren();
- if(!names.length){root.textContent='Assign Detailed urgency categories to the Urgent group in Manage categories.';return}
+ if(!names.length){root.textContent='Create urgency categories in Slot Settings to display capacity.';return}
  for(const name of names){
   const row=document.createElement('label');row.className='filter-row';
   const sw=document.createElement('span');sw.className='switch';
@@ -2427,7 +2426,7 @@ function renderUrgentCategoryToggles(){
   });
  }
 }
-function urgentColour(name){return urgencyTypeColour(name)}
+function urgentColour(name){return urgencyGroupColour(name)}
 function urgentGradientStops(hex){
  const rgb=[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16));
  const mix=(other,t)=>'#'+rgb.map((v,i)=>Math.round(v*(1-t)+other[i]*t).toString(16).padStart(2,'0')).join('');
@@ -2495,9 +2494,9 @@ function renderAvailabilityChart(){
  for(const r of availabilityRecords){
   if(excludedSlotTypes.has(r.slot)||!weekdays.has(r.date))continue;
   const category=String(assignments[r.slot]||'').trim();
-  if(!names.includes(category)||!urgentClinicianMatches(r.clinician,r.person)||!urgentConsultMatches(r.slot))continue;
+  if(!names.includes(capacityUrgencyCategory(r.slot))||!urgentClinicianMatches(r.clinician,r.person)||!urgentConsultMatches(r.slot))continue;
   const status=String(r.availability||'').trim().toLowerCase();
-  const label=status==='booked'?category:status==='blocked'?(urgentGroupWithheld?'Held Back':'Blocked'):status==='embargoed'?(urgentGroupWithheld?'Held Back':'Embargoed'):status==='available'?'Available':null;
+  const label=status==='booked'?capacityUrgencyCategory(r.slot):status==='blocked'?(urgentGroupWithheld?'Held Back':'Blocked'):status==='embargoed'?(urgentGroupWithheld?'Held Back':'Embargoed'):status==='available'?'Available':null;
   if(!label)continue;
   const key=JSON.stringify([r.date,label]);counts.set(key,(counts.get(key)||0)+r.count);
  }
