@@ -234,7 +234,7 @@ function suggestConsultMode(slot){
 function consolidateUrgencyGroups(){
  // Preserve chart compatibility: each urgency group is its own sole internal category.
  const groups=[...groupUrgencyNames];
- if(!groups.length)return;
+ if(!groups.length){categoryNames=[];groupUrgencyAssignments={};assignments=Object.fromEntries(Object.keys(assignments).map(slot=>[slot,'Uncategorised']));return;}
  const previous={...groupUrgencyAssignments};
  const converted={};
  for(const [slot,type] of Object.entries(assignments)){
@@ -762,7 +762,6 @@ async function loadCloudCategories(){
   renderConsultEditor();
   refresh();
   renderPeopleGroups();
-  renderSlotGroupBoxes();
   consolidateUrgencyGroups();
   renderSlotPurposeCategories();
   renderCapacityStatusCategories();
