@@ -444,6 +444,7 @@ function renderSlotTableGroupFilter(){
 }
 let slotTypeFileStats=new Map();
 let excludedSlotTypes=new Set();
+try{const saved=JSON.parse(localStorage.getItem('appointment-dashboard-categories-v1')||'{}');if(Array.isArray(saved.excludedSlotTypes))excludedSlotTypes=new Set(saved.excludedSlotTypes.filter(x=>typeof x==='string'))}catch(e){}
 function renderSlotInclusion(){
  const root=$('slotInclusionList');if(!root)return;
  root.replaceChildren();
@@ -898,7 +899,7 @@ async function loadCloudCategories(){
   renderSlotPurposeCategories();
   renderCapacityStatusCategories();
   renderConsultModeCards();
-  renderSlotGroupBoxes();renderSlotTable();renderUrgentCategoryToggles();
+  renderSlotGroupBoxes();renderSlotInclusion();renderSlotTable();renderUrgentCategoryToggles();
   renderPeople();
  }catch(e){
   cloudNotice('Could not load cloud categories: '+e.message+' (local settings retained)');
@@ -1478,7 +1479,7 @@ async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;
  if(!/slot[\s_-]*report/i.test(f.name))continue;
  newSlotFiles++;
  const stats=aggregateCSV(csvText,aggregate,availabilityAggregate,bookingTimeAggregate,peopleAggregate,newSlotTypeStats);valid+=stats.valid;skipped+=stats.skipped}
- slotTypeFileStats=newSlotTypeStats;
+ slotTypeFileStats=newSlotTypeStats;renderSlotInclusion();
  signpostingRecords=newSignposting;signpostingFileCount=newSignpostingFiles;signpostingSlotNames=new Set(newSignposting.map(event=>event.destination));
  // Each dated signposting event is also a booked appointment for the main
  // demand/availability calculations. Its destination is its Slot Type.
@@ -1512,7 +1513,7 @@ async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;
  }
  peopleRecords=[...peopleByName.values()].map(({name,types})=>({name,type:[...types].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]))[0][0]})).sort((a,b)=>a.type.localeCompare(b.type)||a.name.localeCompare(b.name));
  rebuildPeopleTypeLookup();
- renderPeople();renderSlotTable();
+ renderPeople();renderSlotInclusion();renderSlotTable();
  bookingTimeRecords=[...bookingTimeAggregate].map(([key,count])=>{const [bookedDay,minute,slot,clinician,person]=JSON.parse(key);return {bookedDay,minute,slot,clinician,person,count}});
  availabilityRecords=[...availabilityAggregate].map(([key,count])=>{const [date,slot,availability,clinician,person]=JSON.parse(key);return {date,slot,availability,clinician,person,count}});
  records=[...aggregate].map(([key,count])=>{const [bookedDay,slot,clinician,person]=JSON.parse(key);const bookedWeek=mondayOf(bookedDay);return {week:bookedWeek,bookedWeek,bookedDay,slot,clinician,person,status:'Booked',count}});weeks=[...new Set(records.map(r=>r.bookedWeek))].sort();types=[...new Set([...records.map(r=>r.slot),...availabilityRecords.map(r=>r.slot)])].sort();statuses=['Booked'];clinicianTypes=[...new Set([...records.map(r=>r.clinician),...availabilityRecords.map(r=>r.clinician)])].filter(Boolean).sort();
