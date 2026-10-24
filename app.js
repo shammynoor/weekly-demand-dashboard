@@ -2522,17 +2522,12 @@ function renderAvailabilityChart(){
   if(!names.includes(capacityUrgencyCategory(r.slot))||!urgentClinicianMatches(r.clinician,r.person)||!urgentConsultMatches(r.slot)||!urgentPurposeMatches(r.slot))continue;
   const status=String(r.availability||'').trim().toLowerCase();
   const isExtra=urgentSplitExtras&&capacityAssignments[r.slot]==='Extra';
-  const label=isExtra?'Extra':status==='booked'?capacityUrgencyCategory(r.slot):status==='blocked'?(urgentGroupWithheld?'Held Back':'Blocked'):status==='embargoed'?(urgentGroupWithheld?'Held Back':'Embargoed'):status==='available'?'Available':null;
+  const isSentExternal=urgentAddSignposted&&capacityAssignments[r.slot]==='Sent external';
+  const label=isSentExternal?'Sent external':isExtra?'Extra':status==='booked'?capacityUrgencyCategory(r.slot):status==='blocked'?(urgentGroupWithheld?'Held Back':'Blocked'):status==='embargoed'?(urgentGroupWithheld?'Held Back':'Embargoed'):status==='available'?'Available':null;
   if(!label)continue;
   const key=JSON.stringify([r.date,label]);counts.set(key,(counts.get(key)||0)+r.count);
  }
- if(urgentAddSignposted){
-  for(const record of signpostingRecords){
-   if(!weekdays.has(record.date))continue;
-   const key=JSON.stringify([record.date,'Signposted']);
-   counts.set(key,(counts.get(key)||0)+1);
-  }
- }
+
  const weekly=urgentAvailabilityGranularity==='week';
  const buckets=weekly?Array.from({length:weekCount},(_,i)=>dates[i*7]):dates;
  const bucketFor=date=>weekly?mondayOf(date):date;
@@ -2541,11 +2536,11 @@ function renderAvailabilityChart(){
   for(const [key,count] of counts){const [date,label]=JSON.parse(key);const k=JSON.stringify([bucketFor(date),label]);aggregated.set(k,(aggregated.get(k)||0)+count);}
   counts.clear();for(const [key,count] of aggregated)counts.set(key,count);
  }
- const labels=[...names,...(urgentSplitExtras?['Extra']:[]),...(urgentGroupWithheld?['Held Back']:['Blocked','Embargoed']),'Available',...(urgentAddSignposted?['Signposted']:[])];
+ const labels=[...names,...(urgentSplitExtras?['Extra']:[]),...(urgentGroupWithheld?['Held Back']:['Blocked','Embargoed']),'Available',...(urgentAddSignposted?['Sent external']:[])];
  const colours=Object.fromEntries(names.map(n=>[n,urgentColour(n)]));
  Object.assign(colours,{Blocked:'#435569',Embargoed:'#586674','Held Back':'#48535f',Available:'#ffffff'});
  if(urgentSplitExtras)colours.Extra=capacityColours.Extra||'#8aa6bd';
- if(urgentAddSignposted)colours.Signposted='#72a89c';
+ if(urgentAddSignposted)colours['Sent external']=capacityColours['Sent external']||'#8aa6bd';
  const totals=buckets.map(date=>labels.reduce((a,n)=>a+(counts.get(JSON.stringify([date,n]))||0),0));
  const max=Math.ceil(Math.max(1,...totals)*1.2/10)*10;
  const daySummary=buckets.map(date=>{
