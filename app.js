@@ -1026,7 +1026,7 @@ function aggregateCSV(csv,aggregated,availabilityAggregate,bookingTimeAggregate,
   const booked=new Date(dt.getTime()-lead*60000);
   if(!Number.isFinite(booked.getTime())){skipped++;continue;}
   const w=weekMonday(booked);
-  if(w<'2025-07-07')continue;
+  if(w<'2024-12-30')continue;
   const bookedDay=booked.toISOString().slice(0,10);
   // Booking clock time, calculated using the same lead-time arithmetic as the demand charts.
   const bookedMinute=booked.getUTCHours()*60+booked.getUTCMinutes();
@@ -1347,7 +1347,7 @@ async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;
   const availabilityKey=JSON.stringify([date,slot,'Booked',signpostingClinician,'']);
   availabilityAggregate.set(availabilityKey,(availabilityAggregate.get(availabilityKey)||0)+1);
   const bookedWeek=mondayOf(date);
-  if(bookedWeek>='2025-07-07'){
+  if(bookedWeek>='2024-12-30'){
    const key=JSON.stringify([date,slot,signpostingClinician,'']);
    aggregate.set(key,(aggregate.get(key)||0)+1);
    const tm=/^(\\d{1,2}):(\\d{2})/.exec(event.time||'');
@@ -1524,7 +1524,7 @@ function refresh(){
 const activeWeekSet=new Set();
 for(const r of records){if(includedRecord(r)){const key=periodKey(r);if(key)activeWeekSet.add(key)}}
 const activeWeeks=[...activeWeekSet].sort();
-const selectedWeeks=activeWeeks.filter(w=>w>=(monthlyMode?'2025-07':'2025-07-07')&&w<=(monthlyMode?thisMonth:thisWeek)&&(showCurrentWeek||!periodIsCurrent(w)));
+const selectedWeeks=activeWeeks.filter(w=>w>=(monthlyMode?'2025-01':'2024-12-30')&&w<=(monthlyMode?thisMonth:thisWeek)&&(showCurrentWeek||!periodIsCurrent(w)));
 const sums=new Map(selectedWeeks.map(w=>[w,0]));
 const demandCategoryTotals=Object.fromEntries(['urgent','routine','followup'].map(c=>[c,new Map(selectedWeeks.map(w=>[w,0]))]));
 for(const r of records){
@@ -1606,7 +1606,7 @@ function drawCategoryChart(target,category,palette,sharedMax){
   }
  }
  // One flat average, calculated from every displayed week across every year.
- traces.push({name:'All-years '+(monthlyMode?'monthly':'weekly')+' average ('+Math.round(average).toLocaleString('en-GB')+')',x:continuousMode?[monthOfPeriod(selectedWeeks[0]||'2025-07-07'),monthOfPeriod(selectedWeeks[selectedWeeks.length-1]||'2025-07-14')]:[0,12],y:[average,average],type:'scatter',mode:'lines',hoverinfo:'skip',opacity:0.58,line:{color:category==='urgent'?'#9c2633':category==='followup'?'#286cb8':'#23885b',width:2,dash:'dash'},showlegend:true});
+ traces.push({name:'All-years '+(monthlyMode?'monthly':'weekly')+' average ('+Math.round(average).toLocaleString('en-GB')+')',x:continuousMode?[monthOfPeriod(selectedWeeks[0]||'2024-12-30'),monthOfPeriod(selectedWeeks[selectedWeeks.length-1]||'2025-07-14')]:[0,12],y:[average,average],type:'scatter',mode:'lines',hoverinfo:'skip',opacity:0.58,line:{color:category==='urgent'?'#9c2633':category==='followup'?'#286cb8':'#23885b',width:2,dash:'dash'},showlegend:true});
  const visibleDates=selectedWeeks.map(monthOfPeriod).sort();
  const continuousRange=visibleDates.length?[visibleDates[0],visibleDates[visibleDates.length-1]]:null;
  const chartEl=$(target);
