@@ -1592,6 +1592,43 @@ function yearBackgroundShapes(periods){
  }
  return shapes;
 }
+let demandMonthStart=null,demandMonthEnd=null,demandMonthBounds='';
+function setupDemandMonthSlider(){
+ const start=$('demandRangeStart'),end=$('demandRangeEnd');if(!start||!end)return;
+ const months=[...new Set(availabilityRecords.map(r=>r.date?.slice(0,7)).filter(Boolean))].sort();
+ if(!months.length)return;
+ const first=months[0],last=months[months.length-1];
+ const toIndex=m=>Number(m.slice(0,4))*12+Number(m.slice(5,7))-1;
+ const toMonth=i=>String(Math.floor(i/12)).padStart(4,'0')+'-'+String(i%12+1).padStart(2,'0');
+ const low=toIndex(first),high=toIndex(last);
+ const bounds=first+'|'+last;
+ if(demandMonthBounds!==bounds){
+  demandMonthBounds=bounds;
+  demandMonthStart=demandMonthStart?Math.max(low,Math.min(high,toIndex(demandMonthStart))):low;
+  demandMonthEnd=demandMonthEnd?Math.max(low,Math.min(high,toIndex(demandMonthEnd))):high;
+ }
+ for(const input of [start,end]){input.min=String(low);input.max=String(high);input.step='1';input.disabled=low===high;}
+ let a=demandMonthStart?toIndex(demandMonthStart):low,b=demandMonthEnd?toIndex(demandMonthEnd):high;
+ a=Math.max(low,Math.min(high,a));b=Math.max(a,Math.min(high,b));
+ start.value=String(a);end.value=String(b);
+ const label=i=>new Date(Date.UTC(Math.floor(i/12),i%12,1)).toLocaleDateString('en-GB',{month:'short',year:'numeric',timeZone:'UTC'});
+ $('demandRangeFromLabel').textContent=label(a);$('demandRangeToLabel').textContent=label(b);
+ const span=Math.max(1,high-low),fill=$('demandRangeFill');
+ fill.style.left='calc(16px + (100% - 32px) * '+((a-low)/span)+')';
+ fill.style.right='calc(16px + (100% - 32px) * '+((high-b)/span)+')';
+ if(!start.dataset.bound){
+  const changed=which=>{
+   let x=Number(start.value),y=Number(end.value);
+   if(which==='start'&&x>y){y=x;end.value=String(y)}
+   if(which==='end'&&y<x){x=y;start.value=String(x)}
+   demandMonthStart=toMonth(x);demandMonthEnd=toMonth(y);
+   scheduleDemandRefresh();
+  };
+  start.addEventListener('input',()=>changed('start'));
+  end.addEventListener('input',()=>changed('end'));
+  start.dataset.bound='1';
+ }
+}
 const disabledDemandUrgencyGroups=new Set();
 let lastDemandUrgencyGroupNames=[];
 function renderDemandUrgencyToggles(){
@@ -1622,8 +1659,10 @@ function renderDemandUrgencyToggles(){
 }
 function drawCombinedDemandChart(){
  renderDemandUrgencyToggles();
+ setupDemandMonthSlider();
  const selected=groupUrgencyNames.filter(name=>!disabledDemandUrgencyGroups.has(name));
- const years=[...new Set(selectedWeeks.map(w=>Number(w.slice(0,4))))].sort((a,b)=>a-b);
+ const visibleWeeks=selectedWeeks.filter(w=>(!demandMonthStart||w.slice(0,7)>=demandMonthStart)&&(!demandMonthEnd||w.slice(0,7)<=demandMonthEnd));
+ const years=[...new Set(visibleWeeks.map(w=>Number(w.slice(0,4))))].sort((a,b)=>a-b);
  const latestYear=years.length?years[years.length-1]:null;
  const traces=[];
  const yearWidth=(year)=>year===latestYear?5.5:Math.max(1.1,2.8-(latestYear-year)*0.45);
@@ -1638,7 +1677,7 @@ function drawCombinedDemandChart(){
   const totals=demandCategoryTotals[category];
   const points=[...totals].map(([date,count])=>({date,count,year:Number(date.slice(0,4))}));
   for(const [i,year] of years.entries()){
-   const data=points.filter(p=>p.year===year).sort((a,b)=>a.date.localeCompare(b.date));
+   const data=points.filter(p=>p.year===year&&(!demandMonthStart||p.date.slice(0,7)>=demandMonthStart)&&(!demandMonthEnd||p.date.slice(0,7)<=demandMonthEnd)).sort((a,b)=>a.date.localeCompare(b.date));
    if(!data.length)continue;
    const last=data[data.length-1];
    const partial=showCurrentWeek&&periodIsCurrent(last.date);
@@ -1661,11 +1700,11 @@ function drawCombinedDemandChart(){
  }
  const rawStep=Math.max(1,maxCount/5),magnitude=Math.pow(10,Math.floor(Math.log10(rawStep)));
  const step=([1,2,5,10].find(v=>v*magnitude>=rawStep)||10)*magnitude;
- const range=firstAppointmentDate&&lastAppointmentDate?[firstAppointmentDate,lastAppointmentDate]:null;
+ const range=demandMonthStart&&demandMonthEnd?[demandMonthStart+'-01',new Date(Date.UTC(Number(demandMonthEnd.slice(0,4)),Number(demandMonthEnd.slice(5,7)),0)).toISOString().slice(0,10)]:null;
  Plotly.react('combinedDemandChart',traces,{dragmode:false,autosize:true,height:535,
   margin:{l:62,r:20,t:55,b:65},paper_bgcolor:'white',plot_bgcolor:'white',
-  shapes:yearBackgroundShapes(selectedWeeks),
-  legend:{orientation:'h',y:1.12,x:0},
+  shapes:yearBackgroundShapes(visibleWeeks),
+  legend:{orientation:'h',y:1.14,x:0,xanchor:'left',yanchor:'bottom',entrywidth:85,entrywidthmode:'pixels',traceorder:'normal'},
   xaxis:continuousMode?{type:'date',title:monthlyMode?'Booking month':'Booking date',tickformat:'%b %Y',gridcolor:'#edf1f5',...(range?{range}: {})}:axis,
   yaxis:{title:'Appointments',range:[0,Math.max(5,step*5)],gridcolor:'#edf1f5'},hovermode:'closest',
   annotations:!selected.length?[{text:'Select an urgency type to display appointments',xref:'paper',yref:'paper',x:.5,y:.5,showarrow:false}]:[]
