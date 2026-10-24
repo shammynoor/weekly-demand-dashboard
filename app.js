@@ -1646,7 +1646,7 @@ function drawCombinedDemandChart(){
     type:'scatter',mode:'lines',connectgaps:false,opacity,
     line:{color:urgencyGroupColour(category),width,shape:'spline',smoothing:0.5},
     hovertemplate:'%{customdata}<br><b>'+category+': %{y:,} appointments</b><extra>'+year+'</extra>'});
-   if(partial)traces.push({name:urgencyLabels[category]+' '+year+' (incomplete)',showlegend:false,
+   if(partial)traces.push({name:category+' '+year+' (incomplete)',showlegend:false,
     x:complete.length?[x(complete[complete.length-1]),x(last)]:[x(last)],
     y:complete.length?[complete[complete.length-1].count,last.count]:[last.count],
     type:'scatter',mode:'lines+markers',opacity,
