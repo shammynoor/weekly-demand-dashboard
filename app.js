@@ -519,12 +519,14 @@ function renderSlotTable(){
  renderSlotTableGroupFilter();
  const query=String($('slotTableSearch')?.value||'').trim().toLowerCase();
  const filter=$('slotGroupFilter')?.value||'';
- const unassignedOnly=!!$('slotUnassignedOnly')?.checked;
+ const unassignedTypeOnly=!!$('slotUnassignedOnly')?.checked;
+ const unassignedModeOnly=!!$('slotModeUnassignedOnly')?.checked;
  const rows=types.filter(slot=>{
   const assigned=categoryNames.includes(assignments[slot])?assignments[slot]:'';
   const group=assigned&&groupUrgencyNames.includes(groupUrgencyAssignments[assigned])?groupUrgencyAssignments[assigned]:'';
-  if(unassignedOnly&&assigned)return false;
-  if(!unassignedOnly&&filter&&group!==filter)return false;
+  if(unassignedTypeOnly&&assigned)return false;
+  if(unassignedModeOnly&&consultCategoryNames.includes(consultAssignments[slot]))return false;
+  if(filter&&group!==filter)return false;
   return !query||(slot+' '+assigned+' '+group).toLowerCase().includes(query);
  }).sort((a,b)=>a.localeCompare(b,undefined,{sensitivity:'base'}));
  body.replaceChildren();
@@ -1641,7 +1643,7 @@ function renderGroupUrgencyEditor(){renderDropEditor('groupUrgency');updateAvail
  else if(which==='signposting')setTimeout(renderSignpostingChart,0);
  else if(which==='people'){renderPeopleGroups();renderPeopleGroupFilter();renderPeople();}
  else {renderSlotGroupBoxes();renderSlotTable();renderEditor();renderGroupUrgencyEditor();renderClinicianEditor();renderClinicianGroupEditor();renderConsultEditor()}
-}document.getElementById('navHome').onclick=()=>showPage('home');document.getElementById('navChart').onclick=()=>showPage('chart');document.getElementById('navCategories').onclick=()=>showPage('categories');document.getElementById('navAvailability').onclick=()=>showPage('availability');document.getElementById('navRoutineAvailability').onclick=()=>showPage('routineAvailability');document.getElementById('navBookingTimes').onclick=()=>showPage('bookingTimes');document.getElementById('navSignposting').onclick=()=>showPage('signposting');document.getElementById('navPeople').onclick=()=>showPage('people');$('slotTableSearch').addEventListener('input',renderSlotTable);$('slotGroupFilter').addEventListener('change',renderSlotTable);$('slotUnassignedOnly').addEventListener('change',()=>{$('slotGroupFilter').disabled=$('slotUnassignedOnly').checked;renderSlotTable()});$('peopleSearch').addEventListener('input',renderPeople);$('peopleGroupFilter').addEventListener('change',renderPeople);$('peopleUnassignedOnly').addEventListener('change',()=>{const only=$('peopleUnassignedOnly').checked;$('peopleGroupFilter').disabled=only;renderPeople()});
+}document.getElementById('navHome').onclick=()=>showPage('home');document.getElementById('navChart').onclick=()=>showPage('chart');document.getElementById('navCategories').onclick=()=>showPage('categories');document.getElementById('navAvailability').onclick=()=>showPage('availability');document.getElementById('navRoutineAvailability').onclick=()=>showPage('routineAvailability');document.getElementById('navBookingTimes').onclick=()=>showPage('bookingTimes');document.getElementById('navSignposting').onclick=()=>showPage('signposting');document.getElementById('navPeople').onclick=()=>showPage('people');$('slotTableSearch').addEventListener('input',renderSlotTable);$('slotGroupFilter').addEventListener('change',renderSlotTable);$('slotUnassignedOnly').addEventListener('change',renderSlotTable);$('slotModeUnassignedOnly').addEventListener('change',renderSlotTable);$('peopleSearch').addEventListener('input',renderPeople);$('peopleGroupFilter').addEventListener('change',renderPeople);$('peopleUnassignedOnly').addEventListener('change',()=>{const only=$('peopleUnassignedOnly').checked;$('peopleGroupFilter').disabled=only;renderPeople()});
 function renderClinicianEditor(){renderDropEditor('clinician');updateClinicianChartFilter()}
 function renderClinicianGroupEditor(){renderDropEditor('clinicianGroup');if(!$('peoplePage')?.classList.contains('hidden'))renderPeopleGroups()}
 $('addClinicianCategory').onclick=()=>{const el=$('newClinicianCategory');const c=el.value.trim();if(!c)return;if(c.toLowerCase()==='uncategorised'||clinicianCategoryNames.some(x=>x.toLowerCase()===c.toLowerCase())){alert('This clinician category name already exists or is reserved.');return}clinicianCategoryNames.push(c);el.value='';saveCategories();renderClinicianEditor();renderClinicianGroupEditor()};
