@@ -710,6 +710,7 @@ async function loadCloudCategories(){
     practiceSettings={name:typeof p.name==='string'?p.name:'',anchors:p.anchors&&typeof p.anchors==='object'&&!Array.isArray(p.anchors)?Object.fromEntries(Object.entries(p.anchors).filter(([month,value])=>/^\d{4}-\d{2}$/.test(month)&&Number.isFinite(Number(value))&&Number(value)>=0).map(([month,value])=>[month,Number(value)])): {}};
     try{localStorage.setItem(PRACTICE_SETTINGS_KEY,JSON.stringify(practiceSettings))}catch(e){}
    }
+   updateHomePracticeName();
    peopleLocum=data.peopleLocum&&typeof data.peopleLocum==='object'&&!Array.isArray(data.peopleLocum)?Object.fromEntries(Object.entries(data.peopleLocum).filter(([key,value])=>typeof key==='string'&&(value==='yes'||value==='no'))):peopleLocum;
    peopleClinicianType=data.peopleClinicianType&&typeof data.peopleClinicianType==='object'&&!Array.isArray(data.peopleClinicianType)?data.peopleClinicianType:peopleClinicianType;
    if(data.clinicianTypeColours&&typeof data.clinicianTypeColours==='object')clinicianTypeColours=Object.fromEntries(Object.entries(data.clinicianTypeColours).filter(([k,v])=>/^#[0-9a-f]{6}$/i.test(v)));
@@ -1520,7 +1521,7 @@ let excludeBankHolidays=true;
 document.getElementById('excludeBH').onchange=e=>{excludeBankHolidays=!e.target.checked;scheduleDemandRefresh()};
 function isoWeek(weekStart){const d=new Date(weekStart+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+3);const year=d.getUTCFullYear();const jan4=new Date(Date.UTC(year,0,4,12));jan4.setUTCDate(jan4.getUTCDate()-((jan4.getUTCDay()+6)%7));const week=1+Math.round((d-jan4)/604800000);return {year,week}}
 const colours=['#1475b8','#e57a28','#159a78','#9053b4','#c64c69','#65748b'];
-let current=[];let continuousMode=false;let showCurrentWeek=true;let monthlyMode=false;
+let current=[];let continuousMode=true;let showCurrentWeek=true;let monthlyMode=false;
 const todayLondon=(()=>{const parts=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/London',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());const v=Object.fromEntries(parts.map(p=>[p.type,p.value]));return `${v.year}-${v.month}-${v.day}`})();
 const thisWeek=mondayOf(todayLondon),thisMonth=todayLondon.slice(0,7);
 let savedWeeklyIncludeBankHolidays=document.getElementById('excludeBH').checked;
@@ -1555,6 +1556,7 @@ function weeklyUrgencyMatches(slot,category){
 }
 let demandMonthStart=null,demandMonthEnd=null,demandMonthBounds='';
 const disabledDemandUrgencyGroups=new Set();
+let demandUrgencyDefaultsApplied=false;
 let lastDemandUrgencyGroupNames=[];
 let demandRefreshQueued=false;
 function scheduleDemandRefresh(){
@@ -1626,7 +1628,7 @@ function setupDemandMonthSlider(){
  // Position the blue fill between the actual thumb centres, not the input edges.
  const trackWidth=fill.parentElement.clientWidth;
  const thumbDiameter=24;
- const sliderLeft=start.offsetLeft;
+ const sliderLeft=start.getBoundingClientRect().left-fill.parentElement.getBoundingClientRect().left;
  const travel=Math.max(0,start.clientWidth-thumbDiameter);
  const startCentre=sliderLeft+thumbDiameter/2+((a-low)/span)*travel;
  const endCentre=sliderLeft+thumbDiameter/2+((b-low)/span)*travel;
@@ -1652,6 +1654,11 @@ function renderDemandUrgencyToggles(){
  if(names.length===lastDemandUrgencyGroupNames.length&&names.every((n,i)=>n===lastDemandUrgencyGroupNames[i])){
   root.querySelectorAll('input[data-urgency-group]').forEach(input=>{input.checked=!disabledDemandUrgencyGroups.has(input.dataset.urgencyGroup);input.nextElementSibling?.style.setProperty('--switch-on',urgencyGroupColour(input.dataset.urgencyGroup));});
   return;
+ }
+ if(!demandUrgencyDefaultsApplied&&names.length){
+  disabledDemandUrgencyGroups.clear();
+  for(const name of names)if(!['urgent','routine','follow up','follow-up','followup'].includes(name.trim().toLowerCase()))disabledDemandUrgencyGroups.add(name);
+  demandUrgencyDefaultsApplied=true;
  }
  lastDemandUrgencyGroupNames=names;
  root.replaceChildren();
@@ -1696,12 +1703,19 @@ function installDemandCardTooltip(target){
   const rect=target.getBoundingClientRect(),event=data.event;
   const x=event?.clientX!=null?event.clientX-rect.left:rect.width/2;
   const y=event?.clientY!=null?event.clientY-rect.top:rect.height/2;
-  card.style.left=Math.max(8,Math.min(rect.width-card.offsetWidth-8,x+18))+'px';
-  card.style.top=Math.max(8,y+card.offsetHeight+18>rect.height?y-card.offsetHeight-16:y+14)+'px';
+  // Plotly chart is positioned relative to its own internal layers; use viewport coordinates.
+  const parent=card.offsetParent||target;
+  const parentRect=parent.getBoundingClientRect();
+  const clientX=rect.left+x,clientY=rect.top+y;
+  const left=Math.max(parentRect.left+8,Math.min(parentRect.right-card.offsetWidth-8,clientX+18));
+  const top=clientY+card.offsetHeight+18>parentRect.bottom?clientY-card.offsetHeight-16:clientY+14;
+  card.style.left=(left-parentRect.left)+'px';
+  card.style.top=(Math.max(parentRect.top+8,top)-parentRect.top)+'px';
  });
  target.on('plotly_unhover',()=>{card.hidden=true});
 }
 function drawCombinedDemandChart(){
+ const adjustmentStatus=$('demandAdjustmentStatus');if(adjustmentStatus)adjustmentStatus.textContent=adjustDemandForListSize?'Adjusted for list size':'Not adjusted for list size';
  renderDemandUrgencyToggles();
  setupDemandMonthSlider();
  // Compute the population normalisation once per redraw, not for every chart point.
@@ -1798,7 +1812,7 @@ function renderGroupUrgencyEditor(){renderDropEditor('groupUrgency');updateAvail
 const PRACTICE_SETTINGS_KEY='demand-iq-practice-settings-v1';
 let practiceSettings={name:'',anchors:{}},practiceSelectedMonth='';
 try{const stored=JSON.parse(localStorage.getItem(PRACTICE_SETTINGS_KEY)||'{}');if(stored&&typeof stored==='object'){practiceSettings.name=typeof stored.name==='string'?stored.name:'';practiceSettings.anchors=stored.anchors&&typeof stored.anchors==='object'?stored.anchors:{};}}catch(e){}
-function savePracticeSettings(){try{localStorage.setItem(PRACTICE_SETTINGS_KEY,JSON.stringify(practiceSettings));}catch(e){$('practiceListStatus').textContent='Unable to save changes in this browser.';}scheduleCloudSave();scheduleDemandRefresh();}
+function savePracticeSettings(){updateHomePracticeName();try{localStorage.setItem(PRACTICE_SETTINGS_KEY,JSON.stringify(practiceSettings));}catch(e){$('practiceListStatus').textContent='Unable to save changes in this browser.';}scheduleCloudSave();scheduleDemandRefresh();}
 function practiceMonths(){
  let first='',last='';
  for(const r of availabilityRecords){
@@ -1840,8 +1854,10 @@ function listSizeAdjustedCount(date,count){
  return historical>0?count*reference/historical:count;
 }
 $('adjustListSize')?.addEventListener('change',e=>{adjustDemandForListSize=e.target.checked;scheduleDemandRefresh();});
+function updateHomePracticeName(){const el=$('homePracticeName');if(el)el.textContent=practiceSettings.name.trim()||'Practice overview';}
 function renderPracticeSettings(){
  const input=$('practiceNameInput');if(!input)return;
+ updateHomePracticeName();
  if(document.activeElement!==input)input.value=practiceSettings.name;
  const months=practiceMonths(),root=$('practiceListGraph');root.replaceChildren();
  if(!months.length){root.textContent='Load appointment reports to show the practice list size timeline.';return;}
@@ -1886,6 +1902,7 @@ function showPage(which){
  for(const [page,nav,name] of [['homePage','navHome','home'],['chartPage','navChart','chart'],['categoryPage','navCategories','categories'],['availabilityPage','navAvailability','availability'],['routineAvailabilityPage','navRoutineAvailability','routineAvailability'],['bookingTimesPage','navBookingTimes','bookingTimes'],['signpostingPage','navSignposting','signposting'],['peoplePage','navPeople','people'],['practiceSettingsPage','navPracticeSettings','practiceSettings']]){
   $(page).classList.toggle('hidden',which!==name);$(nav).classList.toggle('active',which===name);
  }
+ if(which==='home')updateHomePracticeName();
  if(which==='chart')setTimeout(()=>{refresh();scheduleChartResize()},0);
  else if(which==='availability')setTimeout(renderAvailabilityChart,0);
  else if(which==='routineAvailability')setTimeout(renderRoutineAvailabilityChart,0);
