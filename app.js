@@ -510,6 +510,104 @@ function renderSlotTable(){
  const count=$('slotTableCount');if(count)count.textContent=rows.length+' of '+types.length+' slot types shown';
 }
 
+
+/* Smart allocation: suggestions are transient until explicitly approved. */
+let smartSlotSuggestions=[];
+const smartDimensions=()=>[
+ {key:'urgency',label:'Urgency',names:groupUrgencyNames,map:assignments},
+ {key:'mode',label:'Consult Mode',names:consultCategoryNames,map:consultAssignments},
+ {key:'purpose',label:'Slot Purpose',names:purposeCategoryNames,map:purposeAssignments},
+ {key:'capacity',label:'Capacity Status',names:capacityCategoryNames,map:capacityAssignments}
+];
+function smartWords(value){return String(value||'').toLocaleLowerCase('en-GB').replace(/[^a-z0-9]+/g,' ').trim().split(/\s+/).filter(Boolean)}
+function smartSuggestion(slot,dim){
+ if(dim.names.includes(dim.map[slot]))return null;
+ const words=smartWords(slot),wordSet=new Set(words);
+ if(!words.length)return null;
+ const votes=new Map();
+ const add=(name,points,why)=>{if(!dim.names.includes(name))return;const old=votes.get(name);if(!old||points>old.points)votes.set(name,{name,points,why})};
+ // Reuse exact classifications for near-identical, previously confirmed slot names.
+ const normal=words.join(' ');
+ for(const [other,name] of Object.entries(dim.map)){
+  if(other===slot||!dim.names.includes(name))continue;
+  const otherWords=smartWords(other),otherNormal=otherWords.join(' ');
+  if(otherNormal===normal)add(name,100,'Previously mapped identical slot name');
+  else if(words.length>=2&&otherWords.length>=2){
+   const shared=words.filter(w=>otherWords.includes(w)).length;
+   if(shared>=2&&shared===words.length&&shared===otherWords.length)add(name,96,'Previously mapped equivalent slot name');
+  }
+ }
+ for(const name of dim.names){
+  const terms=smartWords(name);
+  if(!terms.length)continue;
+  const phrase=terms.join(' ');
+  if(normal===phrase||(' '+normal+' ').includes(' '+phrase+' '))add(name,terms.length===1?88:94,'Category name appears in slot name');
+  else if(terms.length>1&&terms.every(w=>wordSet.has(w)))add(name,85,'All category words found');
+ }
+ // Only use a small set of unambiguous, domain-specific aliases.
+ const aliases={
+  urgency:[['urgent',['urgent','emergency','same day','on the day']],['routine',['routine','planned']]],
+  mode:[['phone',['telephone','phone','tel','telephony']],['face to face',['face to face','f2f','in person']],['video',['video','virtual video']]],
+  purpose:[['follow up',['follow up','followup','review appointment']],['medication',['medication','medicines','prescription']],['immunisation',['immunisation','vaccination','vaccine']]],
+  capacity:[['additional',['additional','extra capacity','overflow','overbook']],['core',['core capacity','standard capacity']]]
+ };
+ for(const [concept,patterns] of aliases[dim.key]||[]){
+  const candidates=dim.names.filter(name=>{const n=smartWords(name).join(' ');return n===concept||n.includes(concept)});
+  if(candidates.length!==1)continue;
+  if(patterns.some(pattern=>(' '+normal+' ').includes(' '+pattern+' ')))add(candidates[0],82,'Recognised '+concept+' wording');
+ }
+ const sorted=[...votes.values()].sort((a,b)=>b.points-a.points);
+ if(!sorted.length||sorted[0].points<80||sorted[1]&&sorted[0].points-sorted[1].points<10)return null;
+ return {slot,key:dim.key,label:dim.label,value:sorted[0].name,confidence:sorted[0].points>=95?'High':'Medium',reason:sorted[0].why};
+}
+function renderSmartAllocationReview(){
+ const panel=$('slotSmartReview'),body=$('slotSmartReviewBody'),summary=$('slotSmartSummary');
+ if(!panel||!body)return;
+ panel.hidden=false;body.replaceChildren();
+ smartSlotSuggestions=smartSlotSuggestions.filter(item=>{
+  const dim=smartDimensions().find(d=>d.key===item.key);
+  return dim&&dim.names.includes(item.value)&&!dim.names.includes(dim.map[item.slot]);
+ });
+ if(summary)summary.textContent=smartSlotSuggestions.length+' suggestions awaiting approval. No existing assignments will be overwritten.';
+ for(const item of smartSlotSuggestions){
+  const tr=document.createElement('tr');
+  const check=document.createElement('input');check.type='checkbox';check.checked=!!item.selected;check.setAttribute('aria-label','Approve '+item.label+' for '+item.slot);
+  check.addEventListener('change',()=>{item.selected=check.checked;updateSmartSelectedCount()});
+  const cells=[check,item.slot,item.label,item.value,item.confidence,item.reason];
+  for(const value of cells){const td=document.createElement('td');if(value instanceof HTMLElement)td.append(value);else td.textContent=value;tr.append(td)}
+  body.append(tr);
+ }
+ updateSmartSelectedCount();
+}
+function updateSmartSelectedCount(){const button=$('slotSmartApply');if(button){const n=smartSlotSuggestions.filter(x=>x.selected).length;button.textContent='Apply '+n+' selected';button.disabled=!n}}
+function initSmartAllocation(){
+ const start=$('slotSmartSuggest'),apply=$('slotSmartApply'),all=$('slotSmartSelectAll'),close=$('slotSmartClose');
+ if(!start||!apply)return;
+ start.addEventListener('click',()=>{
+  smartSlotSuggestions=[];
+  for(const slot of types)for(const dim of smartDimensions()){const suggestion=smartSuggestion(slot,dim);if(suggestion)smartSlotSuggestions.push({...suggestion,selected:false})}
+  smartSlotSuggestions.sort((a,b)=>a.slot.localeCompare(b.slot)||a.label.localeCompare(b.label));
+  renderSmartAllocationReview();
+ });
+ all?.addEventListener('click',()=>{for(const item of smartSlotSuggestions)item.selected=true;renderSmartAllocationReview()});
+ close?.addEventListener('click',()=>{$('slotSmartReview').hidden=true;smartSlotSuggestions=[]});
+ apply.addEventListener('click',()=>{
+  let applied=0,urgencyChanged=false,modeChanged=false;
+  for(const item of smartSlotSuggestions.filter(x=>x.selected)){
+   const dim=smartDimensions().find(d=>d.key===item.key);
+   if(!dim||!dim.names.includes(item.value)||dim.names.includes(dim.map[item.slot]))continue;
+   dim.map[item.slot]=item.value;applied++;
+   if(item.key==='urgency')urgencyChanged=true;
+   if(item.key==='mode')modeChanged=true;
+  }
+  if(!applied)return;
+  saveCategories();renderSlotTable();if(modeChanged)renderConsultEditor();
+  if(urgencyChanged){renderEditor();renderUrgentCategoryToggles();updateAvailabilityUrgencyFilter();rebuildCategoryFilter();if(!$('chartPage').classList.contains('hidden'))scheduleDemandRefresh();if(!$('availabilityPage').classList.contains('hidden'))renderAvailabilityChart();if(!$('routineAvailabilityPage').classList.contains('hidden'))renderRoutineAvailabilityChart();if(!$('bookingTimesPage').classList.contains('hidden'))renderBookingTimesChart()}
+  smartSlotSuggestions=[];renderSmartAllocationReview();
+  const summary=$('slotSmartSummary');if(summary)summary.textContent=applied+' allocations approved and saved. Existing mapped fields were not changed.';
+ });
+}
+
 /* Use exactly the same circular control and 30-swatch palette as the urgency editor. */
 function slotCategoryColourPicker(name,colourMap,onChanged){
  const current=typeColour(name,colourMap);
@@ -1941,7 +2039,7 @@ $('consultSlotSearch').addEventListener('input',renderConsultEditor);
 $('addGroupUrgencyCategory').onclick=()=>{const el=$('newGroupUrgencyCategory');const c=el.value.trim();if(!c)return;if(c.toLowerCase()==='uncategorised'||groupUrgencyNames.some(x=>x.toLowerCase()===c.toLowerCase())){alert('This group name already exists or is reserved.');return}groupUrgencyNames.push(c);el.value='';saveCategories();renderGroupUrgencyEditor();renderAvailabilityChart()};
 $('newGroupUrgencyCategory').addEventListener('keydown',e=>{if(e.key==='Enter')$('addGroupUrgencyCategory').click()});
 $('groupUrgencySearch').addEventListener('input',renderGroupUrgencyEditor);
-rebuildCategoryFilter();renderEditor();renderGroupUrgencyEditor();renderClinicianEditor();renderClinicianGroupEditor();renderConsultEditor();consolidateUrgencyGroups();renderConsultModeCards();renderSlotGroupBoxes();renderSlotPurposeCategories();renderCapacityStatusCategories();
+rebuildCategoryFilter();renderEditor();renderGroupUrgencyEditor();renderClinicianEditor();renderClinicianGroupEditor();renderConsultEditor();consolidateUrgencyGroups();initSmartAllocation();renderConsultModeCards();renderSlotGroupBoxes();renderSlotPurposeCategories();renderCapacityStatusCategories();
 refresh();
 
 initAuth();
