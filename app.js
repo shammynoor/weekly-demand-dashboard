@@ -856,7 +856,7 @@ function showRefreshFeedback(message,loading=false){
 }
 function resizeVisibleCharts(){
  if(!window.Plotly||$('chartPage').classList.contains('hidden')||$('dashboardShell').classList.contains('hidden'))return;
- for(const id of ['urgentChart','routineChart','followupChart']){
+ for(const id of ['combinedDemandChart']){
   const el=$(id);
   if(el&&el.offsetWidth>0&&el.classList.contains('js-plotly-plot')){
    try{Plotly.Plots.resize(el)}catch(e){console.warn('Chart resize:',e)}
@@ -1593,77 +1593,77 @@ function yearBackgroundShapes(periods){
  }
  return shapes;
 }
-function drawCategoryChart(target,category,palette,sharedMax){
- const enabled=true;
- const totals=demandCategoryTotals[category];
- const points=[...totals].map(([date,count])=>({date,count,year:Number(date.slice(0,4)),week:monthlyMode?Number(date.slice(5,7)):isoWeek(date).week}));
- const years=[...new Set(points.map(p=>p.year))].sort();
- const latestYear=years.length?Math.max(...years):2026;
- const values=points.map(p=>p.count);
- const hasAppointments=values.some(v=>v>0);
- const average=values.length?values.reduce((sum,v)=>sum+v,0)/values.length:0;
+const urgencyColours={urgent:'#981d2b',routine:'#209b60',followup:'#2877c7'};
+const urgencyLabels={urgent:'Urgent',routine:'Routine',followup:'Follow-up'};
+const selectedDemandUrgencies=new Set(['urgent','routine','followup']);
+function renderDemandUrgencyToggles(){
+ const root=$('demandUrgencyToggles');if(!root)return;
+ for(const category of ['urgent','routine','followup']){
+  let input=root.querySelector('input[data-urgency="'+category+'"]');
+  if(!input){
+   const label=document.createElement('label');label.className='demand-urgency-option';
+   label.style.setProperty('--urgency-colour',urgencyColours[category]);
+   input=document.createElement('input');input.type='checkbox';input.dataset.urgency=category;
+   const dot=document.createElement('span');dot.className='urgency-dot';
+   const name=document.createElement('span');name.textContent=urgencyLabels[category];
+   label.append(input,dot,name);root.append(label);
+   input.onchange=()=>{if(input.checked)selectedDemandUrgencies.add(category);else selectedDemandUrgencies.delete(category);scheduleDemandRefresh()};
+  }
+  input.checked=selectedDemandUrgencies.has(category);
+ }
+}
+function drawCombinedDemandChart(){
+ renderDemandUrgencyToggles();
+ const selected=['urgent','routine','followup'].filter(c=>selectedDemandUrgencies.has(c));
+ const years=[...new Set(selectedWeeks.map(w=>Number(w.slice(0,4))))].sort((a,b)=>a-b);
+ const latestYear=years.length?years[years.length-1]:null;
  const traces=[];
+ const yearDashes=['solid','dash','dot','dashdot'];
+ const x=p=>continuousMode?monthOfPeriod(p.date):(monthlyMode?Number(p.date.slice(5,7))-.5:monthPosition(p.date));
+ // One legend entry per year; colour indicates urgency, thickness highlights the latest year.
  for(const [i,year] of years.entries()){
-  const data=points.filter(p=>p.year===year).sort((a,b)=>a.date.localeCompare(b.date));
-  const last=data[data.length-1];
-  const partial=showCurrentWeek&&periodIsCurrent(last?.date);
-  // Never draw a solid segment into an incomplete current week.
-  const complete=partial?data.slice(0,-1):data;
-  const colour=palette[i%palette.length];
-  const width=year===latestYear?4.5:2;
-  const opacity=year===latestYear?1:0.34;
-  const x=p=>continuousMode?monthOfPeriod(p.date):(monthlyMode?Number(p.date.slice(5,7))-.5:monthPosition(p.date));
-  traces.push({name:String(year),x:complete.map(x),y:complete.map(p=>p.count),customdata:complete.map(p=>p.date),type:'scatter',mode:'lines+markers',connectgaps:true,opacity,line:{color:colour,width,shape:'spline',smoothing:0.65},marker:{size:year===latestYear?5:3},hovertemplate:'%{customdata}<br><b>%{y:,} appointments</b><extra>'+year+'</extra>'});
-  if(partial){
-   const previous=complete[complete.length-1];
-   const beforePrevious=complete[complete.length-2];
-   // Sample a cubic Hermite curve for the final segment. Plotly's spline
-   // becomes a straight line with only two points, so supply interpolated
-   // positions while keeping the actual recorded endpoint unchanged.
-   const segment=[];
-   if(previous){
-    const toNumber=p=>continuousMode?Date.parse(monthOfPeriod(p.date)):x(p);
-    const x0=toNumber(previous),x1=toNumber(last);
-    const span=x1-x0;
-    const slope=beforePrevious&&x0!==toNumber(beforePrevious)
-     ?(last.count-beforePrevious.count)/(x1-toNumber(beforePrevious))*span
-     :(last.count-previous.count);
-    const endSlope=last.count-previous.count;
-    for(let k=0;k<=24;k++){
-     const t=k/24,t2=t*t,t3=t2*t;
-     const y=(2*t3-3*t2+1)*previous.count+(t3-2*t2+t)*slope+(-2*t3+3*t2)*last.count+(t3-t2)*endSlope;
-     const xpos=x0+span*t;
-     segment.push({x:continuousMode?new Date(xpos).toISOString():xpos,y, date:k===24?last.date:previous.date});
-    }
-   }else segment.push({x:x(last),y:last.count,date:last.date});
-   traces.push({name:String(year)+' — partial '+(monthlyMode?'month':'week'),x:segment.map(p=>p.x),y:segment.map(p=>p.y),customdata:segment.map(p=>p.date),type:'scatter',mode:'lines',showlegend:false,opacity,line:{color:colour,width,dash:'dot',shape:'linear'},hoverinfo:'skip'});
-   traces.push({name:String(year)+' — current '+(monthlyMode?'month':'week')+' (incomplete)',x:[x(last)],y:[last.count],customdata:[last.date],type:'scatter',mode:'markers',showlegend:false,opacity,marker:{size:11,symbol:'circle-open',color:colour,line:{color:colour,width:2.5}},hovertemplate:'%{customdata}<br><b>%{y:,} appointments</b><br>Current '+(monthlyMode?'month':'week')+' (incomplete)<extra>'+year+'</extra>'});
+  traces.push({name:String(year),x:[null],y:[null],type:'scatter',mode:'lines',showlegend:true,
+   line:{color:'#58677a',width:year===latestYear?4.5:2,dash:yearDashes[i%yearDashes.length]},hoverinfo:'skip'});
+ }
+ let maxCount=0;
+ for(const category of selected){
+  const totals=demandCategoryTotals[category];
+  const points=[...totals].map(([date,count])=>({date,count,year:Number(date.slice(0,4))}));
+  for(const [i,year] of years.entries()){
+   const data=points.filter(p=>p.year===year).sort((a,b)=>a.date.localeCompare(b.date));
+   if(!data.length)continue;
+   const last=data[data.length-1];
+   const partial=showCurrentWeek&&periodIsCurrent(last.date);
+   const complete=partial?data.slice(0,-1):data;
+   const width=year===latestYear?4.5:2;
+   const opacity=year===latestYear?1:0.42;
+   for(const p of data)maxCount=Math.max(maxCount,p.count);
+   traces.push({name:urgencyLabels[category]+' '+year,legendgroup:String(year),showlegend:false,
+    x:complete.map(x),y:complete.map(p=>p.count),customdata:complete.map(p=>p.date),
+    type:'scatter',mode:'lines',connectgaps:false,opacity,
+    line:{color:urgencyColours[category],width,dash:yearDashes[i%yearDashes.length],shape:'spline',smoothing:0.5},
+    hovertemplate:'%{customdata}<br><b>'+urgencyLabels[category]+': %{y:,} appointments</b><extra>'+year+'</extra>'});
+   if(partial)traces.push({name:urgencyLabels[category]+' '+year+' (incomplete)',showlegend:false,
+    x:complete.length?[x(complete[complete.length-1]),x(last)]:[x(last)],
+    y:complete.length?[complete[complete.length-1].count,last.count]:[last.count],
+    type:'scatter',mode:'lines+markers',opacity,
+    line:{color:urgencyColours[category],width,dash:'dot'},marker:{size:7,symbol:'circle-open'},
+    hovertemplate:'<b>'+urgencyLabels[category]+': %{y:,} appointments</b><br>Incomplete period<extra>'+year+'</extra>'});
   }
  }
- // One flat average, calculated from every displayed week across every year.
- traces.push({name:'All-years '+(monthlyMode?'monthly':'weekly')+' average ('+Math.round(average).toLocaleString('en-GB')+')',x:continuousMode?[monthOfPeriod(selectedWeeks[0]||'2024-12-30'),monthOfPeriod(selectedWeeks[selectedWeeks.length-1]||'2025-07-14')]:[0,12],y:[average,average],type:'scatter',mode:'lines',hoverinfo:'skip',opacity:0.58,line:{color:category==='urgent'?'#9c2633':category==='followup'?'#286cb8':'#23885b',width:2,dash:'dash'},showlegend:true});
- const visibleDates=selectedWeeks.map(monthOfPeriod).sort();
- const continuousRange=firstAppointmentDate&&lastAppointmentDate?[firstAppointmentDate,lastAppointmentDate]:visibleDates.length?[visibleDates[0],visibleDates[visibleDates.length-1]]:null;
- const chartEl=$(target);
- Plotly.react(target,traces,{dragmode:false,autosize:true,margin:{l:58,r:12,t:32,b:65},paper_bgcolor:'white',plot_bgcolor:'white',shapes:yearBackgroundShapes(selectedWeeks),legend:{orientation:'h',y:1.17,x:0},xaxis:continuousMode?{type:'date',title:monthlyMode?'Booking month':'Booking date',tickformat:'%b %Y',gridcolor:'#edf1f5',...(continuousRange?{range:continuousRange}: {})}:axis,yaxis:{title:'Appointments',range:[0,sharedMax],dtick:sharedMax/5,gridcolor:'#edf1f5'},hovermode:'closest',annotations:!hasAppointments&&category==='followup'?[{text:'No follow-up appointments found. In Manage Categories, assign slot types to Follow up and click Save.',xref:'paper',yref:'paper',x:.5,y:.55,showarrow:false,align:'center',font:{size:13,color:'#286cb8'}}]:[]},{responsive:true,displaylogo:false,displayModeBar:false,scrollZoom:false,doubleClick:false});
+ const rawStep=Math.max(1,maxCount/5),magnitude=Math.pow(10,Math.floor(Math.log10(rawStep)));
+ const step=([1,2,5,10].find(v=>v*magnitude>=rawStep)||10)*magnitude;
+ const range=firstAppointmentDate&&lastAppointmentDate?[firstAppointmentDate,lastAppointmentDate]:null;
+ Plotly.react('combinedDemandChart',traces,{dragmode:false,autosize:true,height:535,
+  margin:{l:62,r:20,t:55,b:65},paper_bgcolor:'white',plot_bgcolor:'white',
+  shapes:yearBackgroundShapes(selectedWeeks),
+  legend:{orientation:'h',y:1.12,x:0},
+  xaxis:continuousMode?{type:'date',title:monthlyMode?'Booking month':'Booking date',tickformat:'%b %Y',gridcolor:'#edf1f5',...(range?{range}: {})}:axis,
+  yaxis:{title:'Appointments',range:[0,Math.max(5,step*5)],gridcolor:'#edf1f5'},hovermode:'closest',
+  annotations:!selected.length?[{text:'Select an urgency type to display appointments',xref:'paper',yref:'paper',x:.5,y:.5,showarrow:false}]:[]
+ },{responsive:true,displaylogo:false,displayModeBar:false,scrollZoom:false,doubleClick:false});
 }
-let maximum=0;
-let followupMaximum=0;
-
-for(const category of ['urgent','routine','followup']){
-
- const totals=demandCategoryTotals[category];
- for(const count of totals.values()){maximum=Math.max(maximum,count);if(category==='followup')followupMaximum=Math.max(followupMaximum,count);}
-}
-const rawStep=Math.max(1,maximum/5),magnitude=Math.pow(10,Math.floor(Math.log10(rawStep)));
-const tickStep=([1,2,5,10].find(v=>v*magnitude>=rawStep)||10)*magnitude;
-const sharedMax=5*tickStep;
-drawCategoryChart('urgentChart','urgent',yearColours.urgent,sharedMax);
-drawCategoryChart('routineChart','routine',yearColours.routine,sharedMax);
-const followupStepRaw=Math.max(1,followupMaximum/5);
-const followupMagnitude=Math.pow(10,Math.floor(Math.log10(followupStepRaw)));
-const followupStep=([1,2,5,10].find(v=>v*followupMagnitude>=followupStepRaw)||10)*followupMagnitude;
-drawCategoryChart('followupChart','followup',yearColours.followup,5*followupStep);
+drawCombinedDemandChart();
 }
 let groupUrgencyNames=[],groupUrgencyAssignments={};
 let clinicianGroupNames=[],clinicianGroupAssignments={};
