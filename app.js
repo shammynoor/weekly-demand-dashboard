@@ -1466,8 +1466,11 @@ function updateConsultChartFilter(){
  }
 }
 function consultMatches(slot){
- const mode=consultAssignments[slot];
- return consultCategoryNames.includes(mode)&&!disabledConsultModes.has(mode);
+ // An unsaved suggestion must not silently remove an appointment from demand.
+ // Only explicitly disabled, configured modes are excluded.
+ const saved=consultCategoryNames.includes(consultAssignments[slot])?consultAssignments[slot]:'';
+ const mode=saved||suggestConsultMode(slot);
+ return !mode||!disabledConsultModes.has(mode);
 }
 const bankHolidayWeeks=new Set(holidayDates.map(mondayOf));let excludeBankHolidays=true;
 document.getElementById('excludeBH').onchange=e=>{excludeBankHolidays=!e.target.checked;scheduleDemandRefresh()};
