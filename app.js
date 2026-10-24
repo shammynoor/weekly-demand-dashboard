@@ -1651,9 +1651,44 @@ document.getElementById('currentWeekToggle').onchange=e=>{showCurrentWeek=e.targ
 document.getElementById('displayMode').onchange=e=>{continuousMode=e.target.checked;document.getElementById('timelineValue').textContent=continuousMode?'Continuous':'Superimposed';scheduleDemandRefresh()};
 function periodKey(r){return monthlyMode?r.bookedDay?.slice(0,7):r.bookedWeek}
 let demandFilterCache=null;
+const disabledDemandPurposes=new Set(),disabledDemandCapacities=new Set();
+function demandCategoryAllowed(slot,names,mapping,disabled){
+ const value=names.includes(mapping[slot])?mapping[slot]:'Unassigned';
+ return !disabled.has(value);
+}
+function renderDemandClassificationToggles(rootId,names,mapping,disabled,colourMap){
+ const root=$(rootId);if(!root)return;
+ const choices=[...names,'Unassigned'];
+ const signature=choices.join('\u0001');
+ if(root.dataset.choices===signature){
+  for(const input of root.querySelectorAll('input[data-classification]')){
+   input.checked=!disabled.has(input.dataset.classification);
+   if(input.dataset.classification!=='Unassigned')input.nextElementSibling?.style.setProperty('--switch-on',typeColour(input.dataset.classification,colourMap));
+  }
+  return;
+ }
+ root.dataset.choices=signature;
+ for(const value of [...disabled])if(!choices.includes(value))disabled.delete(value);
+ root.replaceChildren();
+ for(const name of choices){
+  const row=document.createElement('label');row.className='filter-row';
+  const wrap=document.createElement('span');wrap.className='switch';
+  const input=document.createElement('input');input.type='checkbox';input.setAttribute('role','switch');
+  input.dataset.classification=name;input.checked=!disabled.has(name);input.setAttribute('aria-label','Include '+name);
+  const track=document.createElement('span');track.className='switch-track';
+  if(name!=='Unassigned')track.style.setProperty('--switch-on',typeColour(name,colourMap));
+  wrap.append(input,track);
+  const label=document.createElement('span');label.textContent=name;
+  row.append(wrap,label);root.append(row);
+  input.addEventListener('change',()=>{
+   if(input.checked)disabled.delete(name);else disabled.add(name);
+   refresh();
+  });
+ }
+}
 function includedRecord(r){
  if(demandFilterCache&&demandFilterCache.has(r))return demandFilterCache.get(r);
- const result=r.status==='Booked'&&clinicianMatches(r.clinician,r.person)&&consultMatches(r.slot)&&(monthlyMode||!excludeBankHolidays||!bankHolidayWeeks.has(r.bookedWeek));
+ const result=r.status==='Booked'&&clinicianMatches(r.clinician,r.person)&&consultMatches(r.slot)&&demandCategoryAllowed(r.slot,purposeCategoryNames,purposeAssignments,disabledDemandPurposes)&&demandCategoryAllowed(r.slot,capacityCategoryNames,capacityAssignments,disabledDemandCapacities)&&(monthlyMode||!excludeBankHolidays||!bankHolidayWeeks.has(r.bookedWeek));
  if(demandFilterCache)demandFilterCache.set(r,result);
  return result;
 }
@@ -1837,6 +1872,8 @@ function installDemandCardTooltip(target){
 function drawCombinedDemandChart(){
  const adjustmentStatus=$('demandAdjustmentStatus');if(adjustmentStatus)adjustmentStatus.textContent=adjustDemandForListSize?'Adjusted for list size':'Not adjusted for list size';
  renderDemandUrgencyToggles();
+ renderDemandClassificationToggles('demandPurposeToggles',purposeCategoryNames,purposeAssignments,disabledDemandPurposes,purposeColours);
+ renderDemandClassificationToggles('demandCapacityToggles',capacityCategoryNames,capacityAssignments,disabledDemandCapacities,capacityColours);
  setupDemandMonthSlider();
  // Compute the population normalisation once per redraw, not for every chart point.
  const populationMonths=adjustDemandForListSize?practiceMonths():[];
