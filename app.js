@@ -557,6 +557,22 @@ function smartSuggestion(slot,dim){
    if(shared>=2&&shared===words.length&&shared===otherWords.length)add(name,96,'Previously mapped equivalent slot name');
   }
  }
+ // Learn from confirmed manual selections on similar slot names.
+ // Require substantial overlap and a clear majority, rather than inferring from a single generic word.
+ const learned=new Map();
+ const ignored=new Set(['gp','dr','doctor','nurse','appointment','appt','slot','clinic','session','the','for','and','of']);
+ const meaningful=words.filter(w=>w.length>2&&!ignored.has(w));
+ for(const [other,name] of Object.entries(dim.map)){
+  if(other===slot||!dim.names.includes(name))continue;
+  const otherMeaningful=smartWords(other).filter(w=>w.length>2&&!ignored.has(w));
+  if(meaningful.length<2||otherMeaningful.length<2)continue;
+  const overlap=meaningful.filter(w=>otherMeaningful.includes(w)).length;
+  const similarity=overlap/Math.max(meaningful.length,otherMeaningful.length);
+  if(overlap>=2&&similarity>=0.75)learned.set(name,(learned.get(name)||0)+1);
+ }
+ const rankedLearned=[...learned.entries()].sort((a,b)=>b[1]-a[1]);
+ if(rankedLearned.length&&rankedLearned[0][1]>=2&&(!rankedLearned[1]||rankedLearned[0][1]>=rankedLearned[1][1]*2+1))
+  add(rankedLearned[0][0],97,'Consistent confirmed mappings for similar slot names');
  for(const name of dim.names){
   const terms=smartWords(name);
   if(!terms.length)continue;
