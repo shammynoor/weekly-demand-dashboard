@@ -1731,7 +1731,12 @@ function hideEmptyHistoricBookingFilters(){
   const card=root.closest('section');if(card)card.hidden=visible===0;
  }
  const additive=$('demandAdditiveLines');
- if(additive){const row=additive.closest('label');if(row)row.hidden=groupUrgencyNames.filter(name=>isDashboardToggleOption(name)&&!disabledDemandUrgencyGroups.has(name)).length<=1;}
+ if(additive){
+  const selected=groupUrgencyNames.filter(name=>isDashboardToggleOption(name)&&!disabledDemandUrgencyGroups.has(name)).length;
+  additive.disabled=selected<=1;
+  const row=additive.closest('label');
+  if(row){row.hidden=false;row.style.opacity=selected<=1?'0.4':'';row.style.cursor=selected<=1?'not-allowed':'';row.title=selected<=1?'Select at least two urgency groups to enable Additive Lines':'';}
+ }
  refreshActivitySecondarySummaries();
 }
 
