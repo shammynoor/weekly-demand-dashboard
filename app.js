@@ -1540,7 +1540,7 @@ async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;
  peopleRecords=[...peopleByName.values()].map(({name,types})=>({name,type:[...types].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]))[0][0]})).sort((a,b)=>a.type.localeCompare(b.type)||a.name.localeCompare(b.name));
  rebuildPeopleTypeLookup();
  renderPeople();renderSlotInclusion();renderSlotTable();
- waitingTimeRecords=[...waitingAggregate].map(([key,count])=>{const [slot,day,clinician,person]=JSON.parse(key);return {slot,day,clinician,person,count}});
+ waitingTimeRecords=[...waitingAggregate].map(([key,count])=>{const [slot,day,clinician,person]=JSON.parse(key);return {slot,day,clinician,person,status:'Booked',count}});
  bookingTimeRecords=[...bookingTimeAggregate].map(([key,count])=>{const [bookedDay,minute,slot,clinician,person]=JSON.parse(key);return {bookedDay,minute,slot,clinician,person,count}});
  availabilityRecords=[...availabilityAggregate].map(([key,count])=>{const [date,slot,availability,clinician,person]=JSON.parse(key);return {date,slot,availability,clinician,person,count}});
  records=[...aggregate].map(([key,count])=>{const [bookedDay,slot,clinician,person]=JSON.parse(key);const bookedWeek=mondayOf(bookedDay);return {week:bookedWeek,bookedWeek,bookedDay,slot,clinician,person,status:'Booked',count}});weeks=[...new Set(records.map(r=>r.bookedWeek))].sort();types=[...new Set([...records.map(r=>r.slot),...availabilityRecords.map(r=>r.slot)])].sort();statuses=['Booked'];clinicianTypes=[...new Set([...records.map(r=>r.clinician),...availabilityRecords.map(r=>r.clinician)])].filter(Boolean).sort();
@@ -1717,8 +1717,8 @@ function historicBookingFilterCounts(){
  // Count only bookings eligible for the currently displayed chart, while
  // ignoring each option's own on/off state so it can be switched back on.
  const result={purpose:new Map(),capacity:new Map(),consult:new Map(),clinician:new Map()};
- const firstAppointment=availabilityRecords.map(r=>r.date).filter(Boolean).sort()[0]||'';
- const lastAppointment=availabilityRecords.map(r=>r.date).filter(Boolean).sort().at(-1)||'';
+ const firstAppointment=availabilityRecords.filter(r=>String(r.availability||'').trim().toLowerCase()==='booked').map(r=>r.date).filter(Boolean).sort()[0]||'';
+ const lastAppointment=availabilityRecords.filter(r=>String(r.availability||'').trim().toLowerCase()==='booked').map(r=>r.date).filter(Boolean).sort().at(-1)||'';
  const firstPeriod=firstAppointment?(monthlyMode?firstAppointment.slice(0,7):mondayOf(firstAppointment)):'';
  const lastPeriod=lastAppointment?(monthlyMode?lastAppointment.slice(0,7):mondayOf(lastAppointment)):'';
  for(const r of records){
@@ -1748,8 +1748,8 @@ function historicBookingFilterCounts(){
  return result;
 }
 function historicBookingHasData(){
- const first=availabilityRecords.map(r=>r.date).filter(Boolean).sort()[0]||'';
- const last=availabilityRecords.map(r=>r.date).filter(Boolean).sort().at(-1)||'';
+ const first=availabilityRecords.filter(r=>String(r.availability||'').trim().toLowerCase()==='booked').map(r=>r.date).filter(Boolean).sort()[0]||'';
+ const last=availabilityRecords.filter(r=>String(r.availability||'').trim().toLowerCase()==='booked').map(r=>r.date).filter(Boolean).sort().at(-1)||'';
  return records.some(r=>{
   if(!includedRecord(r)||!(r.count>0))return false;
   const p=periodKey(r),m=p?.slice(0,7);
@@ -1870,7 +1870,7 @@ const additiveLines=$('demandAdditiveLines')?.checked===true;
 const activeWeekSet=new Set();
 for(const r of records){if(includedRecord(r)){const key=periodKey(r);if(key)activeWeekSet.add(key)}}
 const activeWeeks=[...activeWeekSet].sort();
-const appointmentDates=availabilityRecords.map(r=>r.date).filter(Boolean).sort();
+const appointmentDates=availabilityRecords.filter(r=>String(r.availability||'').trim().toLowerCase()==='booked').map(r=>r.date).filter(Boolean).sort();
 const firstAppointmentDate=appointmentDates[0]||'';
 const lastAppointmentDate=appointmentDates[appointmentDates.length-1]||'';
 const firstPeriod=firstAppointmentDate?(monthlyMode?firstAppointmentDate.slice(0,7):mondayOf(firstAppointmentDate)):'';
@@ -2220,7 +2220,7 @@ function waitingRowDimensions(r){
  };
 }
 function waitingMatches(r,ignore){
- if(excludedSlotTypes.has(r.slot))return false;
+ if(r.status!=='Booked'||excludedSlotTypes.has(r.slot))return false;
  const d=waitingRowDimensions(r);
  if(!isDashboardToggleOption(d.urgency))return false;
  if(ignore!=='urgency'&&waitingDisabledUrgency.has(d.urgency))return false;
