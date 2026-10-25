@@ -54,7 +54,7 @@ const predictCategory=(target,n)=>{
  const newerAvg=newer.length?newer.reduce((a,b)=>a+b,0)/newer.length:baseline;
  const trend=olderAvg>0?Math.max(.85,Math.min(1.15,1+.25*(newerAvg/olderAvg-1))):1;
  const mean=Math.max(0,baseline*factor*trend);
- // Weighted residual quantiles: indicative 80% prediction interval, widened for sparse data.
+ // Weighted residual quantiles: indicative 70% prediction interval, widened for sparse data.
  const residuals=values.map(v=>v-baseline);
  const lo=weightedQuantile(residuals,recentWeights,.1),hi=weightedQuantile(residuals,recentWeights,.9);
  const spread=Math.sqrt(Math.max(mean,1))*1.28;
@@ -68,8 +68,8 @@ const rows=[];for(let i=0;i<(mode==='daily'?14:8);i++){
  rows.push({day,parts,total:parts.reduce((x,p)=>x+p.mean,0),low:parts.reduce((x,p)=>x+p.low,0),high:parts.reduce((x,p)=>x+p.high,0)});
 }
 const legend=document.createElement('div');legend.className='forecast-legend';for(const n of selected){const item=document.createElement('span');const dot=document.createElement('i');dot.className='forecast-dot';dot.style.backgroundColor=urgencyGroupColour(n);item.append(dot,document.createTextNode(n));legend.append(item)}root.append(legend);
-const max=Math.max(1,...rows.map(r=>r.high));for(const r of rows){const line=document.createElement('div');line.className='forecast-line';const label=document.createElement('span');label.textContent=new Date(r.day+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:mode==='daily'?'short':undefined,day:'numeric',month:'short',timeZone:'UTC'});const track=document.createElement('div');track.className='forecast-track';for(const p of r.parts){const seg=document.createElement('div');seg.style.width=(100*p.mean/max)+'%';seg.style.backgroundColor=urgencyGroupColour(p.n);seg.title=p.n+': '+p.mean.toFixed(1);track.append(seg)}const value=document.createElement('strong');value.textContent=Math.round(r.total).toLocaleString('en-GB');value.title='Indicative 80% prediction interval: '+Math.round(r.low)+'–'+Math.round(r.high);const bounds=document.createElement('span');bounds.className='forecast-bounds';bounds.textContent=Math.round(r.low)+'–'+Math.round(r.high);bounds.title='Indicative 80% prediction interval';const numbers=document.createElement('div');numbers.className='forecast-numbers';numbers.append(value,bounds);line.append(label,track,numbers);root.append(line)}
-const note=document.createElement('p');note.className='muted';note.textContent='Historical booking data to '+end+'. '+(mode==='daily'?'Daily forecast combines recency-weighted weekday averages, a season-of-year adjustment where historical coverage permits, and a restrained recent trend. The smaller figures are indicative 80% prediction intervals, estimated from historical variation; these are not calibrated confidence guarantees.':'Weekly forecasts use complete historical Monday–Sunday weeks; the smaller figures show an indicative historical 10th–90th percentile range.')+' Zero-booking days included. Bank holidays and changes in service provision are not explicitly modelled.';root.append(note);
+const max=Math.max(1,...rows.map(r=>r.high));for(const r of rows){const line=document.createElement('div');line.className='forecast-line';const label=document.createElement('span');label.textContent=new Date(r.day+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:mode==='daily'?'short':undefined,day:'numeric',month:'short',timeZone:'UTC'});const track=document.createElement('div');track.className='forecast-track';for(const p of r.parts){const seg=document.createElement('div');seg.style.width=(100*p.mean/max)+'%';seg.style.backgroundColor=urgencyGroupColour(p.n);seg.title=p.n+': '+p.mean.toFixed(1);track.append(seg)}const value=document.createElement('strong');value.textContent=Math.round(r.total).toLocaleString('en-GB');value.title='Indicative 70% prediction interval: '+Math.round(r.low)+'–'+Math.round(r.high);const bounds=document.createElement('span');bounds.className='forecast-bounds';bounds.textContent=Math.round(r.low)+'–'+Math.round(r.high);bounds.title='Indicative 70% prediction interval';const numbers=document.createElement('div');numbers.className='forecast-numbers';numbers.append(value,bounds);line.append(label,track,numbers);root.append(line)}
+const note=document.createElement('p');note.className='muted';note.textContent='Historical booking data to '+end+'. '+(mode==='daily'?'Daily forecast combines recency-weighted weekday averages, a season-of-year adjustment where historical coverage permits, and a restrained recent trend. The smaller figures are indicative 70% prediction intervals, estimated from historical variation; these are not calibrated confidence guarantees.':'Weekly forecasts use complete historical Monday–Sunday weeks; the smaller figures show an indicative historical 10th–90th percentile range.')+' Zero-booking days included. Bank holidays and changes in service provision are not explicitly modelled.';root.append(note);
 }
 function renderHistoricalWeekday(){
  const root=$('dailyForecastHistoryChart'),summary=$('dailyForecastHistorySummary'),select=$('dailyForecastWeekday');
@@ -132,7 +132,7 @@ function renderHistoricalWeekday(){
  const intervals=projected.map((value,i)=>{
   // Signed quantiles retain asymmetric uncertainty; inflate modestly for longer horizons.
   const factor=empirical?Math.sqrt((1+(i+1)/26)/(1+7/26)):Math.sqrt(1+(i+1)/13);
-  const lo=quantile(errors,.1)*factor,hi=quantile(errors,.9)*factor;
+  const lo=quantile(errors,.15)*factor,hi=quantile(errors,.85)*factor;
   return {low:Math.max(0,value+Math.min(lo,0)),high:Math.max(value,value+Math.max(hi,0))};
  });
  const max=Math.max(1,...values,...historicalFit,...projected,...intervals.map(v=>v.high));
@@ -142,12 +142,20 @@ function renderHistoricalWeekday(){
   col.className='forecast-history-column'+(isFuture?' forecast-future-column':'');
   const bar=document.createElement('div');bar.className='forecast-history-bar';bar.style.height=(value/max*192)+'px';
   const date=document.createElement('div');date.className='forecast-history-date';date.textContent=new Date(d+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',timeZone:'UTC'});
-  if(isFuture){const j=i-n;col.title=d+': projected '+projected[j].toFixed(1)+' bookings (80% prediction interval '+intervals[j].low.toFixed(1)+'–'+intervals[j].high.toFixed(1)+')'}
+  if(isFuture){const j=i-n;col.title=d+': projected '+projected[j].toFixed(1)+' bookings (70% prediction interval '+intervals[j].low.toFixed(1)+'–'+intervals[j].high.toFixed(1)+')'}
   else {const detail=parts.get(d)||new Map();col.title=d+': '+value.toFixed(1)+(adjust?' list-size adjusted':'')+' bookings'+groups.map(name=>'\\n'+name+': '+(detail.get(name)||0)).join('')}
   col.append(bar,date);root.append(col);columns.push(col);
  }
+ // Alternating calendar-year bands use real year boundaries, including the projected weeks.
+ const yearRuns=[];for(let i=0;i<allDays.length;i++){const year=allDays[i].slice(0,4);if(!yearRuns.length||yearRuns[yearRuns.length-1].year!==year)yearRuns.push({year,start:i,end:i});else yearRuns[yearRuns.length-1].end=i}
+ for(let j=0;j<yearRuns.length;j++){
+  const run=yearRuns[j],first=columns[run.start],last=columns[run.end];
+  const band=document.createElement('div');band.className='forecast-year-band'+(j%2?' forecast-year-alt':'');
+  band.style.left=first.offsetLeft+'px';band.style.width=(last.offsetLeft+last.offsetWidth-first.offsetLeft)+'px';
+  const tag=document.createElement('span');tag.textContent=run.year;band.append(tag);root.append(band);
+ }
  if(fittedModel){
-  const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('class','forecast-season-line');svg.setAttribute('aria-label','Seasonal regression, thirteen-week projection and 80 percent prediction interval');
+  const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('class','forecast-season-line');svg.setAttribute('aria-label','Seasonal regression, thirteen-week projection and 70 percent prediction interval');
   const width=root.scrollWidth,height=root.clientHeight;svg.style.width=width+'px';svg.style.height=height+'px';svg.setAttribute('viewBox','0 0 '+width+' '+height);
   const ns='http://www.w3.org/2000/svg',x=i=>columns[i].offsetLeft+columns[i].offsetWidth/2;
   const baseline=columns[0].querySelector('.forecast-history-bar').offsetTop+columns[0].querySelector('.forecast-history-bar').offsetHeight;
@@ -160,7 +168,7 @@ function renderHistoricalWeekday(){
   const band=document.createElementNS(ns,'polygon');band.setAttribute('class','forecast-prediction-band');band.setAttribute('points',upperPoints.concat(lowerPoints).map(p=>p.map(v=>v.toFixed(1)).join(',')).join(' '));svg.insertBefore(band,svg.firstChild);
   root.append(svg);
  }
- summary.textContent=n+' observed '+select.options[select.selectedIndex].text+'s · '+start+' to '+end+' · Mean '+average.toFixed(1)+' · SD '+sd.toFixed(1)+'. Bars show actual demand; solid pink line is fitted '+(n>=42?'annual seasonal regression plus trend':'linear trend (insufficient observations for annual seasonality)')+'. Dashed pink line projects 13 weeks; shaded area is an indicative 80% prediction interval based on '+(empirical?'expanding-window historical back-testing':'historical residuals (limited data for back-testing)')+'.'+(excludeHolidayWeeks?' Bank holiday weeks excluded from fitting.':' Bank holiday weeks included.')+(adjust?(referencePopulation?' Historical counts adjusted to latest recorded list size.':' No list-size data available; showing raw counts.'):'')+' Future bank holidays and service changes are not separately modelled.';
+ summary.textContent=n+' observed '+select.options[select.selectedIndex].text+'s · '+start+' to '+end+' · Mean '+average.toFixed(1)+' · SD '+sd.toFixed(1)+'. Bars show actual demand; solid pink line is fitted '+(n>=42?'annual seasonal regression plus trend':'linear trend (insufficient observations for annual seasonality)')+'. Dashed pink line projects 13 weeks; shaded area is an indicative 70% prediction interval based on '+(empirical?'expanding-window historical back-testing':'historical residuals (limited data for back-testing)')+'.'+(excludeHolidayWeeks?' Bank holiday weeks excluded from fitting.':' Bank holiday weeks included.')+(adjust?(referencePopulation?' Historical counts adjusted to latest recorded list size.':' No list-size data available; showing raw counts.'):'')+' Future bank holidays and service changes are not separately modelled.';
 
 }
 function open(mode){for(const p of ['dailyForecastPage','weeklyForecastPage'])$(p)?.classList.toggle('hidden',p!==(mode==='daily'?'dailyForecastPage':'weeklyForecastPage'));for(const p of ['homePage','chartPage','waitingTimesPage','waitingOverTimePage','categoryPage','availabilityPage','routineAvailabilityPage','plannedAvailabilityPage','dayViewPage','bookingTimesPage','signpostingPage','peoplePage','practiceSettingsPage'])$(p)?.classList.add('hidden');document.querySelectorAll('.dashboard-nav button.active').forEach(b=>b.classList.remove('active'));$('nav'+(mode==='daily'?'Daily':'Weekly')+'Forecast')?.classList.add('active');if(mode==='daily')renderHistoricalWeekday();else render(mode)}
