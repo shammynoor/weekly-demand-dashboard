@@ -1776,6 +1776,12 @@ function hideEmptyHistoricBookingFilters(){
    if(row){row.hidden=!isDashboardToggleOption(name)||!counts[kind].has(name);if(!row.hidden)visible++;}
   }
   const card=root.closest('section');if(card)card.hidden=visible===0;
+  // Keep the collapsed label in sync: hidden rows must not be advertised as selected.
+  root.querySelectorAll('input').forEach(input=>{
+   const row=input.closest('.filter-row');
+   if(row&&row.hidden)input.dataset.hiddenNoData='1';
+   else delete input.dataset.hiddenNoData;
+  });
  }
  const additive=$('demandAdditiveLines');
  if(additive){
@@ -2406,7 +2412,7 @@ function refreshActivitySecondarySummaries(){
 function updateCollapsedFilterSummaries(){
  document.querySelectorAll('.collapsed-selection-summary[data-summary-for]').forEach(summary=>{
   const root=$(summary.dataset.summaryFor);if(!root)return;
-  const selected=[...root.querySelectorAll('input[data-filter-name]')].filter(input=>input.checked&&!input.disabled).map(input=>input.dataset.filterName);
+  const selected=[...root.querySelectorAll('input[data-filter-name]')].filter(input=>input.checked&&!input.disabled&&!input.closest('.filter-row')?.hidden).map(input=>input.dataset.filterName);
   summary.textContent=selected.length?selected.join(', '):'None selected';
   const expanded=summary.parentElement.querySelector('.collapse-filter-button')?.getAttribute('aria-expanded')==='true';
   summary.hidden=expanded;root.hidden=!expanded;
