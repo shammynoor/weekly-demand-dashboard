@@ -2626,37 +2626,45 @@ function renderDayView(){
   }
  }
  const totals=new Map(names.map(name=>[name,0]));
+ const bookedSoFar=new Map(names.map(name=>[name,0]));
  const timeSlider=$('dayViewTimeSlider');
  const cutoff=timeSlider?Number(timeSlider.value):1440;
+ const clock=cutoff===1440?'24:00':String(Math.floor(cutoff/60)).padStart(2,'0')+':'+String(cutoff%60).padStart(2,'0');
  const timeLabel=$('dayViewTimeLabel');
- if(timeLabel)timeLabel.textContent=cutoff===1440?'24:00 (end of day)':String(Math.floor(cutoff/60)).padStart(2,'0')+':'+String(cutoff%60).padStart(2,'0');
+ if(timeLabel)timeLabel.textContent=cutoff===1440?'24:00 (end of day)':clock;
  for(const r of bookingTimeRecords){
-  if(r.bookedDay!==dateInput.value||excludedSlotTypes.has(r.slot)||!Number.isFinite(r.minute)||r.minute>cutoff)continue;
+  if(r.bookedDay!==dateInput.value||excludedSlotTypes.has(r.slot)||!Number.isFinite(r.minute))continue;
   const urgency=capacityUrgencyCategory(r.slot);
   if(!totals.has(urgency)||dayViewDisabledUrgencies.has(urgency))continue;
-  totals.set(urgency,totals.get(urgency)+(Number(r.count)||0));
+  const count=Number(r.count)||0;
+  totals.set(urgency,totals.get(urgency)+count);
+  if(r.minute<=cutoff)bookedSoFar.set(urgency,bookedSoFar.get(urgency)+count);
  }
  const active=names.filter(name=>!dayViewDisabledUrgencies.has(name));
- const total=active.reduce((sum,name)=>sum+totals.get(name),0);
- $('dayViewTotal').textContent=total.toLocaleString('en-GB');
+ const fullTotal=active.reduce((sum,name)=>sum+totals.get(name),0);
+ const currentTotal=active.reduce((sum,name)=>sum+bookedSoFar.get(name),0);
+ $('dayViewTotal').textContent=currentTotal.toLocaleString('en-GB')+' / '+fullTotal.toLocaleString('en-GB');
  $('dayViewSelectedDate').textContent=new Date(dateInput.value+'T12:00:00').toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
  stack.replaceChildren();legend.replaceChildren();
  for(const name of active){
-  const count=totals.get(name),colour=urgencyGroupColour(name);
-  if(count>0){
-   const seg=document.createElement('div');seg.className='day-view-segment';seg.style.backgroundColor=colour;seg.style.flex=String(count);
-   seg.title=name+': '+count.toLocaleString('en-GB')+' bookings ('+(100*count/total).toFixed(1)+'%)';
-   if(count/total>=.075)seg.textContent=count.toLocaleString('en-GB');
+  const full=totals.get(name),current=bookedSoFar.get(name),colour=urgencyGroupColour(name);
+  if(full>0){
+   const seg=document.createElement('div');seg.className='day-view-segment day-view-segment-progress';seg.style.flex=String(full);
+   const completed=document.createElement('div');completed.className='day-view-segment-completed';completed.style.width=(100*current/full)+'%';completed.style.backgroundColor=colour;
+   const remaining=document.createElement('div');remaining.className='day-view-segment-remaining';remaining.style.backgroundColor=colour;
+   seg.append(completed,remaining);
+   seg.title=name+': '+current.toLocaleString('en-GB')+' booked by '+clock+' of '+full.toLocaleString('en-GB')+' full-day bookings';
+   if(full/fullTotal>=.075){const value=document.createElement('span');value.className='day-view-segment-count';value.textContent=current.toLocaleString('en-GB');seg.append(value)}
    stack.append(seg);
   }
   const item=document.createElement('div');item.className='day-view-legend-item';
   const dot=document.createElement('span');dot.className='day-view-dot';dot.style.backgroundColor=colour;
   const label=document.createElement('span');label.textContent=name;
-  const value=document.createElement('strong');value.textContent=count.toLocaleString('en-GB')+' · '+(total?(100*count/total).toFixed(1):'0')+'%';
+  const value=document.createElement('strong');value.textContent=current.toLocaleString('en-GB')+' / '+full.toLocaleString('en-GB');
   item.append(dot,label,value);legend.append(item);
  }
- $('dayViewEmpty').classList.toggle('hidden',total!==0);
- stack.setAttribute('aria-label',total+' appointments booked on '+dateInput.value+', by selected urgency groups');
+ $('dayViewEmpty').classList.toggle('hidden',fullTotal!==0);
+ stack.setAttribute('aria-label',currentTotal+' of '+fullTotal+' appointments booked by '+clock+' on '+dateInput.value+', by selected urgency groups');
 }
 $('dayViewTimeSlider')?.addEventListener('input',renderDayView);
 $('dayViewDate')?.addEventListener('change',renderDayView);
