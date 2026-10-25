@@ -2526,10 +2526,67 @@ function renderWaitingTrendChart(){
  const note=$('waitingTrendNote');if(note)note.textContent='Monthly median of booked-to-slot waiting times (days).'+(suppressSmall?' Months below 0.35% of the selected urgency group total are hidden ('+suppressedCount+' points).':'')+(ignoreRoutineSameDay?' Routine appointments booked less than one day ahead are excluded.':'');
  Plotly.react(chart,traces,{height:560,autosize:true,margin:{l:72,r:25,t:40,b:75},paper_bgcolor:'#fff',plot_bgcolor:'#fff',hovermode:'x unified',hoverlabel:{bgcolor:'#fff',bordercolor:'#dce6ef',font:{color:'#142d43',size:12},align:'left'},xaxis:{type:'date',title:'Appointment month',tickformat:'%b %Y',gridcolor:'#edf1f5'},yaxis:{title:{text:useHours?'Hours':'Days',standoff:12},rangemode:'tozero',gridcolor:'#edf1f5'},legend:{orientation:'h',y:1.13,x:0}},{responsive:true,displayModeBar:false}).then(()=>installTrendCardTooltip(chart,useHours));
 }
+
+// Day View uses booking dates (not appointment dates) and the configured urgency mappings.
+const dayViewDisabledUrgencies=new Set();
+let dayViewUrgencyInitialised=false;
+function dayViewLocalDate(){
+ const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');
+}
+function renderDayView(){
+ const dateInput=$('dayViewDate'),root=$('dayViewUrgencyToggles'),stack=$('dayViewStack'),legend=$('dayViewLegend');
+ if(!dateInput||!root||!stack||!legend)return;
+ if(!dateInput.value)dateInput.value=dayViewLocalDate();
+ const names=groupUrgencyNames.filter(isDashboardToggleOption);
+ if(!dayViewUrgencyInitialised&&names.length){dayViewUrgencyInitialised=true;dayViewDisabledUrgencies.clear();}
+ const signature=names.join('\u0001');
+ if(root.dataset.groups!==signature){
+  root.dataset.groups=signature;root.replaceChildren();
+  for(const name of names){
+   const label=document.createElement('label');label.className='switch';
+   const input=document.createElement('input');input.type='checkbox';input.checked=!dayViewDisabledUrgencies.has(name);
+   const slider=document.createElement('span');slider.className='slider';slider.style.setProperty('--switch-on',urgencyGroupColour(name));
+   const caption=document.createElement('span');caption.textContent=name;
+   label.append(input,slider,caption);root.append(label);
+   input.addEventListener('change',()=>{if(input.checked)dayViewDisabledUrgencies.delete(name);else dayViewDisabledUrgencies.add(name);renderDayView();});
+  }
+ }
+ const totals=new Map(names.map(name=>[name,0]));
+ for(const r of records){
+  if(r.bookedDay!==dateInput.value||r.status!=='Booked'||excludedSlotTypes.has(r.slot))continue;
+  const urgency=groupUrgencyAssignments[assignments[r.slot]||''];
+  if(!totals.has(urgency)||dayViewDisabledUrgencies.has(urgency))continue;
+  totals.set(urgency,totals.get(urgency)+(Number(r.count)||0));
+ }
+ const active=names.filter(name=>!dayViewDisabledUrgencies.has(name));
+ const total=active.reduce((sum,name)=>sum+totals.get(name),0);
+ $('dayViewTotal').textContent=total.toLocaleString('en-GB');
+ $('dayViewSelectedDate').textContent=new Date(dateInput.value+'T12:00:00').toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+ stack.replaceChildren();legend.replaceChildren();
+ for(const name of active){
+  const count=totals.get(name),colour=urgencyGroupColour(name);
+  if(count>0){
+   const seg=document.createElement('div');seg.className='day-view-segment';seg.style.backgroundColor=colour;seg.style.flex=String(count);
+   seg.title=name+': '+count.toLocaleString('en-GB')+' bookings ('+(100*count/total).toFixed(1)+'%)';
+   if(count/total>=.075)seg.textContent=count.toLocaleString('en-GB');
+   stack.append(seg);
+  }
+  const item=document.createElement('div');item.className='day-view-legend-item';
+  const dot=document.createElement('span');dot.className='day-view-dot';dot.style.backgroundColor=colour;
+  const label=document.createElement('span');label.textContent=name;
+  const value=document.createElement('strong');value.textContent=count.toLocaleString('en-GB')+' · '+(total?(100*count/total).toFixed(1):'0')+'%';
+  item.append(dot,label,value);legend.append(item);
+ }
+ $('dayViewEmpty').classList.toggle('hidden',total!==0);
+ stack.setAttribute('aria-label',total+' appointments booked on '+dateInput.value+', by selected urgency groups');
+}
+$('dayViewDate')?.addEventListener('change',renderDayView);
+$('dayViewToday')?.addEventListener('click',()=>{$('dayViewDate').value=dayViewLocalDate();renderDayView();});
+
 function showPage(which){
  closeSettingsMenu();closeAvailabilityNavMenu();closeDemandNavMenu();
  if(!isOwner&&(which==='categories'||which==='people'||which==='practiceSettings'))return;
- for(const [page,nav,name] of [['homePage','navHome','home'],['chartPage','navChart','chart'],['waitingTimesPage','navWaitingTimes','waitingTimes'],['waitingOverTimePage','navWaitingTrend','waitingTrend'],['categoryPage','navCategories','categories'],['availabilityPage','navAvailability','availability'],['routineAvailabilityPage','navRoutineAvailability','routineAvailability'],['plannedAvailabilityPage','navPlannedAvailability','plannedAvailability'],['bookingTimesPage','navBookingTimes','bookingTimes'],['signpostingPage','navSignposting','signposting'],['peoplePage','navPeople','people'],['practiceSettingsPage','navPracticeSettings','practiceSettings']]){
+ for(const [page,nav,name] of [['homePage','navHome','home'],['chartPage','navChart','chart'],['waitingTimesPage','navWaitingTimes','waitingTimes'],['waitingOverTimePage','navWaitingTrend','waitingTrend'],['categoryPage','navCategories','categories'],['availabilityPage','navAvailability','availability'],['routineAvailabilityPage','navRoutineAvailability','routineAvailability'],['plannedAvailabilityPage','navPlannedAvailability','plannedAvailability'],['dayViewPage','navDayView','dayView'],['bookingTimesPage','navBookingTimes','bookingTimes'],['signpostingPage','navSignposting','signposting'],['peoplePage','navPeople','people'],['practiceSettingsPage','navPracticeSettings','practiceSettings']]){
   $(page).classList.toggle('hidden',which!==name);$(nav).classList.toggle('active',which===name);
  }
  if(which==='home')updateHomePracticeName();
@@ -2539,13 +2596,14 @@ function showPage(which){
  else if(which==='availability')setTimeout(renderAvailabilityChart,0);
  else if(which==='routineAvailability')setTimeout(renderRoutineAvailabilityChart,0);
  else if(which==='plannedAvailability')setTimeout(renderPlannedAvailabilityChart,0);
+ else if(which==='dayView')setTimeout(renderDayView,0);
  else if(which==='bookingTimes')setTimeout(renderBookingTimesChart,0);
  else if(which==='signposting')setTimeout(renderSignpostingChart,0);
  else if(which==='people'){renderPeopleGroups();renderPeopleGroupFilter();renderPeople();}
  else if(which==='practiceSettings'){renderPracticeSettings();}
  else {renderSlotGroupBoxes();renderSlotTable();renderEditor();renderGroupUrgencyEditor();renderClinicianEditor();renderClinicianGroupEditor();renderConsultEditor()}
 }document.getElementById('navHome').onclick=()=>showPage('home');document.getElementById('navChart').onclick=()=>showPage('chart');document.getElementById('navWaitingTimes').onclick=()=>showPage('waitingTimes');document.getElementById('navWaitingTrend').onclick=()=>showPage('waitingTrend');document.getElementById('navCategories').onclick=()=>showPage('categories');document.getElementById('navAvailability').onclick=()=>showPage('availability');document.getElementById('navRoutineAvailability').onclick=()=>showPage('routineAvailability');
-document.getElementById('navPlannedAvailability').onclick=()=>showPage('plannedAvailability');document.getElementById('navBookingTimes').onclick=()=>showPage('bookingTimes');document.getElementById('navSignposting').onclick=()=>showPage('signposting');document.getElementById('navPeople').onclick=()=>showPage('people');document.getElementById('navPracticeSettings').onclick=()=>showPage('practiceSettings');$('demandAdditiveLines')?.addEventListener('change',()=>{const chart=$('combinedDemandChart');if(chart&&window.Plotly)Plotly.purge(chart);scheduleDemandRefresh();});$('slotTableSearch').addEventListener('input',renderSlotTable);for(const id of ['slotGroupFilter','slotModeFilter','slotPurposeFilter','slotCapacityFilter'])$(id)?.addEventListener('change',renderSlotTable);$('slotUnassignedOnly').addEventListener('change',renderSlotTable);$('slotModeUnassignedOnly').addEventListener('change',renderSlotTable);$('slotPurposeUnassignedOnly').addEventListener('change',renderSlotTable);$('slotCapacityUnassignedOnly').addEventListener('change',renderSlotTable);$('peopleSearch').addEventListener('input',renderPeople);$('peopleGroupFilter').addEventListener('change',renderPeople);$('peopleUnassignedOnly').addEventListener('change',()=>{const only=$('peopleUnassignedOnly').checked;$('peopleGroupFilter').disabled=only;renderPeople()});
+document.getElementById('navPlannedAvailability').onclick=()=>showPage('plannedAvailability');document.getElementById('navDayView').onclick=()=>showPage('dayView');document.getElementById('navBookingTimes').onclick=()=>showPage('bookingTimes');document.getElementById('navSignposting').onclick=()=>showPage('signposting');document.getElementById('navPeople').onclick=()=>showPage('people');document.getElementById('navPracticeSettings').onclick=()=>showPage('practiceSettings');$('demandAdditiveLines')?.addEventListener('change',()=>{const chart=$('combinedDemandChart');if(chart&&window.Plotly)Plotly.purge(chart);scheduleDemandRefresh();});$('slotTableSearch').addEventListener('input',renderSlotTable);for(const id of ['slotGroupFilter','slotModeFilter','slotPurposeFilter','slotCapacityFilter'])$(id)?.addEventListener('change',renderSlotTable);$('slotUnassignedOnly').addEventListener('change',renderSlotTable);$('slotModeUnassignedOnly').addEventListener('change',renderSlotTable);$('slotPurposeUnassignedOnly').addEventListener('change',renderSlotTable);$('slotCapacityUnassignedOnly').addEventListener('change',renderSlotTable);$('peopleSearch').addEventListener('input',renderPeople);$('peopleGroupFilter').addEventListener('change',renderPeople);$('peopleUnassignedOnly').addEventListener('change',()=>{const only=$('peopleUnassignedOnly').checked;$('peopleGroupFilter').disabled=only;renderPeople()});
 function renderClinicianEditor(){renderDropEditor('clinician');updateClinicianChartFilter()}
 function renderClinicianGroupEditor(){renderDropEditor('clinicianGroup');if(!$('peoplePage')?.classList.contains('hidden'))renderPeopleGroups()}
 $('addClinicianCategory').onclick=()=>{const el=$('newClinicianCategory');const c=el.value.trim();if(!c)return;if(c.toLowerCase()==='uncategorised'||clinicianCategoryNames.some(x=>x.toLowerCase()===c.toLowerCase())){alert('This clinician category name already exists or is reserved.');return}clinicianCategoryNames.push(c);el.value='';saveCategories();renderClinicianEditor();renderClinicianGroupEditor()};
