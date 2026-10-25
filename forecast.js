@@ -126,6 +126,50 @@ function renderHistoricalWeekday(){
   for(let i=0;i<degree;i++){let best=i;for(let j=i+1;j<degree;j++)if(Math.abs(m[j][i])>Math.abs(m[best][i]))best=j;[m[i],m[best]]=[m[best],m[i]];const pivot=m[i][i];if(Math.abs(pivot)<1e-9)return null;for(let k=i;k<=degree;k++)m[i][k]/=pivot;for(let j=0;j<degree;j++)if(j!==i){const factor=m[j][i];for(let k=i;k<=degree;k++)m[j][k]-=factor*m[i][k]}}
   const c=m.map(row=>row[degree]);return d=>Math.max(0,features(d,harmonic).reduce((sum,v,i)=>sum+v*c[i],0));
  }
+ // Refit the same annual seasonal/trend model independently for each weekday.
+ // The table uses a forward calendar horizon, not the last observed weekday plus three weeks.
+ const needsRoot=$('dailyForecastNeedsTable');
+ if(needsRoot){
+  needsRoot.replaceChildren();
+  const nextMonday=shift(today,(8-new Date(today+'T12:00:00Z').getUTCDay())%7);
+  const table=document.createElement('table');table.className='forecast-needs-table';
+  const head=document.createElement('thead'),heading=document.createElement('tr');
+  for(const name of ['Week beginning','Monday','Tuesday','Wednesday','Thursday','Friday']){
+   const th=document.createElement('th');th.textContent=name;heading.append(th);
+  }
+  head.append(heading);table.append(head);
+  const body=document.createElement('tbody');
+  const forecasts=new Map();
+  for(let dow=1;dow<=5;dow++){
+   const sampleDays=[];
+   for(let d=start;d<=end;d=shift(d,1)){
+    if(new Date(d+'T12:00:00Z').getUTCDay()!==dow)continue;
+    if(excludeHolidayWeeks&&holidayWeeks.has(monday(d)))continue;
+    sampleDays.push(d);
+   }
+   const sampleValues=sampleDays.map(d=>normalise(d,totals.get(d)||0));
+   forecasts.set(dow,sampleDays.length>=12?fitModel(sampleDays,sampleValues):null);
+  }
+  for(let week=0;week<3;week++){
+   const weekStart=shift(nextMonday,week*7),tr=document.createElement('tr'),weekCell=document.createElement('th');
+   weekCell.scope='row';weekCell.textContent=new Date(weekStart+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'});
+   tr.append(weekCell);
+   for(let dow=1;dow<=5;dow++){
+    const day=shift(weekStart,dow-1),model=forecasts.get(dow),td=document.createElement('td');
+    if(!model){td.textContent='—';td.title='At least 12 observed weekdays are needed for a prediction';}
+    else{
+     const prediction=model(day),suggested=Math.ceil(prediction);
+     const number=document.createElement('div');number.className='forecast-needs-number';number.textContent=prediction.toFixed(1);
+     const sub=document.createElement('div');sub.className='forecast-needs-sub';sub.textContent=suggested+' appointments to provide';
+     td.title=day+': predicted '+prediction.toFixed(1)+' bookings; suggested minimum '+suggested+' appointment slots';
+     td.append(number,sub);
+    }
+    tr.append(td);
+   }
+   body.append(tr);
+  }
+  table.append(body);needsRoot.append(table);
+ }
  const fittedModel=n>=12?fitModel(days,values):null;
  const future=[];for(let i=1;i<=13;i++)future.push(shift(days[days.length-1],7*i));
  const historicalFit=fittedModel?days.map(d=>fittedModel(d)):[];
