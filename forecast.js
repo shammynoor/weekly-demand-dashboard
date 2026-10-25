@@ -6,6 +6,23 @@ const monday=d=>shift(d,-((new Date(d+'T12:00:00Z').getUTCDay()+6)%7));
 const isDaily=n=>/same.?day|urgent.?extra|within.?3.?day/i.test(n);
 const disabled={daily:new Set(),weekly:new Set()};
 const urgencyPlanningMode=new Map();
+let forecastPreferenceAccount=null;
+function syncForecastPreferences(){
+ const api=window.gpChartPreferences,account=api?.account();if(!account||account===forecastPreferenceAccount)return;
+ forecastPreferenceAccount=account;urgencyPlanningMode.clear();disabled.daily.clear();urgencyExplicitlyEnabled.clear();
+ const saved=api.read();
+ for(const [name,mode] of Object.entries(saved.forecastPlanningModes||{}))if(mode==='daily'||mode==='weekly')urgencyPlanningMode.set(name,mode);
+ for(const [name,enabled] of Object.entries(saved.forecastEnabledGroups||{})){
+  if(enabled){if(!isDaily(name))urgencyExplicitlyEnabled.add(name)}
+  else disabled.daily.add(name);
+ }
+}
+function saveForecastPreferences(){
+ const api=window.gpChartPreferences;if(!api?.account())return;
+ const modes=Object.fromEntries(urgencyPlanningMode),enabled={};
+ for(const name of forecastUrgencyNames())enabled[name]=forecastUrgencyEnabled(name);
+ api.write('forecastPlanningModes',modes);api.write('forecastEnabledGroups',enabled);
+}
 function render(mode){
 const prefix=mode==='daily'?'dailyForecast':'weeklyForecast',root=$(prefix+'Chart'),filter=$(prefix+'Filters');if(!root||!filter)return;
 const names=prioritySort('urgency',groupUrgencyNames.filter(isDashboardToggleOption)).filter(n=>isDaily(n)===(mode==='daily'));
@@ -79,7 +96,7 @@ const urgencyExplicitlyEnabled=new Set();
 function setForecastUrgencyEnabled(name,enabled){
  if(enabled){disabled.daily.delete(name);if(!isDaily(name))urgencyExplicitlyEnabled.add(name)}
  else{disabled.daily.add(name);urgencyExplicitlyEnabled.delete(name)}
- renderHistoricalWeekday();
+ saveForecastPreferences();renderHistoricalWeekday();
 }
 function renderDailyUrgencyFilters(){
  const root=$('dailyForecastFilters');if(!root)return;
@@ -109,11 +126,12 @@ function renderUrgencyPlanningModes(){
   control.append(input,track);
   const weekly=document.createElement('span');weekly.textContent='Weekly';
   switchLabel.append(daily,control,weekly);
-  input.addEventListener('change',()=>{urgencyPlanningMode.set(name,input.checked?'weekly':'daily');renderHistoricalWeekday()});
+  input.addEventListener('change',()=>{urgencyPlanningMode.set(name,input.checked?'weekly':'daily');saveForecastPreferences();renderHistoricalWeekday()});
   row.append(heading,switchLabel);root.append(row);
  }
 }
 function renderHistoricalWeekday(){
+ syncForecastPreferences();
  const root=$('dailyForecastHistoryChart'),summary=$('dailyForecastHistorySummary'),select=$('dailyForecastWeekday');
  if(!root||!summary||!select)return;
  root.replaceChildren();renderDailyUrgencyFilters();renderUrgencyPlanningModes();
