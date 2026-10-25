@@ -2277,58 +2277,57 @@ function renderWaitingTimesChart(){
  const chart=$('waitingTimesChart'),root=$('waitingUrgencyToggles');
  if(!chart||!root||$('waitingTimesPage')?.classList.contains('hidden')||!window.Plotly)return;
  setupWaitingBookingSlider();
- const totals=new Map();
- for(const r of waitingTimeRecords){if(!waitingMatches(r,'urgency'))continue;const g=waitingRowDimensions(r).urgency;totals.set(g,(totals.get(g)||0)+r.count)}
- const names=groupUrgencyNames.filter(n=>isDashboardToggleOption(n)&&totals.has(n));
- root.replaceChildren();
- for(const name of names){
+ const kinds=['urgency','consult','purpose','capacity','clinician'];
+ const optionsByKind=Object.fromEntries(kinds.map(k=>[k,new Set()]));
+ const bins=new Map(),bySlot=new Map();
+ const rows=[];
+ // Calculate each row's dimensions and selection once, then reuse for all filter counts.
+ for(const r of waitingTimeRecords){
+  if(r.status!=='Booked'||excludedSlotTypes.has(r.slot))continue;
+  if(waitingBookingMonthStart&&r.bookingMonth<waitingBookingMonthStart)continue;
+  if(waitingBookingMonthEnd&&r.bookingMonth>waitingBookingMonthEnd)continue;
+  const d=waitingRowDimensions(r);
+  if(!isDashboardToggleOption(d.urgency))continue;
+  const enabled={
+   urgency:!waitingDisabledUrgency.has(d.urgency),
+   consult:!waitingFilterDisabled.consult.has(d.consult),
+   purpose:!waitingFilterDisabled.purpose.has(d.purpose),
+   capacity:!waitingFilterDisabled.capacity.has(d.capacity),
+   clinician:!waitingFilterDisabled.clinician.has(d.clinician)
+  };
+  const off=kinds.filter(k=>!enabled[k]);
+  for(const kind of kinds)if(off.length===0||(off.length===1&&off[0]===kind))optionsByKind[kind].add(d[kind]);
+  if(off.length)continue;
+  bins.set(r.day,(bins.get(r.day)||0)+r.count);
+  let item=bySlot.get(r.slot);
+  if(!item){item={total:0,day0:0};bySlot.set(r.slot,item)}
+  item.total+=r.count;if(r.day===0)item.day0+=r.count;
+ }
+ const makeToggle=(container,name,checked,colour,onChange)=>{
   const row=document.createElement('label');row.className='filter-row';
   const sw=document.createElement('span');sw.className='switch';
-  const input=document.createElement('input');input.type='checkbox';input.setAttribute('role','switch');input.checked=!waitingDisabledUrgency.has(name);
-  const track=document.createElement('span');track.className='switch-track';track.style.setProperty('--switch-on',urgencyGroupColour(name));sw.append(input,track);
-  const title=document.createElement('span');title.textContent=name;row.append(sw,title);root.append(row);
-  input.addEventListener('change',()=>{
-   if(input.checked)waitingDisabledUrgency.delete(name);else waitingDisabledUrgency.add(name);
-   if(!waitingTimeRecords.some(r=>waitingMatches(r))){if(input.checked)waitingDisabledUrgency.add(name);else waitingDisabledUrgency.delete(name);input.checked=!input.checked;return}
-   renderWaitingTimesChart();
-  });
- }
+  const input=document.createElement('input');input.type='checkbox';input.setAttribute('role','switch');input.checked=checked;input.dataset.filterName=name;
+  const track=document.createElement('span');track.className='switch-track';track.style.setProperty('--switch-on',colour);
+  sw.append(input,track);const title=document.createElement('span');title.textContent=name;row.append(sw,title);container.append(row);
+  input.addEventListener('change',()=>{onChange(input.checked);renderWaitingTimesChart()});
+ };
+ root.replaceChildren();
+ for(const name of groupUrgencyNames.filter(n=>isDashboardToggleOption(n)&&optionsByKind.urgency.has(n)))
+  makeToggle(root,name,!waitingDisabledUrgency.has(name),urgencyGroupColour(name),checked=>{if(checked)waitingDisabledUrgency.delete(name);else waitingDisabledUrgency.add(name)});
  const dimensions=[['consult','waitingConsultToggles',consultCategoryNames,consultModeColours],['purpose','waitingPurposeToggles',purposeCategoryNames,purposeColours],['capacity','waitingCapacityToggles',capacityCategoryNames,capacityColours],['clinician','waitingClinicianToggles',clinicianGroupNames,clinicianGroupColours]];
  for(const [kind,id,allNames,colours] of dimensions){
   const container=$(id);if(!container)continue;
-  const available=new Set(waitingTimeRecords.filter(r=>waitingMatches(r,kind)).map(r=>waitingRowDimensions(r)[kind]).filter(isDashboardToggleOption));
-  const options=allNames.filter(n=>isDashboardToggleOption(n)&&available.has(n));
+  const options=allNames.filter(n=>isDashboardToggleOption(n)&&optionsByKind[kind].has(n));
   container.replaceChildren();
-  for(const name of options){
-   const row=document.createElement('label');row.className='filter-row';
-   const sw=document.createElement('span');sw.className='switch';
-   const input=document.createElement('input');input.type='checkbox';input.setAttribute('role','switch');input.dataset.filterName=name;input.checked=!waitingFilterDisabled[kind].has(name);
-   const track=document.createElement('span');track.className='switch-track';track.style.setProperty('--switch-on',kind==='clinician'?clinicianGroupColour(name):typeColour(name,colours));sw.append(input,track);
-   const label=document.createElement('span');label.textContent=name;row.append(sw,label);container.append(row);
-   input.addEventListener('change',()=>{
-    if(input.checked)waitingFilterDisabled[kind].delete(name);else waitingFilterDisabled[kind].add(name);
-    if(!waitingTimeRecords.some(r=>waitingMatches(r))){if(input.checked)waitingFilterDisabled[kind].add(name);else waitingFilterDisabled[kind].delete(name);input.checked=!input.checked;return}
-    renderWaitingTimesChart();
-   });
-  }
+  for(const name of options)makeToggle(container,name,!waitingFilterDisabled[kind].has(name),kind==='clinician'?clinicianGroupColour(name):typeColour(name,colours),checked=>{if(checked)waitingFilterDisabled[kind].delete(name);else waitingFilterDisabled[kind].add(name)});
   const panel=container.closest('section');if(panel)panel.hidden=!options.length;
  }
  updateCollapsedFilterSummaries();
- const bins=new Map();
- for(const r of waitingTimeRecords){if(!waitingMatches(r))continue;bins.set(r.day,(bins.get(r.day)||0)+r.count)}
  const breakdown=$('waitingSlotBreakdown');
  if(breakdown){
-  const bySlot=new Map();
-  for(const r of waitingTimeRecords){
-   if(!waitingMatches(r))continue;
-   let item=bySlot.get(r.slot);
-   if(!item){item={total:0,day0:0};bySlot.set(r.slot,item)}
-   item.total+=r.count;
-   if(r.day===0)item.day0+=r.count;
-  }
-  const rows=[...bySlot].sort((a,b)=>b[1].day0-a[1].day0||b[1].total-a[1].total);
+  const sorted=[...bySlot].sort((a,b)=>b[1].day0-a[1].day0||b[1].total-a[1].total);
   breakdown.replaceChildren();
-  if(!rows.length){breakdown.textContent='No matching booked appointments with valid waiting times.'}
+  if(!sorted.length)breakdown.textContent='No matching booked appointments with valid waiting times.';
   else{
    const table=document.createElement('table');table.className='waiting-diagnostic-table';
    const thead=document.createElement('thead'),heading=document.createElement('tr');
@@ -2340,17 +2339,18 @@ function renderWaitingTimesChart(){
     for(const value of [name,total.toLocaleString('en-GB'),day0.toLocaleString('en-GB'),(total?100*day0/total:0).toFixed(1)+'%']){const td=document.createElement('td');td.textContent=value;tr.append(td)}
     tbody.append(tr);
    };
-   addRow('All selected slot types',rows.reduce((n,[,v])=>n+v.total,0),rows.reduce((n,[,v])=>n+v.day0,0),true);
-   for(const [name,v] of rows)addRow(name,v.total,v.day0);
+   addRow('All selected slot types',sorted.reduce((n,[,v])=>n+v.total,0),sorted.reduce((n,[,v])=>n+v.day0,0),true);
+   for(const [name,v] of sorted)addRow(name,v.total,v.day0);
    table.append(tbody);breakdown.append(table);
   }
  }
  const days=[...bins.keys()].sort((a,b)=>a-b),max=days.at(-1)??0;
- const x=Array.from({length:max+1},(_,i)=>i),y=x.map(day=>bins.get(day)||0);
+ // Plot only populated days; a bar still occupies one day on the continuous axis.
+ const x=days,y=days.map(day=>bins.get(day));
  const note=$('waitingTimesNote');if(note)note.textContent=days.length?'Each bar represents one complete 24-hour waiting-time interval (minutes ÷ 1,440).':'No waiting-time records for the selected filters.';
- Plotly.react(chart,[{type:'bar',x,y,marker:{color:'#7ea9c5'},hovertemplate:'%{x}–%{customdata} days<br>%{y:,} appointments<extra></extra>',customdata:x.map(v=>v+1)}],{
+ Plotly.react(chart,[{type:'bar',x,y,width:0.94,marker:{color:'#7ea9c5'},hovertemplate:'%{x}–%{customdata} days<br>%{y:,} appointments<extra></extra>',customdata:x.map(v=>v+1)}],{
   height:560,autosize:true,margin:{l:75,r:25,t:35,b:75},paper_bgcolor:'#fff',plot_bgcolor:'#fff',bargap:0.04,
-  xaxis:{title:'Waiting time (days)',dtick:max<=35?1:undefined,gridcolor:'#edf1f5'},
+  xaxis:{title:'Waiting time (days)',dtick:max<=35?1:undefined,gridcolor:'#edf1f5',rangemode:'tozero'},
   yaxis:{title:'Number of appointments',rangemode:'tozero',gridcolor:'#edf1f5'},showlegend:false
  },{responsive:true,displayModeBar:false});
 }
