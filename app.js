@@ -2534,6 +2534,8 @@ function applyFlatAvailabilityBars(target,isDaily=false){
 // Independent display-only capacity grouping for both availability charts.
 let urgentGroupWithheld=false;
 let routineGroupWithheld=false;
+let plannedGroupWithheld=false;
+$('plannedAvailabilityPageGroupWithheld')?.addEventListener('change',event=>{plannedGroupWithheld=event.target.checked;renderPlannedAvailabilityChart();});
 for(const [id,isUrgent] of [['availabilityPageGroupWithheld',true],['routineAvailabilityPageGroupWithheld',false]]){
  const input=$(id);
  if(input)input.addEventListener('change',()=>{
