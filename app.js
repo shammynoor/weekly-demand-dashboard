@@ -2422,6 +2422,8 @@ function renderWaitingTimesChart(){
  },{responsive:true,displayModeBar:false}).then(()=>installWaitingCardTooltip(chart,total));
 }
 $('waitingSuppressSmallBins')?.addEventListener('change',renderWaitingTimesChart);
+$('waitingTrendSuppressSmall')?.addEventListener('change',renderWaitingTrendChart);
+$('waitingTrendIgnoreRoutineSameDay')?.addEventListener('change',renderWaitingTrendChart);
 function renderWaitingTrendChart(){
  const chart=$('waitingTrendChart'),root=$('waitingTrendUrgencyToggles');
  if(!chart||!root||$('waitingOverTimePage')?.classList.contains('hidden')||!window.Plotly)return;
@@ -2429,6 +2431,9 @@ function renderWaitingTrendChart(){
  const kinds=['urgency','consult','purpose','capacity','clinician'];
  const optionsByKind=Object.fromEntries(kinds.map(k=>[k,new Set()]));
  const byGroup=new Map();
+ const suppressSmall=$('waitingTrendSuppressSmall')?.checked??true;
+ const ignoreRoutineSameDay=$('waitingTrendIgnoreRoutineSameDay')?.checked??true;
+ const eligibleCounts=new Map();
  for(const r of waitingTrendRecords){
   if(r.status!=='Booked'||excludedSlotTypes.has(r.slot)||!r.appointmentDate||!Number.isFinite(r.leadMinutes))continue;
   if(waitingTrendMonthStart&&r.appointmentMonth<waitingTrendMonthStart)continue;
@@ -2440,9 +2445,11 @@ function renderWaitingTrendChart(){
   const off=kinds.filter(k=>!enabled[k]);
   for(const kind of kinds)if(!off.length||(off.length===1&&off[0]===kind))optionsByKind[kind].add(d[kind]);
   if(off.length)continue;
-  const week=mondayOf(r.appointmentDate),key=d.urgency+'|'+week;
-  if(!byGroup.has(key))byGroup.set(key,{urgency:d.urgency,week,values:[]});
-  byGroup.get(key).values.push([r.leadMinutes/1440,r.count]);
+  if(ignoreRoutineSameDay&&/^routine$/i.test(d.urgency)&&r.leadMinutes<1440)continue;
+  const month=r.appointmentMonth,key=d.urgency+'|'+month;
+  eligibleCounts.set(d.urgency,(eligibleCounts.get(d.urgency)||0)+r.count);
+  if(!byGroup.has(key))byGroup.set(key,{urgency:d.urgency,month,count:0,values:[]});
+  const bucket=byGroup.get(key);bucket.count+=r.count;bucket.values.push([r.leadMinutes/1440,r.count]);
  }
  const toggle=(container,name,checked,colour,change)=>{
   const row=document.createElement('label');row.className='filter-row';
@@ -2470,14 +2477,18 @@ function renderWaitingTrendChart(){
   return (at(Math.floor((n+1)/2))+at(Math.floor((n+2)/2)))/2;
  };
  const traces=[];
+ let suppressedCount=0;
  for(const group of groupUrgencyNames){
   if(waitingTrendDisabledUrgency.has(group))continue;
-  const points=[...byGroup.values()].filter(v=>v.urgency===group).sort((a,b)=>a.week.localeCompare(b.week));
-  if(!points.length)continue;
-  traces.push({type:'scatter',mode:'lines+markers',name:group,x:points.map(v=>v.week),y:points.map(v=>median(v.values)),line:{color:urgencyGroupColour(group),width:2.5},marker:{size:5},connectgaps:false,hovertemplate:'%{x|%d %b %Y}<br>'+group+': %{y:.1f} days<extra></extra>'});
+  const points=[...byGroup.values()].filter(v=>v.urgency===group).sort((a,b)=>a.month.localeCompare(b.month));
+  const total=eligibleCounts.get(group)||0;
+  const shown=points.filter(v=>!suppressSmall||v.count>=total*0.0035);
+  suppressedCount+=points.length-shown.length;
+  if(!shown.length)continue;
+  traces.push({type:'scatter',mode:'lines+markers',name:group,x:shown.map(v=>v.month+'-01'),y:shown.map(v=>median(v.values)),line:{color:urgencyGroupColour(group),width:2.5},marker:{size:5},connectgaps:false,hovertemplate:'%{x|%b %Y}<br>'+group+': %{y:.1f} days<extra></extra>'});
  }
- const note=$('waitingTrendNote');if(note)note.textContent='Weekly median of booked-to-slot waiting times, measured in days. Each point groups appointments by appointment week.';
- Plotly.react(chart,traces,{height:560,autosize:true,margin:{l:72,r:25,t:40,b:75},paper_bgcolor:'#fff',plot_bgcolor:'#fff',hovermode:'x unified',hoverlabel:{bgcolor:'#fff',bordercolor:'#dce6ef',font:{color:'#142d43',size:12},align:'left'},xaxis:{type:'date',title:'Appointment week commencing',tickformat:'%b %Y',gridcolor:'#edf1f5'},yaxis:{title:'Median waiting time (days)',rangemode:'tozero',gridcolor:'#edf1f5'},legend:{orientation:'h',y:1.13,x:0}},{responsive:true,displayModeBar:false});
+ const note=$('waitingTrendNote');if(note)note.textContent='Monthly median of booked-to-slot waiting times (days).'+(suppressSmall?' Months below 0.35% of the selected urgency group total are hidden ('+suppressedCount+' points).':'')+(ignoreRoutineSameDay?' Routine appointments booked less than one day ahead are excluded.':'');
+ Plotly.react(chart,traces,{height:560,autosize:true,margin:{l:72,r:25,t:40,b:75},paper_bgcolor:'#fff',plot_bgcolor:'#fff',hovermode:'x unified',hoverlabel:{bgcolor:'#fff',bordercolor:'#dce6ef',font:{color:'#142d43',size:12},align:'left'},xaxis:{type:'date',title:'Appointment month',tickformat:'%b %Y',gridcolor:'#edf1f5'},yaxis:{title:'Median waiting time (days)',rangemode:'tozero',gridcolor:'#edf1f5'},legend:{orientation:'h',y:1.13,x:0}},{responsive:true,displayModeBar:false});
 }
 function showPage(which){
  closeSettingsMenu();closeAvailabilityNavMenu();closeDemandNavMenu();
