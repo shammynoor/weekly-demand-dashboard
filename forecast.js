@@ -150,14 +150,37 @@ function renderHistoricalWeekday(){
    const sampleValues=sampleDays.map(d=>normalise(d,totals.get(d)||0));
    forecasts.set(dow,sampleDays.length>=12?fitModel(sampleDays,sampleValues):null);
   }
+  const bankHolidayNames=new Map();
+  const holidayLabel=(year)=>{
+   const date=(month,day)=>new Date(Date.UTC(year,month-1,day,12));
+   const iso=d=>d.toISOString().slice(0,10);
+   const move=(d,offset)=>{const x=new Date(d);x.setUTCDate(x.getUTCDate()+offset);return x};
+   const firstMonday=month=>move(date(month,1),(8-date(month,1).getUTCDay())%7);
+   const lastMonday=month=>{const last=new Date(Date.UTC(year,month,0,12));return move(last,-((last.getUTCDay()+6)%7))};
+   const a=year%19,b=Math.floor(year/100),c=year%100,d=Math.floor(b/4),e=b%4;
+   const f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),h=(19*a+b-d-g+15)%30;
+   const i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h-k+7)%7;
+   const m=Math.floor((a+11*h+22*l)/451),n=h+l-7*m+114;
+   const easter=date(Math.floor(n/31),n%31+1);
+   const add=(d,name)=>bankHolidayNames.set(iso(d),name);
+   add(move(easter,-2),'Good Friday');add(move(easter,1),'Easter Monday');
+   const newYear=date(1,1),newDay=newYear.getUTCDay();
+   add(move(newYear,newDay===6?2:newDay===0?1:0),newDay===0||newDay===6?"New Year's Day (substitute)":"New Year's Day");
+   add(firstMonday(5),'Early May bank holiday');add(lastMonday(5),'Spring bank holiday');add(lastMonday(8),'Summer bank holiday');
+   const christmas=date(12,25),boxing=date(12,26);
+   const christmasDay=christmas.getUTCDay(),boxingDay=boxing.getUTCDay();
+   add(move(christmas,christmasDay===6||christmasDay===0?2:0),christmasDay===6||christmasDay===0?'Christmas Day (substitute)':'Christmas Day');
+   add(move(boxing,boxingDay===6||boxingDay===0?2:0),boxingDay===6||boxingDay===0?'Boxing Day (substitute)':'Boxing Day');
+  };
+  for(let year=Number(today.slice(0,4));year<=Number(today.slice(0,4))+2;year++)holidayLabel(year);
   const bankHolidayDates=new Set();for(let year=Number(today.slice(0,4));year<=Number(today.slice(0,4))+2;year++)for(const day of englandWalesBankHolidays(year))bankHolidayDates.add(day);
-  for(let week=0;week<7;week++){
+  for(let week=0;week<14;week++){
    const weekStart=shift(nextMonday,week*7),tr=document.createElement('tr'),weekCell=document.createElement('th');
    weekCell.scope='row';weekCell.textContent=new Date(weekStart+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'});
    tr.append(weekCell);
    for(let dow=1;dow<=5;dow++){
     const day=shift(weekStart,dow-1),model=forecasts.get(dow),td=document.createElement('td');
-    if(bankHolidayDates.has(day)){td.className='forecast-needs-bank-holiday';td.textContent='Bank holiday';td.title=day+': England and Wales bank holiday';}
+    if(bankHolidayDates.has(day)){td.className='forecast-needs-bank-holiday';const main=document.createElement('div');main.textContent='Bank holiday';const detail=document.createElement('div');detail.className='forecast-needs-holiday-name';detail.textContent=bankHolidayNames.get(day)||'Public holiday';td.append(main,detail);td.title=day+': '+detail.textContent;}
     else if(!model){td.textContent='—';td.title='At least 12 observed weekdays are needed for a prediction';}
     else{
      const prediction=model(day),suggested=Math.ceil(prediction);
