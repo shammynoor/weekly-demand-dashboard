@@ -150,19 +150,20 @@ function renderHistoricalWeekday(){
    const sampleValues=sampleDays.map(d=>normalise(d,totals.get(d)||0));
    forecasts.set(dow,sampleDays.length>=12?fitModel(sampleDays,sampleValues):null);
   }
-  for(let week=0;week<3;week++){
+  const bankHolidayDates=new Set();for(let year=Number(today.slice(0,4));year<=Number(today.slice(0,4))+2;year++)for(const day of englandWalesBankHolidays(year))bankHolidayDates.add(day);
+  for(let week=0;week<7;week++){
    const weekStart=shift(nextMonday,week*7),tr=document.createElement('tr'),weekCell=document.createElement('th');
    weekCell.scope='row';weekCell.textContent=new Date(weekStart+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'});
    tr.append(weekCell);
    for(let dow=1;dow<=5;dow++){
     const day=shift(weekStart,dow-1),model=forecasts.get(dow),td=document.createElement('td');
-    if(!model){td.textContent='—';td.title='At least 12 observed weekdays are needed for a prediction';}
+    if(bankHolidayDates.has(day)){td.className='forecast-needs-bank-holiday';td.textContent='Bank holiday';td.title=day+': England and Wales bank holiday';}
+    else if(!model){td.textContent='—';td.title='At least 12 observed weekdays are needed for a prediction';}
     else{
      const prediction=model(day),suggested=Math.ceil(prediction);
-     const number=document.createElement('div');number.className='forecast-needs-number';number.textContent=prediction.toFixed(1);
-     const sub=document.createElement('div');sub.className='forecast-needs-sub';sub.textContent=suggested+' appointments to provide';
+     const number=document.createElement('div');number.className='forecast-needs-number';number.textContent=String(suggested);
      td.title=day+': predicted '+prediction.toFixed(1)+' bookings; suggested minimum '+suggested+' appointment slots';
-     td.append(number,sub);
+     td.append(number);
     }
     tr.append(td);
    }
