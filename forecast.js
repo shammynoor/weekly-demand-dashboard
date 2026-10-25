@@ -72,12 +72,26 @@ const legend=document.createElement('div');legend.className='forecast-legend';fo
 const max=Math.max(1,...rows.map(r=>r.high));for(const r of rows){const line=document.createElement('div');line.className='forecast-line';const label=document.createElement('span');label.textContent=new Date(r.day+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:mode==='daily'?'short':undefined,day:'numeric',month:'short',timeZone:'UTC'});const track=document.createElement('div');track.className='forecast-track';for(const p of r.parts){const seg=document.createElement('div');seg.style.width=(100*p.mean/max)+'%';seg.style.backgroundColor=urgencyGroupColour(p.n);seg.title=p.n+': '+p.mean.toFixed(1);track.append(seg)}const value=document.createElement('strong');value.textContent=Math.round(r.total).toLocaleString('en-GB');value.title='Indicative 70% prediction interval: '+Math.round(r.low)+'–'+Math.round(r.high);const bounds=document.createElement('span');bounds.className='forecast-bounds';bounds.textContent=Math.round(r.low)+'–'+Math.round(r.high);bounds.title='Indicative 70% prediction interval';const numbers=document.createElement('div');numbers.className='forecast-numbers';numbers.append(value,bounds);line.append(label,track,numbers);root.append(line)}
 const note=document.createElement('p');note.className='muted';note.textContent='Historical booking data to '+end+'. '+(mode==='daily'?'Daily forecast combines recency-weighted weekday averages, a season-of-year adjustment where historical coverage permits, and a restrained recent trend. The smaller figures are indicative 70% prediction intervals, estimated from historical variation; these are not calibrated confidence guarantees.':'Weekly forecasts use complete historical Monday–Sunday weeks; the smaller figures show an indicative historical 10th–90th percentile range.')+' Zero-booking days included. Bank holidays and changes in service provision are not explicitly modelled.';root.append(note);
 }
+function renderDailyUrgencyFilters(){
+ const root=$('dailyForecastFilters');if(!root)return;
+ const names=prioritySort('urgency',groupUrgencyNames.filter(isDashboardToggleOption)).filter(isDaily);
+ if(root.dataset.names===names.join('|'))return;
+ root.dataset.names=names.join('|');root.replaceChildren();
+ for(const name of names){
+  const label=document.createElement('label');label.className='filter-row';
+  const sw=document.createElement('span');sw.className='switch';
+  const input=document.createElement('input');input.type='checkbox';input.checked=!disabled.daily.has(name);
+  const track=document.createElement('span');track.className='switch-track';track.style.setProperty('--switch-on',urgencyGroupColour(name));
+  sw.append(input,track);label.append(sw,document.createTextNode(name));root.append(label);
+  input.addEventListener('change',()=>{if(input.checked)disabled.daily.delete(name);else disabled.daily.add(name);renderHistoricalWeekday()});
+ }
+}
 function renderHistoricalWeekday(){
  const root=$('dailyForecastHistoryChart'),summary=$('dailyForecastHistorySummary'),select=$('dailyForecastWeekday');
  if(!root||!summary||!select)return;
- root.replaceChildren();
+ root.replaceChildren();renderDailyUrgencyFilters();
  const weekday=Number(select.value),today=dayViewLocalDate(),end=shift(today,-1),start=shift(end,1-7*Number($('dailyForecastHistory')?.value||52));
- const groups=groupUrgencyNames.filter(n=>isDashboardToggleOption(n)&&isDaily(n));
+ const groups=groupUrgencyNames.filter(n=>isDashboardToggleOption(n)&&isDaily(n)&&!disabled.daily.has(n));
  const adjust=$('dailyForecastAdjustListSize')?.checked===true;const populationMonths=adjust?practiceMonths():[];const referencePopulation=populationMonths.length?listSizeAtMonth(populationMonths[populationMonths.length-1]):null;
  const normalise=(day,count)=>adjust&&referencePopulation?count*referencePopulation/Math.max(1,listSizeAtMonth(day.slice(0,7))):count;
  const totals=new Map(),parts=new Map();
@@ -141,7 +155,16 @@ function renderHistoricalWeekday(){
  for(let i=0;i<allDays.length;i++){
   const d=allDays[i],isFuture=i>=n,value=isFuture?0:values[i],col=document.createElement('div');
   col.className='forecast-history-column'+(isFuture?' forecast-future-column':'');
-  const bar=document.createElement('div');bar.className='forecast-history-bar';bar.style.height=(value/max*192)+'px';
+  const bar=document.createElement('div');bar.className='forecast-history-bar forecast-stacked-bar';bar.style.height=(value/max*192)+'px';
+  if(!isFuture&&value>0){
+   const detail=parts.get(d)||new Map();
+   for(const name of groups){
+    const raw=detail.get(name)||0;if(raw<=0)continue;
+    const segment=document.createElement('div');segment.className='forecast-bar-segment';
+    segment.style.height=(raw/(totals.get(d)||1)*100)+'%';segment.style.backgroundColor=urgencyGroupColour(name);
+    segment.title=name+': '+raw+' bookings';bar.append(segment);
+   }
+  }
   const date=document.createElement('div');date.className='forecast-history-date';date.textContent=new Date(d+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',timeZone:'UTC'});
   if(isFuture){const j=i-n;col.title=d+': projected '+projected[j].toFixed(1)+' bookings (70% prediction interval '+intervals[j].low.toFixed(1)+'–'+intervals[j].high.toFixed(1)+')'}
   else {const detail=parts.get(d)||new Map();col.title=d+': '+value.toFixed(1)+(adjust?' list-size adjusted':'')+' bookings'+groups.map(name=>'\\n'+name+': '+(detail.get(name)||0)).join('')}
