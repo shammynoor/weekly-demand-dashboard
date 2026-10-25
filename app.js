@@ -1592,7 +1592,7 @@ const drawingErrors=[];
  }finally{busy=false;setButtons()}}
 $('signIn').onclick=async()=>{if(folderAccessDenied&&auth&&activeAccount){
  try{folderAccessDenied=false;folderAccessVerified=false;authenticatedOnce=false;$('dashboardShell').dataset.signedIn='false';await auth.logoutRedirect({account:activeAccount,postLogoutRedirectUri:REDIRECT_URI});}catch(e){setStatus('Account switch failed: '+e.message)}return;
- }if(authenticatedOnce||activeAccount)return;try{if(!auth){await initAuth();if(!auth)throw Error('Microsoft sign-in is still unavailable. Refresh the page (Ctrl+F5).')}await auth.loginRedirect({scopes:SCOPES})}catch(e){setStatus('Sign-in failed: '+e.message)}};
+ }if((authenticatedOnce||activeAccount)&&folderAccessVerified)return;try{if(!auth){await initAuth();if(!auth)throw Error('Microsoft sign-in is still unavailable. Refresh the page (Ctrl+F5).')}await auth.loginRedirect({scopes:SCOPES,prompt:activeAccount?'select_account':undefined,loginHint:activeAccount?.username})}catch(e){setStatus('Sign-in failed: '+e.message)}};
 $('signOut').onclick=async()=>{if(!activeAccount)return;try{authenticatedOnce=false;$('dashboardShell').dataset.signedIn='false';await auth.logoutRedirect({account:activeAccount,postLogoutRedirectUri:REDIRECT_URI})}catch(e){setStatus('Sign-out failed: '+e.message)}};
 $('chooseFolder').onclick=()=>{if(isOwner)showFolderPicker()};
 $('sourceSetup').onclick=()=>{if(isOwner)showFolderPicker()};
