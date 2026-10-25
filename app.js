@@ -4,7 +4,7 @@ let selectedAvailabilityUrgency='';
 // Single rule for every dashboard toggle: exclude this non-actionable mapping value.
 function isDashboardToggleOption(name){
  const value=String(name||'').toLowerCase().replace(/[^a-z]/g,'');
- return value!=='unassigned' && !value.startsWith('notre') && !value.startsWith('notrv');
+ return value!=='unassigned' && !value.startsWith('notre') && !value.startsWith('notrv') && !value.startsWith('notapplic');
 }
 
 const CLIENT_ID='ba2bc895-4213-447c-ba62-d7edec6e8173';
@@ -1620,7 +1620,7 @@ const disabledClinicianTypes=new Set();
 let lastClinicianFilterNames=[];
 function updateClinicianChartFilter(){
  const root=$('clinicianChartFilters');if(!root)return;
- const names=[...clinicianGroupNames];
+ const names=clinicianGroupNames.filter(isDashboardToggleOption);
  // Do not recreate switches during each chart refresh; retain focus and scroll position.
  if(names.length===lastClinicianFilterNames.length&&names.every((n,i)=>n===lastClinicianFilterNames[i])){root.querySelectorAll('input[data-filter-name]').forEach(input=>input.nextElementSibling?.style.setProperty('--switch-on',clinicianGroupColour(input.dataset.filterName)));return;}
  lastClinicianFilterNames=names;
@@ -1652,7 +1652,7 @@ const disabledConsultModes=new Set();
 let lastConsultFilterNames=[];
 function updateConsultChartFilter(){
  const root=$('consultChartFilters');if(!root)return;
- const names=[...consultCategoryNames];
+ const names=consultCategoryNames.filter(isDashboardToggleOption);
  if(names.length===lastConsultFilterNames.length&&names.every((n,i)=>n===lastConsultFilterNames[i])){root.querySelectorAll('input').forEach((input,i)=>input.nextElementSibling?.style.setProperty('--switch-on',consultModeColours[names[i]]||'#638fac'));return;}
  lastConsultFilterNames=names;
  root.replaceChildren();
@@ -1711,6 +1711,11 @@ function historicBookingFilterCounts(){
   if(r.status!=='Booked'||excludedSlotTypes.has(r.slot)||!(r.count>0))continue;
   const urgency=groupUrgencyAssignments[assignments[r.slot]||''];
   if(!urgency||disabledDemandUrgencyGroups.has(urgency))continue;
+  if(!monthlyMode&&excludeBankHolidays&&bankHolidayWeeks.has(r.bookedWeek))continue;
+  if(!showCurrentWeek&&periodIsCurrent(periodKey(r)))continue;
+  const period=periodKey(r);
+  if(demandMonthStart&&period<demandMonthStart)continue;
+  if(demandMonthEnd&&period>demandMonthEnd)continue;
   const group=clinicianGroupAssignments[effectiveClinicianType(r.clinician,r.person)];
   for(const [kind,value] of [['purpose',purposeAssignments[r.slot]],['capacity',capacityAssignments[r.slot]],['consult',consultAssignments[r.slot]],['clinician',group]]){
    if(value)result[kind].set(value,(result[kind].get(value)||0)+r.count);
@@ -1726,7 +1731,7 @@ function hideEmptyHistoricBookingFilters(){
   for(const input of root.querySelectorAll('input')){
    const name=input.dataset.classification||input.dataset.filterName||input.getAttribute('aria-label')?.replace(/^Include /,'');
    const row=input.closest('.filter-row');
-   if(row){row.hidden=!counts[kind].has(name);if(!row.hidden)visible++;}
+   if(row){row.hidden=!isDashboardToggleOption(name)||!counts[kind].has(name);if(!row.hidden)visible++;}
   }
   const card=root.closest('section');if(card)card.hidden=visible===0;
  }
@@ -2039,15 +2044,15 @@ function drawCombinedDemandChart(){
   const colour=additiveLines?'#2678ad':urgencyGroupColour(category);
   averageShapes.push({type:'line',xref:'paper',yref:'y',x0:0,x1:1,y0:average,y1:average,
    line:{color:colour,width:1.8,dash:'dot'},layer:'above'});
-  averageAnnotations.push({xref:'paper',yref:'y',x:1,y:average,xanchor:'right',yanchor:'bottom',
-   text:(additiveLines?'Combined':category)+' average · '+Math.round(average).toLocaleString('en-GB'),showarrow:false,
+  averageAnnotations.push({xref:'paper',yref:'y',x:1,y:average,xanchor:'left',yanchor:'middle',xshift:8,
+   text:'Av. '+Math.round(average).toLocaleString('en-GB'),showarrow:false,
    font:{size:11,color:colour},bgcolor:'rgba(255,255,255,0.90)',bordercolor:'rgba(170,185,200,0.65)',borderwidth:1,borderpad:6});
  }
  // Fit the axis closely to the visible series and average lines, retaining a zero baseline.
  const yAxisTop=Math.max(5,Math.ceil(maxCount*1.08));
  const range=demandMonthStart&&demandMonthEnd?[demandMonthStart+'-01',new Date(Date.UTC(Number(demandMonthEnd.slice(0,4)),Number(demandMonthEnd.slice(5,7)),0)).toISOString().slice(0,10)]:null;
  Plotly.react('combinedDemandChart',traces,{dragmode:false,autosize:true,height:535,
-  margin:{l:62,r:20,t:55,b:65},paper_bgcolor:'white',plot_bgcolor:'white',
+  margin:{l:62,r:95,t:55,b:65},paper_bgcolor:'white',plot_bgcolor:'white',
   shapes:[...yearBackgroundShapes(visibleWeeks),...averageShapes],
   legend:{orientation:'h',y:1.14,x:0,xanchor:'left',yanchor:'bottom',entrywidth:85,entrywidthmode:'pixels',traceorder:'normal'},
   xaxis:continuousMode?{type:'date',title:monthlyMode?'Booking month':'Booking date',tickformat:'%b %Y',gridcolor:'#edf1f5',...(range?{range}: {})}:axis,
