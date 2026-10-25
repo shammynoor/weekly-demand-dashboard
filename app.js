@@ -2316,6 +2316,35 @@ function renderWaitingTimesChart(){
  updateCollapsedFilterSummaries();
  const bins=new Map();
  for(const r of waitingTimeRecords){if(!waitingMatches(r))continue;bins.set(r.day,(bins.get(r.day)||0)+r.count)}
+ const breakdown=$('waitingSlotBreakdown');
+ if(breakdown){
+  const bySlot=new Map();
+  for(const r of waitingTimeRecords){
+   if(!waitingMatches(r))continue;
+   let item=bySlot.get(r.slot);
+   if(!item){item={total:0,day0:0};bySlot.set(r.slot,item)}
+   item.total+=r.count;
+   if(r.day===0)item.day0+=r.count;
+  }
+  const rows=[...bySlot].sort((a,b)=>b[1].day0-a[1].day0||b[1].total-a[1].total);
+  breakdown.replaceChildren();
+  if(!rows.length){breakdown.textContent='No matching booked appointments with valid waiting times.'}
+  else{
+   const table=document.createElement('table');table.className='waiting-diagnostic-table';
+   const thead=document.createElement('thead'),heading=document.createElement('tr');
+   for(const label of ['Slot type','Appointments','Day 0 (0–<24h)','Day 0 %']){const th=document.createElement('th');th.textContent=label;heading.append(th)}
+   thead.append(heading);table.append(thead);
+   const tbody=document.createElement('tbody');
+   const addRow=(name,total,day0,isTotal=false)=>{
+    const tr=document.createElement('tr');if(isTotal)tr.className='waiting-diagnostic-total';
+    for(const value of [name,total.toLocaleString('en-GB'),day0.toLocaleString('en-GB'),(total?100*day0/total:0).toFixed(1)+'%']){const td=document.createElement('td');td.textContent=value;tr.append(td)}
+    tbody.append(tr);
+   };
+   addRow('All selected slot types',rows.reduce((n,[,v])=>n+v.total,0),rows.reduce((n,[,v])=>n+v.day0,0),true);
+   for(const [name,v] of rows)addRow(name,v.total,v.day0);
+   table.append(tbody);breakdown.append(table);
+  }
+ }
  const days=[...bins.keys()].sort((a,b)=>a-b),max=days.at(-1)??0;
  const x=Array.from({length:max+1},(_,i)=>i),y=x.map(day=>bins.get(day)||0);
  const note=$('waitingTimesNote');if(note)note.textContent=days.length?'Each bar represents one complete 24-hour waiting-time interval (minutes ÷ 1,440).':'No waiting-time records for the selected filters.';
