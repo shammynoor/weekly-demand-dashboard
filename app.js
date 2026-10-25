@@ -2418,6 +2418,16 @@ function urgentConsultMatches(slot){
  return isDashboardToggleOption(mode)&&consultCategoryNames.includes(mode)&&!urgentConsultDisabled.has(mode);
 }
 const urgentCategoryDisabled=new Set();
+let urgentUrgencyDefaultsApplied=false;
+function applyUrgentUrgencyDefaults(){
+ if(urgentUrgencyDefaultsApplied||!urgentCategoryNames().length)return;
+ urgentCategoryDisabled.clear();
+ for(const name of urgentCategoryNames()){
+  if(!['same day','within 3 days'].includes(name.trim().toLowerCase()))urgentCategoryDisabled.add(name);
+ }
+ urgentUrgencyDefaultsApplied=true;
+}
+
 let urgentAvailabilityGranularity='day';
 function setUrgentAvailabilityGranularity(mode){
  urgentAvailabilityGranularity=mode==='week'?'week':'day';
@@ -2459,6 +2469,7 @@ function capacityUrgencyCategory(slot){
 }
 function renderUrgentCategoryToggles(){
  const root=$('urgentCategoryToggles');if(!root)return;
+ applyUrgentUrgencyDefaults();
  const names=urgentCategoryNames();
  const current=[...root.querySelectorAll('input[data-filter-name]')].map(x=>x.dataset.filterName);
  if(current.length===names.length&&current.every((x,i)=>x===names[i])){root.querySelectorAll('input[data-filter-name]').forEach(input=>input.nextElementSibling?.style.setProperty('--switch-on',urgentColour(input.dataset.filterName)));return;}
@@ -2611,11 +2622,19 @@ setupUrgentRangeControls();
 
 // Independent filters for Routine Appointment Availability.
 const routineDisabledTypes=new Set();
+let routineUrgencyDefaultsApplied=false;
+function applyRoutineUrgencyDefaults(){
+ if(routineUrgencyDefaultsApplied||!routineDetailedTypes().length)return;
+ routineDisabledTypes.clear();
+ for(const name of routineDetailedTypes())if(name.trim().toLowerCase()!=='routine')routineDisabledTypes.add(name);
+ routineUrgencyDefaultsApplied=true;
+}
 function routineDetailedTypes(){
  return groupUrgencyNames.filter(isDashboardToggleOption);
 }
 function renderRoutineCategoryToggles(){
  const root=$('routineCategoryToggles');if(!root)return;
+ applyRoutineUrgencyDefaults();
  const names=routineDetailedTypes().filter(isDashboardToggleOption);
  const old=[...root.querySelectorAll('input[data-filter-name]')].map(el=>el.dataset.filterName);
  if(old.length===names.length&&names.every((name,i)=>name===old[i])){
