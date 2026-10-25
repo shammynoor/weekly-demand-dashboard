@@ -2179,8 +2179,9 @@ function refreshPriorityEditors(){
    const [up,down]=controls.querySelectorAll('button');
    up.disabled=!isOwner||names.indexOf(name)===0;
    down.disabled=!isOwner||names.indexOf(name)===names.length-1;
-   root.append(row);
   }
+  const actual=[...root.children].filter(r=>r.classList.contains('slot-mode-item'));
+  if(actual.some((row,i)=>row.dataset.priorityName!==names[i]))for(const name of names){const row=rows.find(r=>r.dataset.priorityName===name);if(row)root.append(row)}
  }
 }
 const priorityToggleIds={
@@ -2198,11 +2199,14 @@ function refreshPriorityToggles(){
  }
 }
 function setupTogglePriority(){
- for(const id of Object.values(priorityEditors)){const root=document.getElementById(id);if(root)new MutationObserver(()=>{if(root.querySelector('.slot-mode-item:not([data-priority-bound])'))refreshPriorityEditors()}).observe(root,{childList:true})}
- for(const ids of Object.values(priorityToggleIds))for(const id of ids){const root=document.getElementById(id);if(!root)continue;
-  let busy=false;new MutationObserver(()=>{if(busy)return;busy=true;queueMicrotask(()=>{busy=false;refreshPriorityToggles()})}).observe(root,{childList:true});
+ // No MutationObservers: DOM mutations from the priority renderer previously locked the login page.
+ for(const fn of ['renderSlotGroupBoxes','renderConsultModeCards','renderSlotPurposeCategories','renderCapacityStatusCategories']){
+  const original=globalThis[fn];
+  if(typeof original!=='function')continue;
+  globalThis[fn]=function(...args){const result=original.apply(this,args);refreshPriorityEditors();return result};
  }
- refreshPriorityEditors();refreshPriorityToggles();
+ refreshPriorityEditors();
+ refreshPriorityToggles();
 }
 
 function ensureFollowUpCategory(){if(!categoryNames.some(c=>c.toLowerCase().replace(/[\s-]+/g,'')==='followup'))categoryNames.push('Follow up')}ensureFollowUpCategory();function guessCategory(t){return /RED|YELLOW|AMBER|URGENT|SAME DAY|ACUTE/i.test(t)?'Urgent':/GREEN|FOLLOW UP|ROUTINE/i.test(t)?'Routine':null}function saveCategories(sync=true){lastConsultFilterNames=[];try{localStorage.setItem(STORAGE_KEY,JSON.stringify({categories:categoryNames,assignments,clinicianCategories:clinicianCategoryNames,clinicianAssignments,consultCategories:consultCategoryNames,consultAssignments,groupUrgencyCategories:groupUrgencyNames,groupUrgencyAssignments,urgencyGroupColours,clinicianGroupCategories:clinicianGroupNames,clinicianGroupAssignments,peopleLocum,peopleClinicianType,clinicianGroupColours,clinicianTypeColours,urgencyTypeColours,purposeCategories:purposeCategoryNames,purposeColours,purposeAssignments,capacityCategories:capacityCategoryNames,capacityColours,capacityAssignments,consultModeColours,togglePriority:{...togglePriority},excludedSlotTypes:[...excludedSlotTypes]}));}catch(e){alert('Could not save settings in this browser. Please try again.')}if(sync)markCategoryDirty()}function allCategories(){return [...categoryNames,'Uncategorised']}function rebuildCategoryFilter(){const old=new Set([...slots.selectedOptions].map(o=>o.value));slots.replaceChildren();for(const c of allCategories()){const o=document.createElement('option');o.value=c;o.textContent=c;o.selected=old.has(c);slots.append(o)}}function renderEditor(){renderDropEditor('urgency');updateAvailabilityUrgencyFilter()}
