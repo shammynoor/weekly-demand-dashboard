@@ -152,7 +152,7 @@ function renderHistoricalWeekday(){
   const nextMonday=shift(today,(8-new Date(today+'T12:00:00Z').getUTCDay())%7);
   const table=document.createElement('table');table.className='forecast-needs-table';
   const head=document.createElement('thead'),heading=document.createElement('tr');
-  for(const name of ['Week beginning','Monday','Tuesday','Wednesday','Thursday','Friday']){
+  for(const name of ['Week beginning','Monday','Tuesday','Wednesday','Thursday','Friday','Weekly total']){
    const th=document.createElement('th');th.textContent=name;heading.append(th);
   }
   head.append(heading);table.append(head);
@@ -173,6 +173,43 @@ function renderHistoricalWeekday(){
    forecasts.set(name,byWeekday);
   }
   const predict=(name,dow,day)=>forecasts.get(name)?.get(dow)?.(day);
+  const quantileNeeds=(numbers,p)=>{if(!numbers.length)return 0;const sorted=[...numbers].sort((a,b)=>a-b),pos=(sorted.length-1)*p,lo=Math.floor(pos),hi=Math.ceil(pos);return sorted[lo]+(sorted[hi]-sorted[lo])*(pos-lo)};
+  // Empirical 70% uncertainty from the residuals of each day's combined selected groups.
+  const dailyErrors=new Map();
+  for(let dow=1;dow<=5;dow++){
+   const errors=[];
+   for(let d=start;d<=end;d=shift(d,1)){
+    if(new Date(d+'T12:00:00Z').getUTCDay()!==dow||(excludeHolidayWeeks&&holidayWeeks.has(monday(d))))continue;
+    const estimates=dailyGroups.map(name=>predict(name,dow,d));
+    if(estimates.some(v=>v===undefined))continue;
+    const observed=dailyGroups.reduce((sum,name)=>sum+normalise(d,(parts.get(d)||new Map()).get(name)||0),0);
+    errors.push(observed-estimates.reduce((sum,v)=>sum+v,0));
+   }
+   dailyErrors.set(dow,[quantileNeeds(errors,.15),quantileNeeds(errors,.85)]);
+  }
+  const weeklyErrors=[];
+  if(weeklyGroups.length){
+   for(let w=monday(start);shift(w,6)<=end;w=shift(w,7)){
+    if(excludeHolidayWeeks&&holidayWeeks.has(w))continue;
+    let observed=0,estimated=0,valid=true;
+    for(let dow=1;dow<=5;dow++){
+     const d=shift(w,dow-1);
+     for(const name of weeklyGroups){
+      const p=predict(name,dow,d);if(p===undefined){valid=false;break}
+      estimated+=p;observed+=normalise(d,(parts.get(d)||new Map()).get(name)||0);
+     }
+     if(!valid)break;
+    }
+    if(valid)weeklyErrors.push(observed-estimated);
+   }
+  }
+  const weeklyErrorBounds=[quantileNeeds(weeklyErrors,.15),quantileNeeds(weeklyErrors,.85)];
+  const addForecastCell=(cell,prediction,bounds)=>{
+   const number=document.createElement('div');number.className='forecast-needs-number';number.textContent=String(Math.ceil(prediction));
+   const range=document.createElement('div');range.className='forecast-needs-interval';
+   range.textContent='('+Math.max(0,Math.floor(prediction+bounds[0]))+'–'+Math.max(0,Math.ceil(prediction+bounds[1]))+')';
+   range.title='Indicative 70% prediction interval';cell.append(number,range);
+  };
   const bankHolidayNames=new Map();
   const holidayLabel=(year)=>{
    const date=(month,day)=>new Date(Date.UTC(year,month-1,day,12));
@@ -208,40 +245,28 @@ function renderHistoricalWeekday(){
     else if(predictions.some(value=>value===undefined)){td.textContent='—';td.title='At least 12 observed weekdays are needed for a prediction';}
     else{
      const prediction=predictions.reduce((a,b)=>a+b,0),suggested=Math.ceil(prediction);
-     const number=document.createElement('div');number.className='forecast-needs-number';number.textContent=String(suggested);
      td.title=day+': predicted '+prediction.toFixed(1)+' bookings; suggested minimum '+suggested+' appointment slots';
-     td.append(number);
+     addForecastCell(td,prediction,dailyErrors.get(dow));
     }
     tr.append(td);
    }
+   const weeklyCell=document.createElement('td');weeklyCell.className='forecast-weekly-total-cell';
+   if(!weeklyGroups.length){weeklyCell.textContent='—';weeklyCell.title='No urgency groups set to weekly totals';}
+   else{
+    let weeklyPrediction=0,valid=true;
+    for(let dow=1;dow<=5;dow++){
+     const day=shift(weekStart,dow-1);if(bankHolidayDates.has(day))continue;
+     for(const name of weeklyGroups){const estimate=predict(name,dow,day);if(estimate===undefined){valid=false;break}weeklyPrediction+=estimate}
+     if(!valid)break;
+    }
+    if(valid)addForecastCell(weeklyCell,weeklyPrediction,weeklyErrorBounds);
+    else weeklyCell.textContent='—';
+   }
+   tr.append(weeklyCell);
    body.append(tr);
   }
   table.append(body);needsRoot.append(table);
-  if(weeklyGroups.length){
-   const section=document.createElement('section');section.className='forecast-weekly-needs';
-   const title=document.createElement('h4');title.textContent='Weekly appointment provision';section.append(title);
-   const note=document.createElement('p');note.className='muted';note.textContent='Weekly totals are separate from daily figures; bank holidays are excluded.';section.append(note);
-   const weeklyTable=document.createElement('table'),weeklyHead=document.createElement('thead'),headRow=document.createElement('tr');
-   for(const label of ['Week beginning',...weeklyGroups,'Total']){const th=document.createElement('th');th.textContent=label;headRow.append(th)}
-   weeklyHead.append(headRow);weeklyTable.append(weeklyHead);
-   const weeklyBody=document.createElement('tbody');
-   for(let week=0;week<14;week++){
-    const weekStart=shift(nextMonday,week*7),tr=document.createElement('tr'),label=document.createElement('th');
-    label.textContent=new Date(weekStart+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'});tr.append(label);
-    let sum=0,complete=true;
-    for(const name of weeklyGroups){
-     let total=0,valid=true;
-     for(let dow=1;dow<=5;dow++){
-      const day=shift(weekStart,dow-1);if(bankHolidayDates.has(day))continue;
-      const value=predict(name,dow,day);if(value===undefined){valid=false;break}total+=value;
-     }
-     const td=document.createElement('td');td.textContent=valid?String(Math.ceil(total)):'—';tr.append(td);
-     if(valid)sum+=total;else complete=false;
-    }
-    const td=document.createElement('td');td.textContent=complete?String(Math.ceil(sum)):'—';tr.append(td);weeklyBody.append(tr);
-   }
-   weeklyTable.append(weeklyBody);section.append(weeklyTable);needsRoot.append(section);
-  }
+
  }
  const fittedModel=n>=12?fitModel(days,values):null;
  const future=[];for(let i=1;i<=13;i++)future.push(shift(days[days.length-1],7*i));
