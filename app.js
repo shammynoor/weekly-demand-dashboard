@@ -834,6 +834,42 @@ const $=id=>document.getElementById(id);
 let auth,authInitPromise=null,activeAccount=null,authenticatedOnce=false,selectedFolder=null,folderView={id:'root',name:'OneDrive',trail:[]},busy=false,lastFingerprint='';
 let cloudReady=false, cloudSaveTimer=null, cloudVersion=null, cloudBusy=false;
 let cloudFolder=null;
+// Per-account chart preferences stay local to this browser and are never included
+// in the shared OneDrive settings JSON.
+function chartPreferenceAccount(){return activeAccount?.homeAccountId||activeAccount?.localAccountId||activeAccount?.username||null}
+function chartPreferenceKey(){const id=chartPreferenceAccount();return id?'gp-insight-chart-toggles-v1:'+encodeURIComponent(id):null}
+function readChartPreferences(){const key=chartPreferenceKey();if(!key)return {};try{return JSON.parse(localStorage.getItem(key)||'{}')||{}}catch{return {}}}
+function writeChartPreference(key,value){const storageKey=chartPreferenceKey();if(!storageKey)return;try{const saved=readChartPreferences();saved[key]=value;localStorage.setItem(storageKey,JSON.stringify(saved))}catch(error){console.warn('Could not save chart preference',error)}}
+window.gpChartPreferences={read:readChartPreferences,write:writeChartPreference,account:chartPreferenceAccount};
+function chartControlKey(el){
+ if(!el||el.type!=='checkbox')return null;
+ const page=el.closest('[id$="Page"]');if(!page||/categoryPage|settingsPage/i.test(page.id))return null;
+ if(el.id)return 'checkbox:'+page.id+':'+el.id;
+ const row=el.closest('label')||el.parentElement;
+ const label=(row?.textContent||el.getAttribute('aria-label')||'').trim().replace(/\\s+/g,' ').slice(0,120);
+ const panel=el.closest('[id]')?.id||page.id;
+ return label?'checkbox:'+page.id+':'+panel+':'+label:null;
+}
+let chartPreferenceRestoring=false;
+function restoreChartCheckboxes(){
+ if(!chartPreferenceAccount())return;
+ const saved=readChartPreferences();
+ chartPreferenceRestoring=true;
+ try{document.querySelectorAll('#dashboardShell input[type="checkbox"]').forEach(el=>{
+  const key=chartControlKey(el);if(key&&typeof saved[key]==='boolean'&&el.checked!==saved[key])el.checked=saved[key];
+ })}finally{chartPreferenceRestoring=false}
+}
+document.addEventListener('change',event=>{
+ if(chartPreferenceRestoring)return;
+ const key=chartControlKey(event.target);
+ if(key)writeChartPreference(key,event.target.checked);
+},true);
+document.addEventListener('DOMContentLoaded',()=>{
+ const shell=$('dashboardShell');if(!shell)return;
+ let queued=false;
+ new MutationObserver(()=>{if(queued)return;queued=true;queueMicrotask(()=>{queued=false;restoreChartCheckboxes()})}).observe(shell,{childList:true,subtree:true});
+ restoreChartCheckboxes();
+});
 const CLOUD_SETTINGS_NAME='weekly-demand-categories.json';
 function cloudNotice(msg){const el=$('cloudCategoryStatus');if(el)el.textContent=msg}
 async function cloudFile(){if(!isOwner)return readSharedSettings();try{const shared=await readSharedSettings();if(shared)return shared}catch(e){cloudNotice('Shared settings not available yet: '+e.message)}const t=await token();const r=await fetch(GRAPH+'/me/drive/special/approot:/'+CLOUD_SETTINGS_NAME+':/content',{headers:{Authorization:'Bearer '+t}});if(r.status===404)return null;if(!r.ok)throw Error('Settings read failed (HTTP '+r.status+')');return r.json()}
