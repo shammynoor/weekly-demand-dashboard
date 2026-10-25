@@ -687,6 +687,8 @@ body.viewer-mode .nav-settings-menu{display:none!important}
 #chartPage .demand-left-filters .urgent-secondary-sidebar .filter-stack{gap:1px}
 #chartPage .demand-left-filters .urgent-secondary-sidebar .filter-stack[hidden]{display:none!important}
 #chartPage .demand-left-filters .urgent-secondary-sidebar .filter-row{min-height:23px;line-height:1.2;font-size:12px;gap:4px;padding:0;margin:0}
+/* Override the flex display rule when an individual zero-data option is hidden. */
+#chartPage .demand-left-filters .urgent-secondary-sidebar .filter-row[hidden]{display:none!important}
 #chartPage .demand-left-filters .urgent-secondary-sidebar .switch{transform:scale(.60);transform-origin:left center;margin-right:-21px}
 #chartPage .demand-left-filters .urgent-secondary-sidebar .switch input:checked+.switch-track{background:var(--switch-on,#638fac)!important;border-color:var(--switch-on,#638fac)!important}
 
