@@ -1634,7 +1634,7 @@ function updateClinicianChartFilter(){
   switchEl.append(input,track);
   const title=document.createElement('span');title.textContent=name;
   row.append(switchEl,title);root.append(row);
-  input.addEventListener('change',()=>{if(input.checked)disabledClinicianTypes.delete(name);else disabledClinicianTypes.add(name);scheduleDemandRefresh()});
+  input.addEventListener('change',()=>{changeHistoricBookingToggle(disabledClinicianTypes,name,input.checked,input)});
  }
 }
 let clinicianMatchCache=new Map();
@@ -1665,7 +1665,7 @@ function updateConsultChartFilter(){
   switchEl.append(input,track);
   const title=document.createElement('span');title.textContent=name;
   row.append(switchEl,title);root.append(row);
-  input.addEventListener('change',()=>{if(input.checked)disabledConsultModes.delete(name);else disabledConsultModes.add(name);scheduleDemandRefresh()});
+  input.addEventListener('change',()=>{changeHistoricBookingToggle(disabledConsultModes,name,input.checked,input)});
  }
 }
 function consultMatches(slot){
@@ -1725,18 +1725,45 @@ function historicBookingFilterCounts(){
   const urgency=groupUrgencyAssignments[assignments[r.slot]||''];
   if(!urgency||disabledDemandUrgencyGroups.has(urgency))continue;
   const group=clinicianGroupAssignments[effectiveClinicianType(r.clinician,r.person)];
-  const values={purpose:purposeAssignments[r.slot],capacity:capacityAssignments[r.slot],consult:consultAssignments[r.slot]||suggestConsultMode(r.slot),clinician:group};
+  const values={purpose:purposeAssignments[r.slot],capacity:capacityAssignments[r.slot],consult:consultCategoryNames.includes(consultAssignments[r.slot])?consultAssignments[r.slot]:(suggestConsultMode(r.slot)||''),clinician:group};
   for(const kind of Object.keys(result)){
    const value=values[kind];if(!isDashboardToggleOption(value))continue;
    // Match the chart's other active filters, but not this dimension's filter.
    if(kind!=='purpose'&&!demandCategoryAllowed(r.slot,purposeCategoryNames,purposeAssignments,disabledDemandPurposes))continue;
    if(kind!=='capacity'&&!demandCategoryAllowed(r.slot,capacityCategoryNames,capacityAssignments,disabledDemandCapacities))continue;
    if(kind!=='consult'&&!consultMatches(r.slot))continue;
+   if(kind==='consult'&&(!consultCategoryNames.includes(value)||!group||!clinicianGroupNames.includes(group)||disabledClinicianTypes.has(group)))continue;
    if(kind!=='clinician'&&(!clinicianGroupNames.includes(group)||disabledClinicianTypes.has(group)))continue;
    result[kind].set(value,(result[kind].get(value)||0)+r.count);
   }
  }
  return result;
+}
+function historicBookingHasData(){
+ const first=availabilityRecords.map(r=>r.date).filter(Boolean).sort()[0]||'';
+ const last=availabilityRecords.map(r=>r.date).filter(Boolean).sort().at(-1)||'';
+ return records.some(r=>{
+  if(!includedRecord(r)||!(r.count>0))return false;
+  const p=periodKey(r),m=p?.slice(0,7);
+  if(!p||p>(monthlyMode?thisMonth:thisWeek)||(!showCurrentWeek&&periodIsCurrent(p)))return false;
+  if(first&&p<(monthlyMode?first.slice(0,7):mondayOf(first)))return false;
+  if(last&&p>(monthlyMode?last.slice(0,7):mondayOf(last)))return false;
+  if((demandMonthStart&&m<demandMonthStart)||(demandMonthEnd&&m>demandMonthEnd))return false;
+  const group=groupUrgencyAssignments[assignments[r.slot]||''];
+  return !!group&&!disabledDemandUrgencyGroups.has(group);
+ });
+}
+function changeHistoricBookingToggle(disabled,name,checked,input){
+ const wasOff=disabled.has(name);
+ if(checked)disabled.delete(name);else disabled.add(name);
+ demandFilterCache=new WeakMap();clinicianMatchCache=new Map();
+ if(!historicBookingHasData()){
+  if(wasOff)disabled.add(name);else disabled.delete(name);
+  input.checked=!wasOff;
+  demandFilterCache=new WeakMap();clinicianMatchCache=new Map();
+  return;
+ }
+ scheduleDemandRefresh();
 }
 function hideEmptyHistoricBookingFilters(){
  const counts=historicBookingFilterCounts();
@@ -1790,8 +1817,7 @@ function renderDemandClassificationToggles(rootId,names,mapping,disabled,colourM
   const label=document.createElement('span');label.textContent=name;
   row.append(wrap,label);root.append(row);
   input.addEventListener('change',()=>{
-   if(input.checked)disabled.delete(name);else disabled.add(name);
-   refresh();
+   changeHistoricBookingToggle(disabled,name,input.checked,input);
   });
  }
 }
@@ -1930,10 +1956,7 @@ function renderDemandUrgencyToggles(){
   const title=document.createElement('span');title.textContent=name;
   row.append(switchEl,title);root.append(row);
   input.addEventListener('change',()=>{
-   if(input.checked)disabledDemandUrgencyGroups.delete(name);
-   else disabledDemandUrgencyGroups.add(name);
-   // Update the displayed plot immediately; the group switch is a primary chart filter.
-   refresh();
+   changeHistoricBookingToggle(disabledDemandUrgencyGroups,name,input.checked,input);
   });
  }
 }
