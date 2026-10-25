@@ -87,7 +87,7 @@ async function readSharedSettings(){
 let records=[],weeks=[],types=[],statuses=[],clinicianTypes=[],bookingTimeRecords=[];
 let availabilityRecords=[];
 let waitingTimeRecords=[];
-let waitingBookingMonthStart='',waitingBookingMonthEnd='',waitingBookingMonthBounds='';
+let waitingAppointmentMonthStart='',waitingAppointmentMonthEnd='',waitingAppointmentMonthBounds='';
 const waitingDisabledUrgency=new Set();
 let peopleRecords=[];
 let peopleLocum={};
@@ -1189,11 +1189,8 @@ function aggregateCSV(csv,aggregated,availabilityAggregate,bookingTimeAggregate,
   const lead=Number(leadRaw.replace(/,/g,''));
   if(waitingAggregate&&leadRaw&&Number.isFinite(lead)&&lead>=0){
    const dayBin=Math.floor(lead/1440);
-   const appointmentStamp=new Date(appointmentDay.getTime());
-   const appointmentClock=/^(\d{1,2}):(\d{2})/.exec(time);
-   if(appointmentClock){appointmentStamp.setUTCHours(Number(appointmentClock[1]),Number(appointmentClock[2]),0,0)}
-   const bookingMonth=new Date(appointmentStamp.getTime()-lead*60000).toISOString().slice(0,7);
-   const waitKey=JSON.stringify([slotType,dayBin,clinician,person,bookingMonth]);
+   const appointmentMonth=appointmentDay.toISOString().slice(0,7);
+   const waitKey=JSON.stringify([slotType,dayBin,clinician,person,appointmentMonth]);
    waitingAggregate.set(waitKey,(waitingAggregate.get(waitKey)||0)+1);
   }
   const tm=/^(\d{1,2}):(\d{2})/.exec(time);
@@ -1545,7 +1542,7 @@ async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;
  peopleRecords=[...peopleByName.values()].map(({name,types})=>({name,type:[...types].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]))[0][0]})).sort((a,b)=>a.type.localeCompare(b.type)||a.name.localeCompare(b.name));
  rebuildPeopleTypeLookup();
  renderPeople();renderSlotInclusion();renderSlotTable();
- waitingTimeRecords=[...waitingAggregate].map(([key,count])=>{const [slot,day,clinician,person,bookingMonth]=JSON.parse(key);return {slot,day,clinician,person,bookingMonth,status:'Booked',count}});
+ waitingTimeRecords=[...waitingAggregate].map(([key,count])=>{const [slot,day,clinician,person,appointmentMonth]=JSON.parse(key);return {slot,day,clinician,person,appointmentMonth,status:'Booked',count}});
  bookingTimeRecords=[...bookingTimeAggregate].map(([key,count])=>{const [bookedDay,minute,slot,clinician,person]=JSON.parse(key);return {bookedDay,minute,slot,clinician,person,count}});
  availabilityRecords=[...availabilityAggregate].map(([key,count])=>{const [date,slot,availability,clinician,person]=JSON.parse(key);return {date,slot,availability,clinician,person,count}});
  records=[...aggregate].map(([key,count])=>{const [bookedDay,slot,clinician,person]=JSON.parse(key);const bookedWeek=mondayOf(bookedDay);return {week:bookedWeek,bookedWeek,bookedDay,slot,clinician,person,status:'Booked',count}});weeks=[...new Set(records.map(r=>r.bookedWeek))].sort();types=[...new Set([...records.map(r=>r.slot),...availabilityRecords.map(r=>r.slot)])].sort();statuses=['Booked'];clinicianTypes=[...new Set([...records.map(r=>r.clinician),...availabilityRecords.map(r=>r.clinician)])].filter(Boolean).sort();
@@ -2224,22 +2221,22 @@ function waitingRowDimensions(r){
   clinician:clinicianGroupAssignments[clinicianType]||''
  };
 }
-function setupWaitingBookingSlider(){
+function setupWaitingAppointmentSlider(){
  const start=$('waitingRangeStart'),end=$('waitingRangeEnd'),fill=$('waitingRangeFill');
  if(!start||!end||!fill)return;
- const months=waitingTimeRecords.map(r=>r.bookingMonth).filter(Boolean).sort();
+ const months=waitingTimeRecords.map(r=>r.appointmentMonth).filter(Boolean).sort();
  const first=months[0],last=months.at(-1);
  const toIndex=m=>Number(m.slice(0,4))*12+Number(m.slice(5,7))-1;
  const toMonth=i=>String(Math.floor(i/12)).padStart(4,'0')+'-'+String(i%12+1).padStart(2,'0');
  if(!first){$('waitingRangeFromLabel').textContent='—';$('waitingRangeToLabel').textContent='—';return}
  const low=toIndex(first),high=toIndex(last),bounds=first+'|'+last;
- if(waitingBookingMonthBounds!==bounds){
-  waitingBookingMonthBounds=bounds;
-  waitingBookingMonthStart=toMonth(waitingBookingMonthStart?Math.max(low,Math.min(high,toIndex(waitingBookingMonthStart))):low);
-  waitingBookingMonthEnd=toMonth(waitingBookingMonthEnd?Math.max(low,Math.min(high,toIndex(waitingBookingMonthEnd))):high);
+ if(waitingAppointmentMonthBounds!==bounds){
+  waitingAppointmentMonthBounds=bounds;
+  waitingAppointmentMonthStart=toMonth(waitingAppointmentMonthStart?Math.max(low,Math.min(high,toIndex(waitingAppointmentMonthStart))):low);
+  waitingAppointmentMonthEnd=toMonth(waitingAppointmentMonthEnd?Math.max(low,Math.min(high,toIndex(waitingAppointmentMonthEnd))):high);
  }
- let a=Math.max(low,Math.min(high,toIndex(waitingBookingMonthStart))),b=Math.max(a,Math.min(high,toIndex(waitingBookingMonthEnd)));
- waitingBookingMonthStart=toMonth(a);waitingBookingMonthEnd=toMonth(b);
+ let a=Math.max(low,Math.min(high,toIndex(waitingAppointmentMonthStart))),b=Math.max(a,Math.min(high,toIndex(waitingAppointmentMonthEnd)));
+ waitingAppointmentMonthStart=toMonth(a);waitingAppointmentMonthEnd=toMonth(b);
  for(const el of [start,end]){el.min=String(low);el.max=String(high);el.step='1';el.disabled=low===high}
  start.value=String(a);end.value=String(b);
  const label=i=>new Date(Date.UTC(Math.floor(i/12),i%12,1)).toLocaleDateString('en-GB',{month:'short',year:'numeric',timeZone:'UTC'});
@@ -2253,7 +2250,7 @@ function setupWaitingBookingSlider(){
    let x=Number(start.value),y=Number(end.value);
    if(which==='start'&&x>y)y=x;
    if(which==='end'&&y<x)x=y;
-   waitingBookingMonthStart=toMonth(x);waitingBookingMonthEnd=toMonth(y);
+   waitingAppointmentMonthStart=toMonth(x);waitingAppointmentMonthEnd=toMonth(y);
    renderWaitingTimesChart();
   };
   start.addEventListener('input',()=>changed('start'));
@@ -2263,8 +2260,8 @@ function setupWaitingBookingSlider(){
 }
 function waitingMatches(r,ignore){
  if(r.status!=='Booked'||excludedSlotTypes.has(r.slot))return false;
- if(waitingBookingMonthStart&&r.bookingMonth<waitingBookingMonthStart)return false;
- if(waitingBookingMonthEnd&&r.bookingMonth>waitingBookingMonthEnd)return false;
+ if(waitingAppointmentMonthStart&&r.appointmentMonth<waitingAppointmentMonthStart)return false;
+ if(waitingAppointmentMonthEnd&&r.appointmentMonth>waitingAppointmentMonthEnd)return false;
  const d=waitingRowDimensions(r);
  if(!isDashboardToggleOption(d.urgency))return false;
  if(ignore!=='urgency'&&waitingDisabledUrgency.has(d.urgency))return false;
@@ -2276,7 +2273,7 @@ function waitingMatches(r,ignore){
 function renderWaitingTimesChart(){
  const chart=$('waitingTimesChart'),root=$('waitingUrgencyToggles');
  if(!chart||!root||$('waitingTimesPage')?.classList.contains('hidden')||!window.Plotly)return;
- setupWaitingBookingSlider();
+ setupWaitingAppointmentSlider();
  const kinds=['urgency','consult','purpose','capacity','clinician'];
  const optionsByKind=Object.fromEntries(kinds.map(k=>[k,new Set()]));
  const bins=new Map(),bySlot=new Map();
@@ -2284,8 +2281,8 @@ function renderWaitingTimesChart(){
  // Calculate each row's dimensions and selection once, then reuse for all filter counts.
  for(const r of waitingTimeRecords){
   if(r.status!=='Booked'||excludedSlotTypes.has(r.slot))continue;
-  if(waitingBookingMonthStart&&r.bookingMonth<waitingBookingMonthStart)continue;
-  if(waitingBookingMonthEnd&&r.bookingMonth>waitingBookingMonthEnd)continue;
+  if(waitingAppointmentMonthStart&&r.appointmentMonth<waitingAppointmentMonthStart)continue;
+  if(waitingAppointmentMonthEnd&&r.appointmentMonth>waitingAppointmentMonthEnd)continue;
   const d=waitingRowDimensions(r);
   if(!isDashboardToggleOption(d.urgency))continue;
   const enabled={
