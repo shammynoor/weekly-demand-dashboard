@@ -162,10 +162,13 @@ function renderHistoricalWeekday(){
   const table=document.createElement('table');table.className='forecast-needs-table';
   const head=document.createElement('thead'),heading=document.createElement('tr');
   const dailyGroups=groups.filter(name=>(urgencyPlanningMode.get(name)||'daily')==='daily'),weeklyGroups=groups.filter(name=>urgencyPlanningMode.get(name)==='weekly');
+  const colgroup=document.createElement('colgroup');
+  for(let i=0;i<(weeklyGroups.length?7:6);i++){const col=document.createElement('col');col.style.width=i===0?'15%':(weeklyGroups.length?(i===6?'15%':'14%'):'17%');colgroup.append(col)}
+  table.append(colgroup);
   const groupHeader=document.createElement('tr');
-  for(const [title,span] of [['',1],['daily',5],['weekly',1]]){const th=document.createElement('th');th.colSpan=span;th.className='forecast-needs-group-header';th.textContent=title==='daily'?'Daily targets based on: '+(dailyGroups.length?dailyGroups.join(', '):'None selected'):title==='weekly'?'Weekly allocation of: '+(weeklyGroups.length?weeklyGroups.join(', '):'None selected'):'';groupHeader.append(th)}
+  for(const [title,span] of (weeklyGroups.length?[['',1],['daily',5],['weekly',1]]:[['',1],['daily',5]])){const th=document.createElement('th');th.colSpan=span;th.className='forecast-needs-group-header';th.textContent=title==='daily'?'Daily targets based on: '+(dailyGroups.length?dailyGroups.join(', '):'None selected'):title==='weekly'?'Weekly allocation of: '+(weeklyGroups.length?weeklyGroups.join(', '):'None selected'):'';groupHeader.append(th)}
   head.append(groupHeader);
-  for(const name of ['Week beginning','Monday','Tuesday','Wednesday','Thursday','Friday','Weekly total']){
+  for(const name of (weeklyGroups.length?['Week beginning','Monday','Tuesday','Wednesday','Thursday','Friday','Weekly total']:['Week beginning','Monday','Tuesday','Wednesday','Thursday','Friday'])){
    const th=document.createElement('th');th.textContent=name;heading.append(th);
   }
   head.append(heading);table.append(head);
@@ -263,7 +266,7 @@ function renderHistoricalWeekday(){
     }
     tr.append(td);
    }
-   const weeklyCell=document.createElement('td');weeklyCell.className='forecast-weekly-total-cell';
+   if(weeklyGroups.length){const weeklyCell=document.createElement('td');weeklyCell.className='forecast-weekly-total-cell';
    if(!weeklyGroups.length){weeklyCell.textContent='—';weeklyCell.title='No urgency groups set to weekly totals';}
    else{
     let weeklyPrediction=0,valid=true;
@@ -275,7 +278,7 @@ function renderHistoricalWeekday(){
     if(valid)addForecastCell(weeklyCell,weeklyPrediction,weeklyErrorBounds);
     else weeklyCell.textContent='—';
    }
-   tr.append(weeklyCell);
+   tr.append(weeklyCell);}
    body.append(tr);
   }
   table.append(body);needsRoot.append(table);
