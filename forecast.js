@@ -93,12 +93,13 @@ function renderHistoricalWeekday(){
  const weekday=Number(select.value),today=dayViewLocalDate(),end=shift(today,-1),start=shift(end,1-7*Number($('dailyForecastHistory')?.value||52));
  const groups=groupUrgencyNames.filter(n=>isDashboardToggleOption(n)&&isDaily(n)&&!disabled.daily.has(n));
  const adjust=$('dailyForecastAdjustListSize')?.checked===true;const populationMonths=adjust?practiceMonths():[];const referencePopulation=populationMonths.length?listSizeAtMonth(populationMonths[populationMonths.length-1]):null;
- const normalise=(day,count)=>adjust&&referencePopulation?count*referencePopulation/Math.max(1,listSizeAtMonth(day.slice(0,7))):count;
- const totals=new Map(),parts=new Map();
+ const populationCache=new Map();const normalise=(day,count)=>{if(!adjust||!referencePopulation)return count;const month=day.slice(0,7);if(!populationCache.has(month))populationCache.set(month,listSizeAtMonth(month));return count*referencePopulation/Math.max(1,populationCache.get(month))};
+ const totals=new Map(),parts=new Map(),allWeekdayTotals=new Map();
  for(const r of records){
   if(!r.bookedDay||r.bookedDay<start||r.bookedDay>end||excludedSlotTypes.has(r.slot))continue;
   const urgency=capacityUrgencyCategory(r.slot);
   if(!groups.includes(urgency))continue;
+  const dow=new Date(r.bookedDay+'T12:00:00Z').getUTCDay();if(dow>=1&&dow<=5)allWeekdayTotals.set(r.bookedDay,(allWeekdayTotals.get(r.bookedDay)||0)+(Number(r.count)||0));
   const k=r.bookedDay;
   totals.set(k,(totals.get(k)||0)+(Number(r.count)||0));
   if(!parts.has(k))parts.set(k,new Map());
@@ -144,29 +145,23 @@ function renderHistoricalWeekday(){
  const quantile=(items,q)=>{const sorted=[...items].sort((a,b)=>a-b);if(!sorted.length)return 0;const pos=(sorted.length-1)*q,lo=Math.floor(pos),hi=Math.ceil(pos);return sorted[lo]+(sorted[hi]-sorted[lo])*(pos-lo)};
  const empirical=backtestErrors.length>=16;
  const errors=empirical?backtestErrors.map(x=>x.e):residuals;
+ const lowerError=quantile(errors,.15),upperError=quantile(errors,.85);
  const intervals=projected.map((value,i)=>{
   // Signed quantiles retain asymmetric uncertainty; inflate modestly for longer horizons.
   const factor=empirical?Math.sqrt((1+(i+1)/26)/(1+7/26)):Math.sqrt(1+(i+1)/13);
-  const lo=quantile(errors,.15)*factor,hi=quantile(errors,.85)*factor;
+  const lo=lowerError*factor,hi=upperError*factor;
   return {low:Math.max(0,value+Math.min(lo,0)),high:Math.max(value,value+Math.max(hi,0))};
  });
  // Shared scale across weekdays: inspect every weekday in the selected historical window.
  // Keep the same ceiling when changing Monday to Friday; do not rescale to the selected day's maximum.
- const allWeekdayTotals=new Map();
- for(const r of records){
-  if(!r.bookedDay||r.bookedDay<start||r.bookedDay>end||excludedSlotTypes.has(r.slot))continue;
-  if(!groups.includes(capacityUrgencyCategory(r.slot)))continue;
-  if(excludeHolidayWeeks&&holidayWeeks.has(monday(r.bookedDay)))continue;
-  const dow=new Date(r.bookedDay+'T12:00:00Z').getUTCDay();if(dow<1||dow>5)continue;
-  allWeekdayTotals.set(r.bookedDay,(allWeekdayTotals.get(r.bookedDay)||0)+(Number(r.count)||0));
- }
+ if(excludeHolidayWeeks)for(const d of allWeekdayTotals.keys())if(holidayWeeks.has(monday(d)))allWeekdayTotals.delete(d);
  const commonMaximum=Math.max(1,...Array.from(allWeekdayTotals,( [d,v] )=>normalise(d,v)));
  const dataMaximum=Math.max(commonMaximum,...values,...historicalFit,...projected,...intervals.map(v=>v.high));
  const step=Math.pow(10,Math.floor(Math.log10(dataMaximum/4||1)));
  const increments=[1,2,5,10].map(v=>v*step);
  const tickStep=increments.find(v=>v*5>=dataMaximum)||10*step;
  const max=tickStep*5;
- const allDays=days.concat(future),columns=[];
+ const allDays=days.concat(future),columns=[],fragment=document.createDocumentFragment();
  for(let i=0;i<allDays.length;i++){
   const d=allDays[i],isFuture=i>=n,value=isFuture?0:values[i],col=document.createElement('div');
   col.className='forecast-history-column'+(isFuture?' forecast-future-column':'');
@@ -183,11 +178,11 @@ function renderHistoricalWeekday(){
   const date=document.createElement('div');date.className='forecast-history-date';date.textContent=new Date(d+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',timeZone:'UTC'});
   if(isFuture){const j=i-n;col.title=d+': projected '+projected[j].toFixed(1)+' bookings (70% prediction interval '+intervals[j].low.toFixed(1)+'–'+intervals[j].high.toFixed(1)+')'}
   else {const detail=parts.get(d)||new Map();col.title=d+': '+value.toFixed(1)+(adjust?' list-size adjusted':'')+' bookings'+groups.map(name=>'\\n'+name+': '+(detail.get(name)||0)).join('')}
-  col.append(bar,date);root.append(col);columns.push(col);
+  col.append(bar,date);fragment.append(col);columns.push(col);
  }
+ root.append(fragment);
  // A labelled Y-axis shares exactly the same baseline and scale as the bars and forecast.
- const barRect=columns[0].querySelector('.forecast-history-bar').getBoundingClientRect();
- const baselineY=barRect.bottom-root.getBoundingClientRect().top;
+ const baselineY=columns[0].offsetTop+columns[0].offsetHeight-41;
  const axis=document.createElement('div');axis.className='forecast-y-axis';
  for(let i=0;i<=5;i++){
   const label=document.createElement('span');label.className='forecast-y-tick';
@@ -208,8 +203,7 @@ function renderHistoricalWeekday(){
   const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('class','forecast-season-line');svg.setAttribute('aria-label','Seasonal regression, thirteen-week projection and 70 percent prediction interval');
   const width=root.scrollWidth,height=root.clientHeight;svg.style.width=width+'px';svg.style.height=height+'px';svg.setAttribute('viewBox','0 0 '+width+' '+height);
   const ns='http://www.w3.org/2000/svg',x=i=>columns[i].offsetLeft+columns[i].offsetWidth/2;
-  const firstBar=columns[0].querySelector('.forecast-history-bar');
-  const baseline=firstBar.getBoundingClientRect().bottom-root.getBoundingClientRect().top;
+  const baseline=baselineY;
   const y=v=>baseline-v/max*192;
   const poly=(points,cls)=>{const el=document.createElementNS(ns,'polyline');el.setAttribute('class',cls);el.setAttribute('points',points.map(p=>p.map(v=>v.toFixed(1)).join(',')).join(' '));svg.append(el)};
   poly(historicalFit.map((v,i)=>[x(i),y(v)]),'forecast-historical-fit');
