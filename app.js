@@ -1419,9 +1419,10 @@ async function replaceExistingCSV(file){
   csvDropStatus('Replaced '+match.name+' successfully. Refreshing charts…');
   // This refresh reads the current saved categories and people assignments
   // without changing them; the settings JSON is never overwritten here.
+  csvContributionCache.delete(match.id);
   lastFingerprint='';
   await loadFolder(true);
-  csvDropStatus('OneDrive CSV replaced: '+match.name+'. Dashboard refresh completed.');
+  csvDropStatus('OneDrive CSV replaced: '+match.name+'. Only the changed CSV was reloaded; dashboard totals updated.');
  }catch(error){
   console.error('CSV replacement error',error);
   csvDropStatus(error?.message||String(error),true);
@@ -1512,14 +1513,53 @@ function renderSignpostingChart(){
  status.textContent=signpostingRecords.length.toLocaleString('en-GB')+' signposting records · '+sortedDestinations.length+' destinations · '+signpostingFileCount+' CSV file'+(signpostingFileCount===1?'':'s')+'. Empty cells filled from preceding rows.';
 }
 function updateHomeReportDates(items){const slots=items.filter(f=>/slot[\s_-]*report/i.test(f.name));const signs=items.filter(f=>isSignpostingFile(f.name));const display=files=>{if(!files.length)return 'No report found';const dates=files.map(f=>Date.parse(f.lastModifiedDateTime||'')).filter(Number.isFinite);return dates.length?new Date(Math.max(...dates)).toLocaleString('en-GB',{day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'Europe/London'}):'Modified date unavailable'};$('homeSlotModified').textContent=display(slots);$('homeSignpostingModified').textContent=display(signs)}
+// Parsed per-file contributions are retained for the current browser session.
+// A replacement invalidates only its own contribution, not the other CSV files.
+const csvContributionCache=new Map();
+function mergeCSVCounts(target,source){
+ for(const [key,count] of source)target.set(key,(target.get(key)||0)+count);
+}
+function parseCSVContribution(csvText,name){
+ if(isSignpostingFile(name))return {kind:'signposting',events:parseSignpostingCSV(csvText)};
+ if(!/slot[\\s_-]*report/i.test(name))return {kind:'other'};
+ const maps=Array.from({length:8},()=>new Map());
+ const stats=aggregateCSV(csvText,...maps);
+ return {kind:'slot',maps,valid:stats.valid,skipped:stats.skipped};
+}
 async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;setButtons();showRefreshFeedback('Refreshing data…',true);setSync('Checking OneDrive CSV files…');try{
  const items=(await children(selectedFolder.id)).filter(f=>f.file&&/\.csv$/i.test(f.name)).sort((a,b)=>a.name.localeCompare(b.name));if(!items.length)throw Error('No CSV files found directly inside this folder.');updateHomeReportDates(items);
  const fingerprint=JSON.stringify(items.map(f=>[f.id,f.lastModifiedDateTime,f.size]));if(!force&&fingerprint===lastFingerprint){showRefreshFeedback('Already up to date');setSync(`No changes detected · ${items.length} CSV files · Checked ${new Date().toLocaleTimeString('en-GB')}`);return}
- const aggregate=new Map(),availabilityAggregate=new Map(),bookingTimeAggregate=new Map(),appointmentTimeAggregate=new Map(),waitingAggregate=new Map(),waitingTrendAggregate=new Map(),peopleAggregate=new Map(),newSlotTypeStats=new Map();let valid=0,skipped=0;const newSignposting=[];let newSignpostingFiles=0,newSlotFiles=0;for(let i=0;i<items.length;i++){const f=items[i];showRefreshFeedback(`Loading file ${i+1} of ${items.length}…`,true);setSync(`Loading ${i+1} of ${items.length}: ${f.name}`);const detail=await graph(sourceItemUrl(f.id));const url=detail['@microsoft.graph.downloadUrl'];if(!url)throw Error('OneDrive did not provide a download URL for '+f.name);const response=await fetch(url,{cache:'no-store'});if(!response.ok)throw Error(`Could not download ${f.name}: HTTP ${response.status}`);const csvText=await response.text();
- if(isSignpostingFile(f.name)){newSignposting.push(...parseSignpostingCSV(csvText));newSignpostingFiles++;continue}
- if(!/slot[\s_-]*report/i.test(f.name))continue;
- newSlotFiles++;
- const stats=aggregateCSV(csvText,aggregate,availabilityAggregate,bookingTimeAggregate,peopleAggregate,newSlotTypeStats,waitingAggregate,waitingTrendAggregate,appointmentTimeAggregate);valid+=stats.valid;skipped+=stats.skipped}
+ const aggregate=new Map(),availabilityAggregate=new Map(),bookingTimeAggregate=new Map(),appointmentTimeAggregate=new Map(),waitingAggregate=new Map(),waitingTrendAggregate=new Map(),peopleAggregate=new Map(),newSlotTypeStats=new Map();let valid=0,skipped=0;const newSignposting=[];let newSignpostingFiles=0,newSlotFiles=0;
+ const activeIds=new Set(items.map(f=>f.id));
+ const pendingCache=new Map();
+ let downloaded=0,reused=0;
+ for(let i=0;i<items.length;i++){
+  const f=items[i],version=JSON.stringify([f.id,f.lastModifiedDateTime,f.size]);
+  let contribution=csvContributionCache.get(f.id);
+  if(!contribution||contribution.version!==version){
+   downloaded++;
+   showRefreshFeedback('Loading changed file '+downloaded+': '+f.name+'…',true);
+   setSync('Refreshing '+f.name+' ('+downloaded+' changed file'+(downloaded===1?'':'s')+')');
+   const detail=await graph(sourceItemUrl(f.id));
+   const url=detail['@microsoft.graph.downloadUrl'];
+   if(!url)throw Error('OneDrive did not provide a download URL for '+f.name);
+   const response=await fetch(url,{cache:'no-store'});
+   if(!response.ok)throw Error('Could not download '+f.name+': HTTP '+response.status);
+   const csvText=await response.text();
+   contribution={version,...parseCSVContribution(csvText,f.name)};
+  }else reused++;
+  pendingCache.set(f.id,contribution);
+  if(contribution.kind==='signposting'){
+   newSignposting.push(...contribution.events);newSignpostingFiles++;
+  }else if(contribution.kind==='slot'){
+   newSlotFiles++;valid+=contribution.valid;skipped+=contribution.skipped;
+   const destinations=[aggregate,availabilityAggregate,bookingTimeAggregate,peopleAggregate,newSlotTypeStats,waitingAggregate,waitingTrendAggregate,appointmentTimeAggregate];
+   for(let m=0;m<destinations.length;m++)mergeCSVCounts(destinations[m],contribution.maps[m]);
+  }
+ }
+ // Commit the new cache only after all changed files have parsed successfully.
+ for(const id of csvContributionCache.keys())if(!activeIds.has(id))csvContributionCache.delete(id);
+ for(const [id,contribution] of pendingCache)csvContributionCache.set(id,contribution);
  slotTypeFileStats=newSlotTypeStats;renderSlotInclusion();
  signpostingRecords=newSignposting;signpostingFileCount=newSignpostingFiles;signpostingSlotNames=new Set(newSignposting.map(event=>event.destination));
  // Each dated signposting event is also a booked appointment for the main
@@ -1583,7 +1623,7 @@ const drawingErrors=[];
   try{draw()}catch(error){drawingErrors.push(label+': '+(error?.message||String(error)));console.error('Dashboard rendering error in '+label,error)}
  }
  showRefreshFeedback(drawingErrors.length?'Data loaded; chart issue: '+drawingErrors.join('; '):(!isOwner?'Data refreshed · shared slot assignments: '+Object.keys(assignments).length:'Data refreshed successfully'));
- scheduleChartResize();setSync(`${newSlotFiles} Slot Report CSV files · ${newSignpostingFiles} Signposting CSV files · ${valid.toLocaleString('en-GB')} booked Slot Report rows + ${newSignposting.length.toLocaleString('en-GB')} signposting events · ${skipped.toLocaleString('en-GB')} skipped · ${Object.keys(assignments).length} assigned slot types · Updated ${new Date().toLocaleString('en-GB')}`)
+ scheduleChartResize();setSync(`Downloaded ${downloaded} changed CSV file(s), reused ${reused} cached · ${newSlotFiles} Slot Report CSV files · ${newSignpostingFiles} Signposting CSV files · ${valid.toLocaleString('en-GB')} booked Slot Report rows + ${newSignposting.length.toLocaleString('en-GB')} signposting events · ${skipped.toLocaleString('en-GB')} skipped · ${Object.keys(assignments).length} assigned slot types · Updated ${new Date().toLocaleString('en-GB')}`)
  }catch(e){
  const message=e?.message||String(e);
  console.error('OneDrive refresh error',e);
