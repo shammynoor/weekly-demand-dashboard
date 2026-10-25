@@ -96,25 +96,21 @@ function renderDailyUrgencyFilters(){
 function renderUrgencyPlanningModes(){
  const root=$('dailyForecastModeControls');if(!root)return;
  root.replaceChildren();
- for(const name of forecastUrgencyNames()){
-  const row=document.createElement('div');row.className='forecast-mode-row';
-  const enable=document.createElement('label');enable.className='forecast-mode-enable';
-  const check=document.createElement('input');check.type='checkbox';check.checked=forecastUrgencyEnabled(name);
-  check.setAttribute('aria-label','Include '+name);
-  check.addEventListener('change',()=>setForecastUrgencyEnabled(name,check.checked));
-  const heading=document.createElement('strong');heading.textContent=name;
-  enable.append(check,heading);
-  const toggle=document.createElement('div');toggle.className='forecast-mode-toggle';toggle.setAttribute('role','group');toggle.setAttribute('aria-label',name+' planning basis');
-  for(const [value,label] of [['daily','Daily totals'],['weekly','Weekly totals']]){
-   const button=document.createElement('button');button.type='button';button.textContent=label;
-   const selected=(urgencyPlanningMode.get(name)||'daily')===value;
-   button.className='forecast-mode-choice'+(selected?' active':'');
-   button.setAttribute('aria-pressed',String(selected));button.disabled=!check.checked;
-   button.addEventListener('click',()=>{urgencyPlanningMode.set(name,value);renderHistoricalWeekday()});
-   toggle.append(button);
-  }
-  row.classList.toggle('forecast-mode-inactive',!check.checked);
-  row.append(enable,toggle);root.append(row);
+ for(const name of forecastUrgencyNames().filter(forecastUrgencyEnabled)){
+  const row=document.createElement('label');row.className='forecast-mode-row';
+  const heading=document.createElement('span');heading.className='forecast-mode-name';heading.textContent=name;
+  const switchLabel=document.createElement('span');switchLabel.className='forecast-basis-switch';
+  const daily=document.createElement('span');daily.textContent='Daily';
+  const control=document.createElement('span');control.className='switch';
+  const input=document.createElement('input');input.type='checkbox';
+  input.checked=urgencyPlanningMode.get(name)==='weekly';
+  input.setAttribute('aria-label',name+': weekly totals when on, daily totals when off');
+  const track=document.createElement('span');track.className='switch-track';
+  control.append(input,track);
+  const weekly=document.createElement('span');weekly.textContent='Weekly';
+  switchLabel.append(daily,control,weekly);
+  input.addEventListener('change',()=>{urgencyPlanningMode.set(name,input.checked?'weekly':'daily');renderHistoricalWeekday()});
+  row.append(heading,switchLabel);root.append(row);
  }
 }
 function renderHistoricalWeekday(){
