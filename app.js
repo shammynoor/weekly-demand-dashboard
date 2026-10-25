@@ -2275,15 +2275,7 @@ function refreshAvailabilityOptionStates(page){
    input.title=possible?'':(configuredUrgency?'No appointments in the selected date range':'No source appointments for this option in the selected date range');
   }
  }
- // Recover from stale all-off state caused by earlier versions of this logic.
- if(false&&availabilityRecordsInRange(page).length&&!availabilityHasVisibleRecords(page)){
-  for(const [id,kind,disabled] of configs){
-   const root=$(id);if(!root)continue;
-   for(const input of root.querySelectorAll('input[data-filter-name]')){
-    if(!input.disabled){disabled.delete(input.dataset.filterName);input.checked=true;}
-   }
-  }
- }
+
 }
 const urgentDisabledClinicianTypes=new Set(),routineDisabledClinicianTypes=new Set(),plannedDisabledClinicianTypes=new Set();
 function selectedClinicianTypes(page){
