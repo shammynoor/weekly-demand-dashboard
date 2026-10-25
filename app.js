@@ -2062,7 +2062,7 @@ function drawCombinedDemandChart(){
  const yearWidth=(year)=>year===latestYear?5.5:Math.max(1.1,2.8-(latestYear-year)*0.45);
  const x=p=>continuousMode?monthOfPeriod(p.date):(monthlyMode?Number(p.date.slice(5,7))-.5:monthPosition(p.date));
  // One legend entry per year; colour indicates urgency, thickness highlights the latest year.
- for(const [i,year] of years.entries()){
+ if(!continuousMode)for(const [i,year] of years.entries()){
   traces.push({name:String(year),x:[null],y:[null],type:'scatter',mode:'lines',showlegend:true,
    line:{color:'#58677a',width:yearWidth(year)},hoverinfo:'skip'});
  }
@@ -2124,7 +2124,7 @@ function drawCombinedDemandChart(){
  Plotly.react('combinedDemandChart',traces,{dragmode:false,autosize:true,height:535,
   margin:{l:62,r:95,t:55,b:65},paper_bgcolor:'white',plot_bgcolor:'white',
   shapes:[...yearBackgroundShapes(visibleWeeks),...averageShapes],
-  legend:{orientation:'h',y:1.14,x:0,xanchor:'left',yanchor:'bottom',entrywidth:85,entrywidthmode:'pixels',traceorder:'normal'},
+  showlegend:!continuousMode,legend:{orientation:'h',y:1.14,x:0,xanchor:'left',yanchor:'bottom',entrywidth:85,entrywidthmode:'pixels',traceorder:'normal'},
   xaxis:continuousMode?{type:'date',title:monthlyMode?'Booking month':'Booking date',tickformat:'%b %Y',gridcolor:'#edf1f5',...(range?{range}: {})}:axis,
   yaxis:{title:'Appointments',range:[0,yAxisTop],nticks:6,gridcolor:'#edf1f5'},hovermode:'closest',
   annotations:!selected.length?[{text:'Select an urgency type to display appointments',xref:'paper',yref:'paper',x:.5,y:.5,showarrow:false}]:averageAnnotations
