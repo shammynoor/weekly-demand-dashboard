@@ -1,6 +1,6 @@
 (function(){
 const $=id=>document.getElementById(id);
-const yearStyles=document.createElement('style');yearStyles.textContent='.forecast-year-band{position:absolute;top:0;bottom:0;background:rgba(70,115,155,.035);border-left:1px solid #d0dae5;pointer-events:none;z-index:0}.forecast-year-alt{background:rgba(70,115,155,.1)}.forecast-year-band span{position:absolute;top:2px;left:8px;font-size:12px;font-weight:bold;color:#526f86}.forecast-history-column{position:relative;z-index:1}.forecast-season-line{z-index:3}.forecast-prediction-band{fill-opacity:.12}';yearStyles.textContent+='.forecast-stacked-bar{display:flex;flex-direction:column-reverse;overflow:hidden;background:transparent!important}.forecast-bar-segment{width:100%;flex-shrink:0;min-height:0}';document.head.append(yearStyles);
+const yearStyles=document.createElement('style');yearStyles.textContent='.forecast-year-band{position:absolute;top:0;bottom:0;background:rgba(70,115,155,.035);border-left:1px solid #d0dae5;pointer-events:none;z-index:0}.forecast-year-alt{background:rgba(70,115,155,.1)}.forecast-year-band span{position:absolute;top:2px;left:8px;font-size:12px;font-weight:bold;color:#526f86}.forecast-history-column{position:relative;z-index:1}.forecast-season-line{z-index:3}.forecast-prediction-band{fill-opacity:.12}';yearStyles.textContent+='.forecast-stacked-bar{display:flex;flex-direction:column-reverse;overflow:hidden;background:transparent!important}.forecast-bar-segment{width:100%;flex-shrink:0;min-height:0} .forecast-y-axis{position:sticky;left:0;top:0;width:0;align-self:stretch;z-index:5;pointer-events:none}.forecast-y-tick{position:absolute;left:0;transform:translateY(-50%);display:block;min-width:34px;padding:2px 4px;background:rgba(255,255,255,.88);font-size:10px;text-align:right;color:#47647b;font-variant-numeric:tabular-nums}';document.head.append(yearStyles);
 const shift=(date,n)=>{const d=new Date(date+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10)};
 const monday=d=>shift(d,-((new Date(d+'T12:00:00Z').getUTCDay()+6)%7));
 const isDaily=n=>/same.?day|urgent.?extra|within.?3.?day/i.test(n);
@@ -150,7 +150,22 @@ function renderHistoricalWeekday(){
   const lo=quantile(errors,.15)*factor,hi=quantile(errors,.85)*factor;
   return {low:Math.max(0,value+Math.min(lo,0)),high:Math.max(value,value+Math.max(hi,0))};
  });
- const max=Math.max(1,...values,...historicalFit,...projected,...intervals.map(v=>v.high));
+ // Shared scale across weekdays: inspect every weekday in the selected historical window.
+ // Keep the same ceiling when changing Monday to Friday; do not rescale to the selected day's maximum.
+ const allWeekdayTotals=new Map();
+ for(const r of records){
+  if(!r.bookedDay||r.bookedDay<start||r.bookedDay>end||excludedSlotTypes.has(r.slot))continue;
+  if(!groups.includes(capacityUrgencyCategory(r.slot)))continue;
+  if(excludeHolidayWeeks&&holidayWeeks.has(monday(r.bookedDay)))continue;
+  const dow=new Date(r.bookedDay+'T12:00:00Z').getUTCDay();if(dow<1||dow>5)continue;
+  allWeekdayTotals.set(r.bookedDay,(allWeekdayTotals.get(r.bookedDay)||0)+(Number(r.count)||0));
+ }
+ const commonMaximum=Math.max(1,...Array.from(allWeekdayTotals,( [d,v] )=>normalise(d,v)));
+ const dataMaximum=Math.max(commonMaximum,...values,...historicalFit,...projected,...intervals.map(v=>v.high));
+ const step=Math.pow(10,Math.floor(Math.log10(dataMaximum/4||1)));
+ const increments=[1,2,5,10].map(v=>v*step);
+ const tickStep=increments.find(v=>v*5>=dataMaximum)||10*step;
+ const max=tickStep*5;
  const allDays=days.concat(future),columns=[];
  for(let i=0;i<allDays.length;i++){
   const d=allDays[i],isFuture=i>=n,value=isFuture?0:values[i],col=document.createElement('div');
@@ -170,6 +185,17 @@ function renderHistoricalWeekday(){
   else {const detail=parts.get(d)||new Map();col.title=d+': '+value.toFixed(1)+(adjust?' list-size adjusted':'')+' bookings'+groups.map(name=>'\\n'+name+': '+(detail.get(name)||0)).join('')}
   col.append(bar,date);root.append(col);columns.push(col);
  }
+ // A labelled Y-axis shares exactly the same baseline and scale as the bars and forecast.
+ const barRect=columns[0].querySelector('.forecast-history-bar').getBoundingClientRect();
+ const baselineY=barRect.bottom-root.getBoundingClientRect().top;
+ const axis=document.createElement('div');axis.className='forecast-y-axis';
+ for(let i=0;i<=5;i++){
+  const label=document.createElement('span');label.className='forecast-y-tick';
+  label.textContent=String(Math.round(i*tickStep*100)/100);
+  label.style.top=(baselineY-i*tickStep/max*192)+'px';
+  axis.append(label);
+ }
+ root.append(axis);
  // Alternating calendar-year bands use real year boundaries, including the projected weeks.
  const yearRuns=[];for(let i=0;i<allDays.length;i++){const year=allDays[i].slice(0,4);if(!yearRuns.length||yearRuns[yearRuns.length-1].year!==year)yearRuns.push({year,start:i,end:i});else yearRuns[yearRuns.length-1].end=i}
  for(let j=0;j<yearRuns.length;j++){
@@ -182,7 +208,8 @@ function renderHistoricalWeekday(){
   const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('class','forecast-season-line');svg.setAttribute('aria-label','Seasonal regression, thirteen-week projection and 70 percent prediction interval');
   const width=root.scrollWidth,height=root.clientHeight;svg.style.width=width+'px';svg.style.height=height+'px';svg.setAttribute('viewBox','0 0 '+width+' '+height);
   const ns='http://www.w3.org/2000/svg',x=i=>columns[i].offsetLeft+columns[i].offsetWidth/2;
-  const baseline=columns[0].querySelector('.forecast-history-bar').offsetTop+columns[0].querySelector('.forecast-history-bar').offsetHeight;
+  const firstBar=columns[0].querySelector('.forecast-history-bar');
+  const baseline=firstBar.getBoundingClientRect().bottom-root.getBoundingClientRect().top;
   const y=v=>baseline-v/max*192;
   const poly=(points,cls)=>{const el=document.createElementNS(ns,'polyline');el.setAttribute('class',cls);el.setAttribute('points',points.map(p=>p.map(v=>v.toFixed(1)).join(',')).join(' '));svg.append(el)};
   poly(historicalFit.map((v,i)=>[x(i),y(v)]),'forecast-historical-fit');
