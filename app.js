@@ -2149,23 +2149,37 @@ function refreshPriorityEditors(){
   const root=document.getElementById(id);if(!root)continue;
   const rows=[...root.children].filter(r=>r.classList.contains('slot-mode-item'));
   const names=prioritySort(kind,prioritySources[kind]());
-  const rowName=r=>[...r.children].find(c=>c.tagName==='SPAN'&&!c.classList.contains('priority-grip')&&!c.classList.contains('clinician-colour-dot'))?.textContent?.trim();
+  const rowName=r=>r.dataset.priorityName||[...r.children].find(c=>c.tagName==='SPAN'&&!c.classList.contains('priority-grip')&&!c.classList.contains('clinician-colour-dot'))?.textContent?.trim();
   for(const name of names){
    const row=rows.find(r=>rowName(r)===name);if(!row)continue;
-   row.dataset.priorityName=name;row.draggable=false;
-   if(!row.querySelector('.priority-grip')){const grip=document.createElement('span');grip.className='priority-grip';grip.textContent='⠿';grip.title='Drag to change toggle order';grip.draggable=isOwner;row.prepend(grip)}
+   row.dataset.priorityName=name;
+   row.draggable=false;
+   row.querySelector('.priority-grip')?.remove();
+   let controls=row.querySelector('.priority-arrow-controls');
+   if(!controls){
+    controls=document.createElement('span');controls.className='priority-arrow-controls';
+    const makeButton=(direction,symbol,label)=>{
+     const button=document.createElement('button');button.type='button';button.className='priority-arrow-button';
+     button.textContent=symbol;button.title=label;button.setAttribute('aria-label',label);
+     button.addEventListener('click',event=>{
+      event.preventDefault();event.stopPropagation();if(!isOwner)return;
+      const ordered=prioritySort(kind,prioritySources[kind]());
+      const from=ordered.indexOf(row.dataset.priorityName),to=from+direction;
+      if(from<0||to<0||to>=ordered.length)return;
+      [ordered[from],ordered[to]]=[ordered[to],ordered[from]];
+      togglePriority[kind]=ordered;
+      saveCategories();refreshPriorityEditors();refreshPriorityToggles();
+     });
+     return button;
+    };
+    controls.append(makeButton(-1,'↑','Move '+name+' up in toggle priority'),makeButton(1,'↓','Move '+name+' down in toggle priority'));
+    const actions=[...row.children].filter(c=>c.tagName==='BUTTON');
+    if(actions.length)row.insertBefore(controls,actions[0]);else row.append(controls);
+   }
+   const [up,down]=controls.querySelectorAll('button');
+   up.disabled=!isOwner||names.indexOf(name)===0;
+   down.disabled=!isOwner||names.indexOf(name)===names.length-1;
    root.append(row);
-   if(row.dataset.priorityBound)continue;row.dataset.priorityBound='1';
-   row.querySelector('.priority-grip').addEventListener('dragstart',e=>{if(!isOwner)return;e.dataTransfer.setData('text/plain',kind+'|'+row.dataset.priorityName);e.dataTransfer.effectAllowed='move'});
-   row.addEventListener('dragover',e=>{if(isOwner){e.preventDefault();e.dataTransfer.dropEffect='move';row.classList.add('priority-drop-target')}});
-   row.addEventListener('dragleave',()=>row.classList.remove('priority-drop-target'));
-   row.addEventListener('dragend',()=>row.classList.remove('priority-drop-target'));
-   row.addEventListener('drop',e=>{e.preventDefault();row.classList.remove('priority-drop-target');if(!isOwner)return;
-    const [sourceKind,...parts]=e.dataTransfer.getData('text/plain').split('|');if(sourceKind!==kind)return;
-    const ordered=prioritySort(kind,prioritySources[kind]());const from=ordered.indexOf(parts.join('|')),to=ordered.indexOf(row.dataset.priorityName);
-    if(from<0||to<0||from===to)return;ordered.splice(to,0,ordered.splice(from,1)[0]);
-    togglePriority[kind]=ordered;saveCategories();refreshPriorityEditors();refreshPriorityToggles();
-   });
   }
  }
 }
