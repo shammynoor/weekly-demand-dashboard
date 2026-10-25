@@ -2178,7 +2178,7 @@ function refreshPriorityToggles(){
   const root=document.getElementById(id);if(!root)continue;
   const rows=[...root.children];
   const name=r=>r.querySelector('input')?.dataset.urgencyGroup||r.querySelector('input')?.dataset.filterName||r.querySelector('span:last-child')?.textContent?.trim()||'';
-  for(const n of prioritySort(kind,rows.map(name))){const row=rows.find(r=>name(r)===n);if(row&&row!==root.lastElementChild)root.append(row)}
+  const sorted=prioritySort(kind,rows.map(name));if(rows.some((row,i)=>name(row)!==sorted[i]))for(const n of sorted){const row=rows.find(r=>name(r)===n);if(row)root.append(row)}
  }
 }
 function setupTogglePriority(){
