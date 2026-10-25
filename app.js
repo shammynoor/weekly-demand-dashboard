@@ -2281,7 +2281,7 @@ function refreshAvailabilityOptionStates(page){
   }
  }
 }
-const urgentDisabledClinicianTypes=new Set(),routineDisabledClinicianTypes=new Set();
+const urgentDisabledClinicianTypes=new Set(),routineDisabledClinicianTypes=new Set(),plannedDisabledClinicianTypes=new Set();
 function selectedClinicianTypes(page){
  const disabled=page==='urgent'?urgentClinicianDisabled:page==='planned'?plannedDisabledClinicianGroups:routineDisabledClinicianGroups;
  return clinicianCategoryNames.filter(type=>{
