@@ -1921,11 +1921,12 @@ function setupDemandMonthSlider(){
  const start=$('demandRangeStart'),end=$('demandRangeEnd');if(!start||!end)return;
  const months=[...new Set(availabilityRecords.map(r=>typeof r.date==='string'?r.date.slice(0,7):r.date instanceof Date&&!Number.isNaN(r.date.getTime())?r.date.toISOString().slice(0,7):null).filter(Boolean))].sort();
  if(!months.length)return;
+ const today=new Date(),todayMonth=today.getFullYear()*12+today.getMonth();
  const first=months[0],last=months[months.length-1];
  const toIndex=m=>Number(m.slice(0,4))*12+Number(m.slice(5,7))-1;
  const toMonth=i=>String(Math.floor(i/12)).padStart(4,'0')+'-'+String(i%12+1).padStart(2,'0');
- const low=toIndex(first),high=toIndex(last);
- const bounds=first+'|'+last;
+ const low=Math.min(toIndex(first),todayMonth),high=Math.max(low,Math.min(toIndex(last),todayMonth));
+ const bounds=first+'|'+toMonth(high);
  if(demandMonthBounds!==bounds){
   demandMonthBounds=bounds;
   demandMonthStart=toMonth(demandMonthStart?Math.max(low,Math.min(high,toIndex(demandMonthStart))):low);
@@ -1936,7 +1937,7 @@ function setupDemandMonthSlider(){
  a=Math.max(low,Math.min(high,a));b=Math.max(a,Math.min(high,b));
  start.value=String(a);end.value=String(b);
  const label=i=>new Date(Date.UTC(Math.floor(i/12),i%12,1)).toLocaleDateString('en-GB',{month:'short',year:'numeric',timeZone:'UTC'});
- $('demandRangeFromLabel').textContent='Start of '+label(a);$('demandRangeToLabel').textContent='End of '+label(b);
+ $('demandRangeFromLabel').textContent='Start of '+label(a);$('demandRangeToLabel').textContent=b===todayMonth?'End '+today.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}):'End of '+label(b);
  const span=Math.max(1,high-low),fill=$('demandRangeFill');
  // The native range thumb travels over the input width MINUS its own diameter.
  // Position the blue fill between the actual thumb centres, not the input edges.
@@ -2239,12 +2240,13 @@ function waitingRowDimensions(r){
 function setupWaitingAppointmentSlider(){
  const start=$('waitingRangeStart'),end=$('waitingRangeEnd'),fill=$('waitingRangeFill');
  if(!start||!end||!fill)return;
+ const today=new Date(),todayMonth=today.getFullYear()*12+today.getMonth();
  const months=waitingTimeRecords.map(r=>r.appointmentMonth).filter(Boolean).sort();
  const first=months[0],last=months.at(-1);
  const toIndex=m=>Number(m.slice(0,4))*12+Number(m.slice(5,7))-1;
  const toMonth=i=>String(Math.floor(i/12)).padStart(4,'0')+'-'+String(i%12+1).padStart(2,'0');
  if(!first){$('waitingRangeFromLabel').textContent='—';$('waitingRangeToLabel').textContent='—';return}
- const low=toIndex(first),high=toIndex(last),bounds=first+'|'+last;
+ const low=Math.min(toIndex(first),todayMonth),high=Math.max(low,Math.min(toIndex(last),todayMonth)),bounds=first+'|'+toMonth(high);
  if(waitingAppointmentMonthBounds!==bounds){
   waitingAppointmentMonthBounds=bounds;
   waitingAppointmentMonthStart=toMonth(waitingAppointmentMonthStart?Math.max(low,Math.min(high,toIndex(waitingAppointmentMonthStart))):low);
@@ -2255,7 +2257,7 @@ function setupWaitingAppointmentSlider(){
  for(const el of [start,end]){el.min=String(low);el.max=String(high);el.step='1';el.disabled=low===high}
  start.value=String(a);end.value=String(b);
  const label=i=>new Date(Date.UTC(Math.floor(i/12),i%12,1)).toLocaleDateString('en-GB',{month:'short',year:'numeric',timeZone:'UTC'});
- $('waitingRangeFromLabel').textContent='Start of '+label(a);$('waitingRangeToLabel').textContent='End of '+label(b);
+ $('waitingRangeFromLabel').textContent='Start of '+label(a);$('waitingRangeToLabel').textContent=b===todayMonth?'End '+today.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}):'End of '+label(b);
  const trackWidth=fill.parentElement.clientWidth,thumb=20,sliderLeft=start.getBoundingClientRect().left-fill.parentElement.getBoundingClientRect().left;
  const travel=Math.max(0,start.clientWidth-thumb),span=Math.max(1,high-low);
  const left=sliderLeft+thumb/2+(a-low)/span*travel,right=sliderLeft+thumb/2+(b-low)/span*travel;
@@ -2276,12 +2278,13 @@ function setupWaitingAppointmentSlider(){
 function setupWaitingTrendSlider(){
  const start=$('waitingTrendRangeStart'),end=$('waitingTrendRangeEnd'),fill=$('waitingTrendRangeFill');
  if(!start||!end||!fill)return;
+ const today=new Date(),todayMonth=today.getFullYear()*12+today.getMonth();
  const months=waitingTrendAvailableMonths;
  const first=months[0],last=months.at(-1);
  const toIndex=m=>Number(m.slice(0,4))*12+Number(m.slice(5,7))-1;
  const toMonth=i=>String(Math.floor(i/12)).padStart(4,'0')+'-'+String(i%12+1).padStart(2,'0');
  if(!first){$('waitingTrendRangeFromLabel').textContent='—';$('waitingTrendRangeToLabel').textContent='—';return}
- const low=toIndex(first),high=toIndex(last),bounds=first+'|'+last;
+ const low=Math.min(toIndex(first),todayMonth),high=Math.max(low,Math.min(toIndex(last),todayMonth)),bounds=first+'|'+toMonth(high);
  if(waitingTrendMonthBounds!==bounds){
   waitingTrendMonthBounds=bounds;
   waitingTrendMonthStart=toMonth(waitingTrendMonthStart?Math.max(low,Math.min(high,toIndex(waitingTrendMonthStart))):low);
@@ -2292,7 +2295,7 @@ function setupWaitingTrendSlider(){
  for(const el of [start,end]){el.min=String(low);el.max=String(high);el.step='1';el.disabled=low===high}
  start.value=String(a);end.value=String(b);
  const label=i=>new Date(Date.UTC(Math.floor(i/12),i%12,1)).toLocaleDateString('en-GB',{month:'short',year:'numeric',timeZone:'UTC'});
- $('waitingTrendRangeFromLabel').textContent='Start of '+label(a);$('waitingTrendRangeToLabel').textContent='End of '+label(b);
+ $('waitingTrendRangeFromLabel').textContent='Start of '+label(a);$('waitingTrendRangeToLabel').textContent=b===todayMonth?'End '+today.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}):'End of '+label(b);
  const trackWidth=fill.parentElement.clientWidth,thumb=20,sliderLeft=start.getBoundingClientRect().left-fill.parentElement.getBoundingClientRect().left;
  const travel=Math.max(0,start.clientWidth-thumb),span=Math.max(1,high-low);
  const left=sliderLeft+thumb/2+(a-low)/span*travel,right=sliderLeft+thumb/2+(b-low)/span*travel;
