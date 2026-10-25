@@ -1521,7 +1521,7 @@ function mergeCSVCounts(target,source){
 }
 function parseCSVContribution(csvText,name){
  if(isSignpostingFile(name))return {kind:'signposting',events:parseSignpostingCSV(csvText)};
- if(!/slot[\\s_-]*report/i.test(name))return {kind:'other'};
+ if(!/slot[\s_-]*report/i.test(name))return {kind:'other'};
  const maps=Array.from({length:8},()=>new Map());
  const stats=aggregateCSV(csvText,...maps);
  return {kind:'slot',maps,valid:stats.valid,skipped:stats.skipped};
