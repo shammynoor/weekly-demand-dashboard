@@ -88,6 +88,9 @@ let records=[],weeks=[],types=[],statuses=[],clinicianTypes=[],bookingTimeRecord
 let availabilityRecords=[];
 let waitingTimeRecords=[];
 let waitingAppointmentMonthStart='',waitingAppointmentMonthEnd='',waitingAppointmentMonthBounds='';
+let waitingTrendMonthStart='',waitingTrendMonthEnd='',waitingTrendMonthBounds='';
+const waitingTrendDisabledUrgency=new Set();
+const waitingTrendDisabled={consult:new Set(),purpose:new Set(),capacity:new Set(),clinician:new Set()};
 const waitingDisabledUrgency=new Set();
 let peopleRecords=[];
 let peopleLocum={};
@@ -1190,7 +1193,8 @@ function aggregateCSV(csv,aggregated,availabilityAggregate,bookingTimeAggregate,
   if(waitingAggregate&&leadRaw&&Number.isFinite(lead)&&lead>=0){
    const dayBin=Math.floor(lead/1440);
    const appointmentMonth=appointmentDay.toISOString().slice(0,7);
-   const waitKey=JSON.stringify([slotType,dayBin,clinician,person,appointmentMonth]);
+   const appointmentDate=appointmentDay.toISOString().slice(0,10);
+   const waitKey=JSON.stringify([slotType,dayBin,clinician,person,appointmentMonth,appointmentDate,lead]);
    waitingAggregate.set(waitKey,(waitingAggregate.get(waitKey)||0)+1);
   }
   const tm=/^(\d{1,2}):(\d{2})/.exec(time);
@@ -1542,7 +1546,7 @@ async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;
  peopleRecords=[...peopleByName.values()].map(({name,types})=>({name,type:[...types].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]))[0][0]})).sort((a,b)=>a.type.localeCompare(b.type)||a.name.localeCompare(b.name));
  rebuildPeopleTypeLookup();
  renderPeople();renderSlotInclusion();renderSlotTable();
- waitingTimeRecords=[...waitingAggregate].map(([key,count])=>{const [slot,day,clinician,person,appointmentMonth]=JSON.parse(key);return {slot,day,clinician,person,appointmentMonth,status:'Booked',count}});
+ waitingTimeRecords=[...waitingAggregate].map(([key,count])=>{const [slot,day,clinician,person,appointmentMonth,appointmentDate,leadMinutes]=JSON.parse(key);return {slot,day,clinician,person,appointmentMonth,appointmentDate,leadMinutes,status:'Booked',count}});
  bookingTimeRecords=[...bookingTimeAggregate].map(([key,count])=>{const [bookedDay,minute,slot,clinician,person]=JSON.parse(key);return {bookedDay,minute,slot,clinician,person,count}});
  availabilityRecords=[...availabilityAggregate].map(([key,count])=>{const [date,slot,availability,clinician,person]=JSON.parse(key);return {date,slot,availability,clinician,person,count}});
  records=[...aggregate].map(([key,count])=>{const [bookedDay,slot,clinician,person]=JSON.parse(key);const bookedWeek=mondayOf(bookedDay);return {week:bookedWeek,bookedWeek,bookedDay,slot,clinician,person,status:'Booked',count}});weeks=[...new Set(records.map(r=>r.bookedWeek))].sort();types=[...new Set([...records.map(r=>r.slot),...availabilityRecords.map(r=>r.slot)])].sort();statuses=['Booked'];clinicianTypes=[...new Set([...records.map(r=>r.clinician),...availabilityRecords.map(r=>r.clinician)])].filter(Boolean).sort();
@@ -2258,6 +2262,43 @@ function setupWaitingAppointmentSlider(){
   start.dataset.bound=end.dataset.bound='1';
  }
 }
+function setupWaitingTrendSlider(){
+ const start=$('waitingTrendRangeStart'),end=$('waitingTrendRangeEnd'),fill=$('waitingTrendRangeFill');
+ if(!start||!end||!fill)return;
+ const months=waitingTimeRecords.map(r=>r.appointmentMonth).filter(Boolean).sort();
+ const first=months[0],last=months.at(-1);
+ const toIndex=m=>Number(m.slice(0,4))*12+Number(m.slice(5,7))-1;
+ const toMonth=i=>String(Math.floor(i/12)).padStart(4,'0')+'-'+String(i%12+1).padStart(2,'0');
+ if(!first){$('waitingTrendRangeFromLabel').textContent='—';$('waitingTrendRangeToLabel').textContent='—';return}
+ const low=toIndex(first),high=toIndex(last),bounds=first+'|'+last;
+ if(waitingTrendMonthBounds!==bounds){
+  waitingTrendMonthBounds=bounds;
+  waitingTrendMonthStart=toMonth(waitingTrendMonthStart?Math.max(low,Math.min(high,toIndex(waitingTrendMonthStart))):low);
+  waitingTrendMonthEnd=toMonth(waitingTrendMonthEnd?Math.max(low,Math.min(high,toIndex(waitingTrendMonthEnd))):high);
+ }
+ let a=Math.max(low,Math.min(high,toIndex(waitingTrendMonthStart))),b=Math.max(a,Math.min(high,toIndex(waitingTrendMonthEnd)));
+ waitingTrendMonthStart=toMonth(a);waitingTrendMonthEnd=toMonth(b);
+ for(const el of [start,end]){el.min=String(low);el.max=String(high);el.step='1';el.disabled=low===high}
+ start.value=String(a);end.value=String(b);
+ const label=i=>new Date(Date.UTC(Math.floor(i/12),i%12,1)).toLocaleDateString('en-GB',{month:'short',year:'numeric',timeZone:'UTC'});
+ $('waitingTrendRangeFromLabel').textContent=label(a);$('waitingTrendRangeToLabel').textContent=label(b);
+ const trackWidth=fill.parentElement.clientWidth,thumb=20,sliderLeft=start.getBoundingClientRect().left-fill.parentElement.getBoundingClientRect().left;
+ const travel=Math.max(0,start.clientWidth-thumb),span=Math.max(1,high-low);
+ const left=sliderLeft+thumb/2+(a-low)/span*travel,right=sliderLeft+thumb/2+(b-low)/span*travel;
+ fill.style.left=left+'px';fill.style.right=Math.max(0,trackWidth-right)+'px';
+ if(!start.dataset.bound){
+  const changed=which=>{
+   let x=Number(start.value),y=Number(end.value);
+   if(which==='start'&&x>y)y=x;
+   if(which==='end'&&y<x)x=y;
+   waitingTrendMonthStart=toMonth(x);waitingTrendMonthEnd=toMonth(y);
+   renderWaitingTrendChart();
+  };
+  start.addEventListener('input',()=>changed('start'));
+  end.addEventListener('input',()=>changed('end'));
+  start.dataset.bound=end.dataset.bound='1';
+ }
+}
 function waitingMatches(r,ignore){
  if(r.status!=='Booked'||excludedSlotTypes.has(r.slot))return false;
  if(waitingAppointmentMonthStart&&r.appointmentMonth<waitingAppointmentMonthStart)return false;
@@ -2377,15 +2418,73 @@ function renderWaitingTimesChart(){
  },{responsive:true,displayModeBar:false}).then(()=>installWaitingCardTooltip(chart,total));
 }
 $('waitingSuppressSmallBins')?.addEventListener('change',renderWaitingTimesChart);
+function renderWaitingTrendChart(){
+ const chart=$('waitingTrendChart'),root=$('waitingTrendUrgencyToggles');
+ if(!chart||!root||$('waitingOverTimePage')?.classList.contains('hidden')||!window.Plotly)return;
+ setupWaitingTrendSlider();
+ const kinds=['urgency','consult','purpose','capacity','clinician'];
+ const optionsByKind=Object.fromEntries(kinds.map(k=>[k,new Set()]));
+ const byGroup=new Map();
+ for(const r of waitingTimeRecords){
+  if(r.status!=='Booked'||excludedSlotTypes.has(r.slot)||!r.appointmentDate||!Number.isFinite(r.leadMinutes))continue;
+  if(waitingTrendMonthStart&&r.appointmentMonth<waitingTrendMonthStart)continue;
+  if(waitingTrendMonthEnd&&r.appointmentMonth>waitingTrendMonthEnd)continue;
+  const d=waitingRowDimensions(r);
+  if(!isDashboardToggleOption(d.urgency))continue;
+  const enabled={urgency:!waitingTrendDisabledUrgency.has(d.urgency)};
+  for(const kind of kinds.slice(1))enabled[kind]=!waitingTrendDisabled[kind].has(d[kind]);
+  const off=kinds.filter(k=>!enabled[k]);
+  for(const kind of kinds)if(!off.length||(off.length===1&&off[0]===kind))optionsByKind[kind].add(d[kind]);
+  if(off.length)continue;
+  const week=mondayOf(r.appointmentDate),key=d.urgency+'|'+week;
+  if(!byGroup.has(key))byGroup.set(key,{urgency:d.urgency,week,values:[]});
+  byGroup.get(key).values.push([r.leadMinutes/1440,r.count]);
+ }
+ const toggle=(container,name,checked,colour,change)=>{
+  const row=document.createElement('label');row.className='filter-row';
+  const sw=document.createElement('span');sw.className='switch',input=document.createElement('input');input.type='checkbox';input.setAttribute('role','switch');input.dataset.filterName=name;input.checked=checked;
+  const track=document.createElement('span');track.className='switch-track';track.style.setProperty('--switch-on',colour);sw.append(input,track);
+  const label=document.createElement('span');label.textContent=name;row.append(sw,label);container.append(row);
+  input.addEventListener('change',()=>{change(input.checked);renderWaitingTrendChart()});
+ };
+ root.replaceChildren();
+ for(const name of groupUrgencyNames.filter(n=>isDashboardToggleOption(n)&&optionsByKind.urgency.has(n)))
+  toggle(root,name,!waitingTrendDisabledUrgency.has(name),urgencyGroupColour(name),on=>{if(on)waitingTrendDisabledUrgency.delete(name);else waitingTrendDisabledUrgency.add(name)});
+ const dimensions=[['consult','waitingTrendConsultToggles',consultCategoryNames,consultModeColours],['purpose','waitingTrendPurposeToggles',purposeCategoryNames,purposeColours],['capacity','waitingTrendCapacityToggles',capacityCategoryNames,capacityColours],['clinician','waitingTrendClinicianToggles',clinicianGroupNames,clinicianGroupColours]];
+ for(const [kind,id,names,colours] of dimensions){
+  const container=$(id);if(!container)continue;container.replaceChildren();
+  const options=names.filter(n=>isDashboardToggleOption(n)&&optionsByKind[kind].has(n));
+  for(const name of options)toggle(container,name,!waitingTrendDisabled[kind].has(name),kind==='clinician'?clinicianGroupColour(name):typeColour(name,colours),on=>{if(on)waitingTrendDisabled[kind].delete(name);else waitingTrendDisabled[kind].add(name)});
+  const panel=container.closest('section');if(panel)panel.hidden=!options.length;
+ }
+ updateCollapsedFilterSummaries();
+ const median=values=>{
+  values.sort((a,b)=>a[0]-b[0]);
+  const n=values.reduce((sum,p)=>sum+p[1],0);
+  if(!n)return null;
+  const at=rank=>{let seen=0;for(const [v,count] of values){seen+=count;if(seen>=rank)return v}return values.at(-1)[0]};
+  return (at(Math.floor((n+1)/2))+at(Math.floor((n+2)/2)))/2;
+ };
+ const traces=[];
+ for(const group of groupUrgencyNames){
+  if(waitingTrendDisabledUrgency.has(group))continue;
+  const points=[...byGroup.values()].filter(v=>v.urgency===group).sort((a,b)=>a.week.localeCompare(b.week));
+  if(!points.length)continue;
+  traces.push({type:'scatter',mode:'lines+markers',name:group,x:points.map(v=>v.week),y:points.map(v=>median(v.values)),line:{color:urgencyGroupColour(group),width:2.5},marker:{size:5},connectgaps:false,hovertemplate:'%{x|%d %b %Y}<br>'+group+': %{y:.1f} days<extra></extra>'});
+ }
+ const note=$('waitingTrendNote');if(note)note.textContent='Weekly median of booked-to-slot waiting times, measured in days. Each point groups appointments by appointment week.';
+ Plotly.react(chart,traces,{height:560,autosize:true,margin:{l:72,r:25,t:40,b:75},paper_bgcolor:'#fff',plot_bgcolor:'#fff',hovermode:'x unified',hoverlabel:{bgcolor:'#fff',bordercolor:'#dce6ef',font:{color:'#142d43',size:12},align:'left'},xaxis:{type:'date',title:'Appointment week commencing',tickformat:'%b %Y',gridcolor:'#edf1f5'},yaxis:{title:'Median waiting time (days)',rangemode:'tozero',gridcolor:'#edf1f5'},legend:{orientation:'h',y:1.13,x:0}},{responsive:true,displayModeBar:false});
+}
 function showPage(which){
  closeSettingsMenu();closeAvailabilityNavMenu();closeDemandNavMenu();
  if(!isOwner&&(which==='categories'||which==='people'||which==='practiceSettings'))return;
- for(const [page,nav,name] of [['homePage','navHome','home'],['chartPage','navChart','chart'],['waitingTimesPage','navWaitingTimes','waitingTimes'],['categoryPage','navCategories','categories'],['availabilityPage','navAvailability','availability'],['routineAvailabilityPage','navRoutineAvailability','routineAvailability'],['plannedAvailabilityPage','navPlannedAvailability','plannedAvailability'],['bookingTimesPage','navBookingTimes','bookingTimes'],['signpostingPage','navSignposting','signposting'],['peoplePage','navPeople','people'],['practiceSettingsPage','navPracticeSettings','practiceSettings']]){
+ for(const [page,nav,name] of [['homePage','navHome','home'],['chartPage','navChart','chart'],['waitingTimesPage','navWaitingTimes','waitingTimes'],['waitingOverTimePage','navWaitingTrend','waitingTrend'],['categoryPage','navCategories','categories'],['availabilityPage','navAvailability','availability'],['routineAvailabilityPage','navRoutineAvailability','routineAvailability'],['plannedAvailabilityPage','navPlannedAvailability','plannedAvailability'],['bookingTimesPage','navBookingTimes','bookingTimes'],['signpostingPage','navSignposting','signposting'],['peoplePage','navPeople','people'],['practiceSettingsPage','navPracticeSettings','practiceSettings']]){
   $(page).classList.toggle('hidden',which!==name);$(nav).classList.toggle('active',which===name);
  }
  if(which==='home')updateHomePracticeName();
  if(which==='chart')setTimeout(()=>{refresh();scheduleChartResize()},0);
  else if(which==='waitingTimes')setTimeout(renderWaitingTimesChart,0);
+ else if(which==='waitingTrend')setTimeout(renderWaitingTrendChart,0);
  else if(which==='availability')setTimeout(renderAvailabilityChart,0);
  else if(which==='routineAvailability')setTimeout(renderRoutineAvailabilityChart,0);
  else if(which==='plannedAvailability')setTimeout(renderPlannedAvailabilityChart,0);
@@ -2394,7 +2493,7 @@ function showPage(which){
  else if(which==='people'){renderPeopleGroups();renderPeopleGroupFilter();renderPeople();}
  else if(which==='practiceSettings'){renderPracticeSettings();}
  else {renderSlotGroupBoxes();renderSlotTable();renderEditor();renderGroupUrgencyEditor();renderClinicianEditor();renderClinicianGroupEditor();renderConsultEditor()}
-}document.getElementById('navHome').onclick=()=>showPage('home');document.getElementById('navChart').onclick=()=>showPage('chart');document.getElementById('navWaitingTimes').onclick=()=>showPage('waitingTimes');document.getElementById('navCategories').onclick=()=>showPage('categories');document.getElementById('navAvailability').onclick=()=>showPage('availability');document.getElementById('navRoutineAvailability').onclick=()=>showPage('routineAvailability');
+}document.getElementById('navHome').onclick=()=>showPage('home');document.getElementById('navChart').onclick=()=>showPage('chart');document.getElementById('navWaitingTimes').onclick=()=>showPage('waitingTimes');document.getElementById('navWaitingTrend').onclick=()=>showPage('waitingTrend');document.getElementById('navCategories').onclick=()=>showPage('categories');document.getElementById('navAvailability').onclick=()=>showPage('availability');document.getElementById('navRoutineAvailability').onclick=()=>showPage('routineAvailability');
 document.getElementById('navPlannedAvailability').onclick=()=>showPage('plannedAvailability');document.getElementById('navBookingTimes').onclick=()=>showPage('bookingTimes');document.getElementById('navSignposting').onclick=()=>showPage('signposting');document.getElementById('navPeople').onclick=()=>showPage('people');document.getElementById('navPracticeSettings').onclick=()=>showPage('practiceSettings');$('demandAdditiveLines')?.addEventListener('change',scheduleDemandRefresh);$('slotTableSearch').addEventListener('input',renderSlotTable);for(const id of ['slotGroupFilter','slotModeFilter','slotPurposeFilter','slotCapacityFilter'])$(id)?.addEventListener('change',renderSlotTable);$('slotUnassignedOnly').addEventListener('change',renderSlotTable);$('slotModeUnassignedOnly').addEventListener('change',renderSlotTable);$('slotPurposeUnassignedOnly').addEventListener('change',renderSlotTable);$('slotCapacityUnassignedOnly').addEventListener('change',renderSlotTable);$('peopleSearch').addEventListener('input',renderPeople);$('peopleGroupFilter').addEventListener('change',renderPeople);$('peopleUnassignedOnly').addEventListener('change',()=>{const only=$('peopleUnassignedOnly').checked;$('peopleGroupFilter').disabled=only;renderPeople()});
 function renderClinicianEditor(){renderDropEditor('clinician');updateClinicianChartFilter()}
 function renderClinicianGroupEditor(){renderDropEditor('clinicianGroup');if(!$('peoplePage')?.classList.contains('hidden'))renderPeopleGroups()}
