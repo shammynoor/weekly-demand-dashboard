@@ -1697,6 +1697,44 @@ document.getElementById('displayMode').onchange=e=>{continuousMode=e.target.chec
 function periodKey(r){return monthlyMode?r.bookedDay?.slice(0,7):r.bookedWeek}
 let demandFilterCache=null;
 const disabledDemandPurposes=new Set(),disabledDemandCapacities=new Set();
+let demandPurposeDefaultsApplied=false;
+function applyDemandPurposeDefaults(){
+ if(demandPurposeDefaultsApplied||!purposeCategoryNames.length)return;
+ for(const name of purposeCategoryNames){
+  if(/^(testing\s*(?:and|&)\s*procedures|teaching|admin\s*meetings?|task)$/i.test(name.trim()))disabledDemandPurposes.add(name);
+ }
+ demandPurposeDefaultsApplied=true;
+}
+function historicBookingFilterCounts(){
+ const result={purpose:new Map(),capacity:new Map(),consult:new Map(),clinician:new Map()};
+ for(const r of records){
+  if(r.status!=='Booked'||excludedSlotTypes.has(r.slot)||!(r.count>0))continue;
+  const urgency=groupUrgencyAssignments[assignments[r.slot]||''];
+  if(!urgency||disabledDemandUrgencyGroups.has(urgency))continue;
+  const group=clinicianGroupAssignments[effectiveClinicianType(r.clinician,r.person)];
+  for(const [kind,value] of [['purpose',purposeAssignments[r.slot]],['capacity',capacityAssignments[r.slot]],['consult',consultAssignments[r.slot]],['clinician',group]]){
+   if(value)result[kind].set(value,(result[kind].get(value)||0)+r.count);
+  }
+ }
+ return result;
+}
+function hideEmptyHistoricBookingFilters(){
+ const counts=historicBookingFilterCounts();
+ for(const [id,kind] of [['demandPurposeToggles','purpose'],['demandCapacityToggles','capacity'],['consultChartFilters','consult'],['clinicianChartFilters','clinician']]){
+  const root=$(id);if(!root)continue;
+  let visible=0;
+  for(const input of root.querySelectorAll('input')){
+   const name=input.dataset.classification||input.dataset.filterName||input.getAttribute('aria-label')?.replace(/^Include /,'');
+   const row=input.closest('.filter-row');
+   if(row){row.hidden=!counts[kind].has(name);if(!row.hidden)visible++;}
+  }
+  const card=root.closest('section');if(card)card.hidden=visible===0;
+ }
+ const additive=$('demandAdditiveLines');
+ if(additive){const row=additive.closest('label');if(row)row.hidden=groupUrgencyNames.filter(name=>isDashboardToggleOption(name)&&!disabledDemandUrgencyGroups.has(name)).length<=1;}
+ refreshActivitySecondarySummaries();
+}
+
 function demandCategoryAllowed(slot,names,mapping,disabled){
  const value=names.includes(mapping[slot])?mapping[slot]:'Unassigned';
  return !disabled.has(value);
@@ -1919,9 +1957,10 @@ function installDemandCardTooltip(target){
 function drawCombinedDemandChart(){
  const adjustmentStatus=$('demandAdjustmentStatus');if(adjustmentStatus)adjustmentStatus.textContent=adjustDemandForListSize?'Adjusted for list size':'Not adjusted for list size';
  renderDemandUrgencyToggles();
+ applyDemandPurposeDefaults();
  renderDemandClassificationToggles('demandPurposeToggles',purposeCategoryNames,purposeAssignments,disabledDemandPurposes,purposeColours);
  renderDemandClassificationToggles('demandCapacityToggles',capacityCategoryNames,capacityAssignments,disabledDemandCapacities,capacityColours);
- refreshActivitySecondarySummaries();
+ hideEmptyHistoricBookingFilters();
  setupDemandMonthSlider();
  // Compute the population normalisation once per redraw, not for every chart point.
  const populationMonths=adjustDemandForListSize?practiceMonths():[];
