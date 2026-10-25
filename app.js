@@ -1653,7 +1653,7 @@ let lastConsultFilterNames=[];
 function updateConsultChartFilter(){
  const root=$('consultChartFilters');if(!root)return;
  const names=[...consultCategoryNames];
- if(names.length===lastConsultFilterNames.length&&names.every((n,i)=>n===lastConsultFilterNames[i]))return;
+ if(names.length===lastConsultFilterNames.length&&names.every((n,i)=>n===lastConsultFilterNames[i])){root.querySelectorAll('input').forEach((input,i)=>input.nextElementSibling?.style.setProperty('--switch-on',consultModeColours[names[i]]||'#638fac'));return;}
  lastConsultFilterNames=names;
  root.replaceChildren();
  if(!names.length){const note=document.createElement('span');note.className='hint';note.textContent='Create consult modes in Manage categories.';root.append(note);return;}
@@ -1661,7 +1661,7 @@ function updateConsultChartFilter(){
   const row=document.createElement('label');row.className='filter-row';
   const switchEl=document.createElement('span');switchEl.className='switch';
   const input=document.createElement('input');input.type='checkbox';input.setAttribute('role','switch');input.checked=!disabledConsultModes.has(name);input.setAttribute('aria-label','Include '+name);
-  const track=document.createElement('span');track.className='switch-track';track.style.setProperty('--switch-on','#596675');
+  const track=document.createElement('span');track.className='switch-track';track.style.setProperty('--switch-on',consultModeColours[name]||'#638fac');
   switchEl.append(input,track);
   const title=document.createElement('span');title.textContent=name;
   row.append(switchEl,title);root.append(row);
@@ -1921,6 +1921,7 @@ function drawCombinedDemandChart(){
  renderDemandUrgencyToggles();
  renderDemandClassificationToggles('demandPurposeToggles',purposeCategoryNames,purposeAssignments,disabledDemandPurposes,purposeColours);
  renderDemandClassificationToggles('demandCapacityToggles',capacityCategoryNames,capacityAssignments,disabledDemandCapacities,capacityColours);
+ refreshActivitySecondarySummaries();
  setupDemandMonthSlider();
  // Compute the population normalisation once per redraw, not for every chart point.
  const populationMonths=adjustDemandForListSize?practiceMonths():[];
@@ -2303,6 +2304,15 @@ function renderClinicianTypeFilters(page){
    sw.append(input,track);row.append(sw,label);root.append(row);
    input.addEventListener('change',()=>{input.checked?disabled.delete(name):disabled.add(name);(page==='urgent'?renderAvailabilityChart:page==='planned'?renderPlannedAvailabilityChart:renderRoutineAvailabilityChart)();});
   }
+ }
+ updateCollapsedFilterSummaries();
+}
+function refreshActivitySecondarySummaries(){
+ for(const id of ['demandPurposeToggles','demandCapacityToggles','consultChartFilters','clinicianChartFilters']){
+  const root=$(id);if(!root)continue;
+  root.querySelectorAll('input').forEach(input=>{
+   if(!input.dataset.filterName)input.dataset.filterName=input.dataset.classification||input.getAttribute('aria-label')?.replace(/^Include /,'')||'';
+  });
  }
  updateCollapsedFilterSummaries();
 }
