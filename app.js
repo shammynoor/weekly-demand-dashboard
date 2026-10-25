@@ -1706,19 +1706,34 @@ function applyDemandPurposeDefaults(){
  demandPurposeDefaultsApplied=true;
 }
 function historicBookingFilterCounts(){
+ // Count only bookings eligible for the currently displayed chart, while
+ // ignoring each option's own on/off state so it can be switched back on.
  const result={purpose:new Map(),capacity:new Map(),consult:new Map(),clinician:new Map()};
+ const firstAppointment=availabilityRecords.map(r=>r.date).filter(Boolean).sort()[0]||'';
+ const lastAppointment=availabilityRecords.map(r=>r.date).filter(Boolean).sort().at(-1)||'';
+ const firstPeriod=firstAppointment?(monthlyMode?firstAppointment.slice(0,7):mondayOf(firstAppointment)):'';
+ const lastPeriod=lastAppointment?(monthlyMode?lastAppointment.slice(0,7):mondayOf(lastAppointment)):'';
  for(const r of records){
   if(r.status!=='Booked'||excludedSlotTypes.has(r.slot)||!(r.count>0))continue;
+  const period=periodKey(r);if(!period)continue;
+  if((firstPeriod&&period<firstPeriod)||(lastPeriod&&period>lastPeriod))continue;
+  if(period>(monthlyMode?thisMonth:thisWeek))continue;
+  if(!showCurrentWeek&&periodIsCurrent(period))continue;
+  if(!monthlyMode&&excludeBankHolidays&&bankHolidayWeeks.has(r.bookedWeek))continue;
+  const month=period.slice(0,7);
+  if((demandMonthStart&&month<demandMonthStart)||(demandMonthEnd&&month>demandMonthEnd))continue;
   const urgency=groupUrgencyAssignments[assignments[r.slot]||''];
   if(!urgency||disabledDemandUrgencyGroups.has(urgency))continue;
-  if(!monthlyMode&&excludeBankHolidays&&bankHolidayWeeks.has(r.bookedWeek))continue;
-  if(!showCurrentWeek&&periodIsCurrent(periodKey(r)))continue;
-  const period=periodKey(r);
-  if(demandMonthStart&&period<demandMonthStart)continue;
-  if(demandMonthEnd&&period>demandMonthEnd)continue;
   const group=clinicianGroupAssignments[effectiveClinicianType(r.clinician,r.person)];
-  for(const [kind,value] of [['purpose',purposeAssignments[r.slot]],['capacity',capacityAssignments[r.slot]],['consult',consultAssignments[r.slot]],['clinician',group]]){
-   if(value)result[kind].set(value,(result[kind].get(value)||0)+r.count);
+  const values={purpose:purposeAssignments[r.slot],capacity:capacityAssignments[r.slot],consult:consultAssignments[r.slot]||suggestConsultMode(r.slot),clinician:group};
+  for(const kind of Object.keys(result)){
+   const value=values[kind];if(!isDashboardToggleOption(value))continue;
+   // Match the chart's other active filters, but not this dimension's filter.
+   if(kind!=='purpose'&&!demandCategoryAllowed(r.slot,purposeCategoryNames,purposeAssignments,disabledDemandPurposes))continue;
+   if(kind!=='capacity'&&!demandCategoryAllowed(r.slot,capacityCategoryNames,capacityAssignments,disabledDemandCapacities))continue;
+   if(kind!=='consult'&&!consultMatches(r.slot))continue;
+   if(kind!=='clinician'&&(!clinicianGroupNames.includes(group)||disabledClinicianTypes.has(group)))continue;
+   result[kind].set(value,(result[kind].get(value)||0)+r.count);
   }
  }
  return result;
@@ -1970,8 +1985,8 @@ function drawCombinedDemandChart(){
  applyDemandPurposeDefaults();
  renderDemandClassificationToggles('demandPurposeToggles',purposeCategoryNames,purposeAssignments,disabledDemandPurposes,purposeColours);
  renderDemandClassificationToggles('demandCapacityToggles',capacityCategoryNames,capacityAssignments,disabledDemandCapacities,capacityColours);
- hideEmptyHistoricBookingFilters();
  setupDemandMonthSlider();
+ hideEmptyHistoricBookingFilters();
  // Compute the population normalisation once per redraw, not for every chart point.
  const populationMonths=adjustDemandForListSize?practiceMonths():[];
  const populationValues=populationMonths.length?practiceListValues(populationMonths):[];
