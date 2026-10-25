@@ -1879,7 +1879,10 @@ function refresh(){
  updateClinicianChartFilter();updateConsultChartFilter();
  demandFilterCache=new WeakMap();
  clinicianMatchCache=new Map();
-const additiveLines=$('demandAdditiveLines')?.checked===true;
+const selectedUrgencyCount=groupUrgencyNames.filter(name=>isDashboardToggleOption(name)&&!disabledDemandUrgencyGroups.has(name)).length;
+const additiveControl=$('demandAdditiveLines');
+if(selectedUrgencyCount<=1&&additiveControl?.checked){additiveControl.checked=false;if(window.Plotly&&$('combinedDemandChart'))Plotly.purge($('combinedDemandChart'));}
+const additiveLines=selectedUrgencyCount>1&&additiveControl?.checked===true;
 const activeWeekSet=new Set();
 for(const r of records){if(includedRecord(r)){const key=periodKey(r);if(key)activeWeekSet.add(key)}}
 const activeWeeks=[...activeWeekSet].sort();
@@ -2001,9 +2004,9 @@ function installDemandCardTooltip(target){
   const name=point.data.name;
   const index=Array.isArray(point.pointNumber)?point.pointNumber[0]:(point.pointIndex??point.pointNumber);
   const date=typeof point.customdata==='string'?point.customdata:(typeof point.data?.customdata?.[index]==='string'?point.data.customdata[index]:'');
-  const rawDate=date||((typeof point.x==='string'&&/^\\d{4}-\\d{2}/.test(point.x))?point.x:'');
+  const rawDate=date||((typeof point.x==='string'&&/^\d{4}-\d{2}/.test(point.x))?point.x:'');
   let formatted=rawDate;
-  if(/^\\d{4}-\\d{2}(?:-\\d{2})?$/.test(rawDate)){
+  if(/^\d{4}-\d{2}(?:-\d{2})?$/.test(rawDate)){
    const iso=rawDate.length===7?rawDate+'-01':rawDate;
    const d=new Date(iso+'T12:00:00Z');
    if(monthlyMode)formatted=d.toLocaleDateString('en-GB',{month:'long',year:'numeric',timeZone:'UTC'});
@@ -2011,7 +2014,7 @@ function installDemandCardTooltip(target){
   }
   card.replaceChildren();
   const heading=document.createElement('div');heading.className='availability-tooltip-heading';
-  heading.textContent=formatted||(name.match(/\\d{4}$/)?.[0]||'Appointment demand');card.append(heading);
+  heading.textContent=formatted||(name.match(/\d{4}$/)?.[0]||'Appointment demand');card.append(heading);
   const row=document.createElement('div');row.className='availability-tooltip-line';
   const dot=document.createElement('span');dot.className='availability-tooltip-dot';dot.style.backgroundColor=point.data.line.color;
   const value=document.createElement('span');value.textContent=name+': '+Number(point.y).toLocaleString('en-GB')+' appointments';
