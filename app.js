@@ -2643,19 +2643,30 @@ function renderDayView(){
  const active=names.filter(name=>!dayViewDisabledUrgencies.has(name));
  const fullTotal=active.reduce((sum,name)=>sum+totals.get(name),0);
  const currentTotal=active.reduce((sum,name)=>sum+bookedSoFar.get(name),0);
- $('dayViewTotal').textContent=currentTotal.toLocaleString('en-GB')+' / '+fullTotal.toLocaleString('en-GB');
+ $('dayViewTotal').textContent=fullTotal.toLocaleString('en-GB');
+ const partialStack=$('dayViewPartialStack');
+ const partialTotal=$('dayViewPartialTotal'),partialCaption=$('dayViewPartialCaption');
+ if(partialTotal)partialTotal.textContent=currentTotal.toLocaleString('en-GB');
+ const ampm=cutoff===1440?'11:59 pm':(Math.floor(cutoff/60)%12||12)+':'+String(cutoff%60).padStart(2,'0')+(cutoff<720?' am':' pm');
+ if(partialCaption)partialCaption.textContent='appointments booked by '+(cutoff===1440?'end of day':ampm);
  $('dayViewSelectedDate').textContent=new Date(dateInput.value+'T12:00:00').toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
- stack.replaceChildren();legend.replaceChildren();
+ stack.replaceChildren();partialStack?.replaceChildren();legend.replaceChildren();
  for(const name of active){
   const full=totals.get(name),current=bookedSoFar.get(name),colour=urgencyGroupColour(name);
   if(full>0){
-   const seg=document.createElement('div');seg.className='day-view-segment day-view-segment-progress';seg.style.flex=String(full);
-   const completed=document.createElement('div');completed.className='day-view-segment-completed';completed.style.width=(100*current/full)+'%';completed.style.backgroundColor=colour;
-   const remaining=document.createElement('div');remaining.className='day-view-segment-remaining';remaining.style.backgroundColor=colour;
-   seg.append(completed,remaining);
-   seg.title=name+': '+current.toLocaleString('en-GB')+' booked by '+clock+' of '+full.toLocaleString('en-GB')+' full-day bookings';
-   if(full/fullTotal>=.075){const value=document.createElement('span');value.className='day-view-segment-count';value.textContent=current.toLocaleString('en-GB');seg.append(value)}
-   stack.append(seg);
+   const top=document.createElement('div');top.className='day-view-segment';top.style.flex=String(full);top.style.backgroundColor=colour;
+   top.title=name+': '+full.toLocaleString('en-GB')+' bookings during the full day';
+   if(full/fullTotal>=.075)top.textContent=full.toLocaleString('en-GB');
+   stack.append(top);
+   if(partialStack){
+    const seg=document.createElement('div');seg.className='day-view-segment day-view-segment-progress';seg.style.flex=String(full);
+    const completed=document.createElement('div');completed.className='day-view-segment-completed';completed.style.width=(100*current/full)+'%';completed.style.backgroundColor=colour;
+    const remaining=document.createElement('div');remaining.className='day-view-segment-remaining';remaining.style.backgroundColor=colour;
+    seg.append(completed,remaining);
+    seg.title=name+': '+current.toLocaleString('en-GB')+' booked by '+clock+' of '+full.toLocaleString('en-GB')+' full-day bookings';
+    if(full/fullTotal>=.075){const value=document.createElement('span');value.className='day-view-segment-count';value.textContent=current.toLocaleString('en-GB');seg.append(value)}
+    partialStack.append(seg);
+   }
   }
   const item=document.createElement('div');item.className='day-view-legend-item';
   const dot=document.createElement('span');dot.className='day-view-dot';dot.style.backgroundColor=colour;
@@ -2664,7 +2675,8 @@ function renderDayView(){
   item.append(dot,label,value);legend.append(item);
  }
  $('dayViewEmpty').classList.toggle('hidden',fullTotal!==0);
- stack.setAttribute('aria-label',currentTotal+' of '+fullTotal+' appointments booked by '+clock+' on '+dateInput.value+', by selected urgency groups');
+ stack.setAttribute('aria-label',fullTotal+' appointments booked during the full day on '+dateInput.value);
+ partialStack?.setAttribute('aria-label',currentTotal+' of '+fullTotal+' appointments booked by '+clock+' on '+dateInput.value);
 }
 $('dayViewTimeSlider')?.addEventListener('input',renderDayView);
 $('dayViewDate')?.addEventListener('change',renderDayView);
