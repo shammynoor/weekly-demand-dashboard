@@ -87,6 +87,8 @@ async function readSharedSettings(){
 let records=[],weeks=[],types=[],statuses=[],clinicianTypes=[],bookingTimeRecords=[];
 let availabilityRecords=[];
 let waitingTimeRecords=[],waitingTrendRecords=[];
+let waitingTrendDimensionCache=new WeakMap();
+let waitingTrendAvailableMonths=[];
 let waitingAppointmentMonthStart='',waitingAppointmentMonthEnd='',waitingAppointmentMonthBounds='';
 let waitingTrendMonthStart='',waitingTrendMonthEnd='',waitingTrendMonthBounds='';
 const waitingTrendDisabledUrgency=new Set();
@@ -1549,7 +1551,9 @@ async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;
  rebuildPeopleTypeLookup();
  renderPeople();renderSlotInclusion();renderSlotTable();
  waitingTimeRecords=[...waitingAggregate].map(([key,count])=>{const [slot,day,clinician,person,appointmentMonth]=JSON.parse(key);return {slot,day,clinician,person,appointmentMonth,status:'Booked',count}});
- waitingTrendRecords=[...waitingTrendAggregate].map(([key,count])=>{const [slot,clinician,person,appointmentMonth,appointmentDate,leadMinutes]=JSON.parse(key);return {slot,clinician,person,appointmentMonth,appointmentDate,leadMinutes,status:'Booked',count}});
+ waitingTrendRecords=[...waitingTrendAggregate].map(([key,count])=>{const [slot,clinician,person,appointmentMonth,appointmentDate,leadMinutes]=JSON.parse(key);return {slot,clinician,person,appointmentMonth,appointmentDate,leadMinutes,status:'Booked',count}}).sort((a,b)=>a.leadMinutes-b.leadMinutes);
+ waitingTrendDimensionCache=new WeakMap();
+ waitingTrendAvailableMonths=[...new Set(waitingTrendRecords.map(r=>r.appointmentMonth).filter(Boolean))].sort();
  bookingTimeRecords=[...bookingTimeAggregate].map(([key,count])=>{const [bookedDay,minute,slot,clinician,person]=JSON.parse(key);return {bookedDay,minute,slot,clinician,person,count}});
  availabilityRecords=[...availabilityAggregate].map(([key,count])=>{const [date,slot,availability,clinician,person]=JSON.parse(key);return {date,slot,availability,clinician,person,count}});
  records=[...aggregate].map(([key,count])=>{const [bookedDay,slot,clinician,person]=JSON.parse(key);const bookedWeek=mondayOf(bookedDay);return {week:bookedWeek,bookedWeek,bookedDay,slot,clinician,person,status:'Booked',count}});weeks=[...new Set(records.map(r=>r.bookedWeek))].sort();types=[...new Set([...records.map(r=>r.slot),...availabilityRecords.map(r=>r.slot)])].sort();statuses=['Booked'];clinicianTypes=[...new Set([...records.map(r=>r.clinician),...availabilityRecords.map(r=>r.clinician)])].filter(Boolean).sort();
@@ -1929,7 +1933,7 @@ function setupDemandMonthSlider(){
  a=Math.max(low,Math.min(high,a));b=Math.max(a,Math.min(high,b));
  start.value=String(a);end.value=String(b);
  const label=i=>new Date(Date.UTC(Math.floor(i/12),i%12,1)).toLocaleDateString('en-GB',{month:'short',year:'numeric',timeZone:'UTC'});
- $('demandRangeFromLabel').textContent=label(a);$('demandRangeToLabel').textContent=label(b);
+ $('demandRangeFromLabel').textContent='Start of '+label(a);$('demandRangeToLabel').textContent='End of '+label(b);
  const span=Math.max(1,high-low),fill=$('demandRangeFill');
  // The native range thumb travels over the input width MINUS its own diameter.
  // Position the blue fill between the actual thumb centres, not the input edges.
@@ -2248,7 +2252,7 @@ function setupWaitingAppointmentSlider(){
  for(const el of [start,end]){el.min=String(low);el.max=String(high);el.step='1';el.disabled=low===high}
  start.value=String(a);end.value=String(b);
  const label=i=>new Date(Date.UTC(Math.floor(i/12),i%12,1)).toLocaleDateString('en-GB',{month:'short',year:'numeric',timeZone:'UTC'});
- $('waitingRangeFromLabel').textContent=label(a);$('waitingRangeToLabel').textContent=label(b);
+ $('waitingRangeFromLabel').textContent='Start of '+label(a);$('waitingRangeToLabel').textContent='End of '+label(b);
  const trackWidth=fill.parentElement.clientWidth,thumb=20,sliderLeft=start.getBoundingClientRect().left-fill.parentElement.getBoundingClientRect().left;
  const travel=Math.max(0,start.clientWidth-thumb),span=Math.max(1,high-low);
  const left=sliderLeft+thumb/2+(a-low)/span*travel,right=sliderLeft+thumb/2+(b-low)/span*travel;
@@ -2269,7 +2273,7 @@ function setupWaitingAppointmentSlider(){
 function setupWaitingTrendSlider(){
  const start=$('waitingTrendRangeStart'),end=$('waitingTrendRangeEnd'),fill=$('waitingTrendRangeFill');
  if(!start||!end||!fill)return;
- const months=waitingTrendRecords.map(r=>r.appointmentMonth).filter(Boolean).sort();
+ const months=waitingTrendAvailableMonths;
  const first=months[0],last=months.at(-1);
  const toIndex=m=>Number(m.slice(0,4))*12+Number(m.slice(5,7))-1;
  const toMonth=i=>String(Math.floor(i/12)).padStart(4,'0')+'-'+String(i%12+1).padStart(2,'0');
@@ -2285,7 +2289,7 @@ function setupWaitingTrendSlider(){
  for(const el of [start,end]){el.min=String(low);el.max=String(high);el.step='1';el.disabled=low===high}
  start.value=String(a);end.value=String(b);
  const label=i=>new Date(Date.UTC(Math.floor(i/12),i%12,1)).toLocaleDateString('en-GB',{month:'short',year:'numeric',timeZone:'UTC'});
- $('waitingTrendRangeFromLabel').textContent=label(a);$('waitingTrendRangeToLabel').textContent=label(b);
+ $('waitingTrendRangeFromLabel').textContent='Start of '+label(a);$('waitingTrendRangeToLabel').textContent='End of '+label(b);
  const trackWidth=fill.parentElement.clientWidth,thumb=20,sliderLeft=start.getBoundingClientRect().left-fill.parentElement.getBoundingClientRect().left;
  const travel=Math.max(0,start.clientWidth-thumb),span=Math.max(1,high-low);
  const left=sliderLeft+thumb/2+(a-low)/span*travel,right=sliderLeft+thumb/2+(b-low)/span*travel;
@@ -2438,7 +2442,8 @@ function renderWaitingTrendChart(){
   if(r.status!=='Booked'||excludedSlotTypes.has(r.slot)||!r.appointmentDate||!Number.isFinite(r.leadMinutes))continue;
   if(waitingTrendMonthStart&&r.appointmentMonth<waitingTrendMonthStart)continue;
   if(waitingTrendMonthEnd&&r.appointmentMonth>waitingTrendMonthEnd)continue;
-  const d=waitingRowDimensions(r);
+  let d=waitingTrendDimensionCache.get(r);
+  if(!d){d=waitingRowDimensions(r);waitingTrendDimensionCache.set(r,d);}
   if(!isDashboardToggleOption(d.urgency))continue;
   const enabled={urgency:!waitingTrendDisabledUrgency.has(d.urgency)};
   for(const kind of kinds.slice(1))enabled[kind]=!waitingTrendDisabled[kind].has(d[kind]);
@@ -2470,7 +2475,7 @@ function renderWaitingTrendChart(){
  }
  updateCollapsedFilterSummaries();
  const median=values=>{
-  values.sort((a,b)=>a[0]-b[0]);
+  // Trend records are sorted by leadMinutes at load time, so buckets are already ordered.
   const n=values.reduce((sum,p)=>sum+p[1],0);
   if(!n)return null;
   const at=rank=>{let seen=0;for(const [v,count] of values){seen+=count;if(seen>=rank)return v}return values.at(-1)[0]};
@@ -2485,10 +2490,10 @@ function renderWaitingTrendChart(){
   const shown=points.filter(v=>!suppressSmall||v.count>=total*0.0035);
   suppressedCount+=points.length-shown.length;
   if(!shown.length)continue;
-  traces.push({type:'scatter',mode:'lines+markers',name:group,x:shown.map(v=>v.month+'-01'),y:shown.map(v=>median(v.values)),line:{color:urgencyGroupColour(group),width:2.5},marker:{size:5},connectgaps:false,hovertemplate:'%{x|%b %Y}<br>'+group+': %{y:.1f} days<extra></extra>'});
+  traces.push({type:'scatter',mode:'lines+markers',name:group,x:shown.map(v=>v.month+'-01'),y:shown.map(v=>median(v.values)),line:{color:urgencyGroupColour(group),width:2.5,shape:'spline',smoothing:0.65},marker:{size:5},connectgaps:false,hovertemplate:'%{x|%b %Y}<br>'+group+': %{y:.1f} days<extra></extra>'});
  }
  const note=$('waitingTrendNote');if(note)note.textContent='Monthly median of booked-to-slot waiting times (days).'+(suppressSmall?' Months below 0.35% of the selected urgency group total are hidden ('+suppressedCount+' points).':'')+(ignoreRoutineSameDay?' Routine appointments booked less than one day ahead are excluded.':'');
- Plotly.react(chart,traces,{height:560,autosize:true,margin:{l:72,r:25,t:40,b:75},paper_bgcolor:'#fff',plot_bgcolor:'#fff',hovermode:'x unified',hoverlabel:{bgcolor:'#fff',bordercolor:'#dce6ef',font:{color:'#142d43',size:12},align:'left'},xaxis:{type:'date',title:'Appointment month',tickformat:'%b %Y',gridcolor:'#edf1f5'},yaxis:{title:'Median waiting time (days)',rangemode:'tozero',gridcolor:'#edf1f5'},legend:{orientation:'h',y:1.13,x:0}},{responsive:true,displayModeBar:false});
+ Plotly.react(chart,traces,{height:560,autosize:true,margin:{l:72,r:25,t:40,b:75},paper_bgcolor:'#fff',plot_bgcolor:'#fff',hovermode:'x unified',hoverlabel:{bgcolor:'#fff',bordercolor:'#dce6ef',font:{color:'#142d43',size:12},align:'left'},xaxis:{type:'date',title:'Appointment month',tickformat:'%b %Y',gridcolor:'#edf1f5'},yaxis:{title:{text:'Days',standoff:12},rangemode:'tozero',gridcolor:'#edf1f5'},legend:{orientation:'h',y:1.13,x:0}},{responsive:true,displayModeBar:false});
 }
 function showPage(which){
  closeSettingsMenu();closeAvailabilityNavMenu();closeDemandNavMenu();
