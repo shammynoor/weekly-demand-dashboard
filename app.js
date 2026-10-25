@@ -2626,9 +2626,13 @@ function renderDayView(){
   }
  }
  const totals=new Map(names.map(name=>[name,0]));
- for(const r of records){
-  if(r.bookedDay!==dateInput.value||r.status!=='Booked'||excludedSlotTypes.has(r.slot))continue;
-  const urgency=groupUrgencyAssignments[assignments[r.slot]||''];
+ const timeSlider=$('dayViewTimeSlider');
+ const cutoff=timeSlider?Number(timeSlider.value):1440;
+ const timeLabel=$('dayViewTimeLabel');
+ if(timeLabel)timeLabel.textContent=cutoff===1440?'24:00 (end of day)':String(Math.floor(cutoff/60)).padStart(2,'0')+':'+String(cutoff%60).padStart(2,'0');
+ for(const r of bookingTimeRecords){
+  if(r.bookedDay!==dateInput.value||excludedSlotTypes.has(r.slot)||!Number.isFinite(r.minute)||r.minute>cutoff)continue;
+  const urgency=capacityUrgencyCategory(r.slot);
   if(!totals.has(urgency)||dayViewDisabledUrgencies.has(urgency))continue;
   totals.set(urgency,totals.get(urgency)+(Number(r.count)||0));
  }
@@ -2654,6 +2658,7 @@ function renderDayView(){
  $('dayViewEmpty').classList.toggle('hidden',total!==0);
  stack.setAttribute('aria-label',total+' appointments booked on '+dateInput.value+', by selected urgency groups');
 }
+$('dayViewTimeSlider')?.addEventListener('input',renderDayView);
 $('dayViewDate')?.addEventListener('change',renderDayView);
 $('dayViewToday')?.addEventListener('click',()=>{$('dayViewDate').value=dayViewLocalDate();renderDayView();});
 
