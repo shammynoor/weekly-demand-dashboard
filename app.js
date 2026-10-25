@@ -1188,7 +1188,7 @@ function aggregateCSV(csv,aggregated,availabilityAggregate,bookingTimeAggregate,
   const lead=Number(leadRaw.replace(/,/g,''));
   if(waitingAggregate&&leadRaw&&Number.isFinite(lead)&&lead>=0){
    const dayBin=Math.floor(lead/1440);
-   const waitKey=JSON.stringify([slotType,dayBin]);
+   const waitKey=JSON.stringify([slotType,dayBin,clinician,person]);
    waitingAggregate.set(waitKey,(waitingAggregate.get(waitKey)||0)+1);
   }
   const tm=/^(\d{1,2}):(\d{2})/.exec(time);
@@ -1540,7 +1540,7 @@ async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;
  peopleRecords=[...peopleByName.values()].map(({name,types})=>({name,type:[...types].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]))[0][0]})).sort((a,b)=>a.type.localeCompare(b.type)||a.name.localeCompare(b.name));
  rebuildPeopleTypeLookup();
  renderPeople();renderSlotInclusion();renderSlotTable();
- waitingTimeRecords=[...waitingAggregate].map(([key,count])=>{const [slot,day]=JSON.parse(key);return {slot,day,count}});
+ waitingTimeRecords=[...waitingAggregate].map(([key,count])=>{const [slot,day,clinician,person]=JSON.parse(key);return {slot,day,clinician,person,count}});
  bookingTimeRecords=[...bookingTimeAggregate].map(([key,count])=>{const [bookedDay,minute,slot,clinician,person]=JSON.parse(key);return {bookedDay,minute,slot,clinician,person,count}});
  availabilityRecords=[...availabilityAggregate].map(([key,count])=>{const [date,slot,availability,clinician,person]=JSON.parse(key);return {date,slot,availability,clinician,person,count}});
  records=[...aggregate].map(([key,count])=>{const [bookedDay,slot,clinician,person]=JSON.parse(key);const bookedWeek=mondayOf(bookedDay);return {week:bookedWeek,bookedWeek,bookedDay,slot,clinician,person,status:'Booked',count}});weeks=[...new Set(records.map(r=>r.bookedWeek))].sort();types=[...new Set([...records.map(r=>r.slot),...availabilityRecords.map(r=>r.slot)])].sort();statuses=['Booked'];clinicianTypes=[...new Set([...records.map(r=>r.clinician),...availabilityRecords.map(r=>r.clinician)])].filter(Boolean).sort();
@@ -2208,16 +2208,33 @@ $('practiceListValue')?.addEventListener('change',e=>{if(!practiceSelectedMonth)
 $('practiceListClear')?.addEventListener('click',()=>{delete practiceSettings.anchors[practiceSelectedMonth];savePracticeSettings();renderPracticeSettings();});
 $('practiceListReset')?.addEventListener('click',()=>{if(!confirm('Reset all monthly list size adjustments to 10,000?'))return;practiceSettings.anchors={};savePracticeSettings();renderPracticeSettings();});
 
+const waitingFilterDisabled={consult:new Set(),purpose:new Set(),capacity:new Set(),clinician:new Set()};
+function waitingRowDimensions(r){
+ const clinicianType=effectiveClinicianType(r.clinician,r.person);
+ return {
+  urgency:groupUrgencyAssignments[assignments[r.slot]||''],
+  consult:consultCategoryNames.includes(consultAssignments[r.slot])?consultAssignments[r.slot]:(suggestConsultMode(r.slot)||''),
+  purpose:purposeCategoryNames.includes(purposeAssignments[r.slot])?purposeAssignments[r.slot]:'',
+  capacity:capacityCategoryNames.includes(capacityAssignments[r.slot])?capacityAssignments[r.slot]:'',
+  clinician:clinicianGroupAssignments[clinicianType]||''
+ };
+}
+function waitingMatches(r,ignore){
+ if(excludedSlotTypes.has(r.slot))return false;
+ const d=waitingRowDimensions(r);
+ if(!isDashboardToggleOption(d.urgency))return false;
+ if(ignore!=='urgency'&&waitingDisabledUrgency.has(d.urgency))return false;
+ for(const kind of ['consult','purpose','capacity','clinician']){
+  if(ignore!==kind&&waitingFilterDisabled[kind].has(d[kind]))return false;
+ }
+ return true;
+}
 function renderWaitingTimesChart(){
  const chart=$('waitingTimesChart'),root=$('waitingUrgencyToggles');
  if(!chart||!root||$('waitingTimesPage')?.classList.contains('hidden')||!window.Plotly)return;
  const totals=new Map();
- for(const r of waitingTimeRecords){
-  if(excludedSlotTypes.has(r.slot))continue;
-  const group=groupUrgencyAssignments[assignments[r.slot]||''];
-  if(group&&isDashboardToggleOption(group))totals.set(group,(totals.get(group)||0)+r.count);
- }
- const names=groupUrgencyNames.filter(name=>isDashboardToggleOption(name)&&totals.has(name));
+ for(const r of waitingTimeRecords){if(!waitingMatches(r,'urgency'))continue;const g=waitingRowDimensions(r).urgency;totals.set(g,(totals.get(g)||0)+r.count)}
+ const names=groupUrgencyNames.filter(n=>isDashboardToggleOption(n)&&totals.has(n));
  root.replaceChildren();
  for(const name of names){
   const row=document.createElement('label');row.className='filter-row';
@@ -2226,22 +2243,37 @@ function renderWaitingTimesChart(){
   const track=document.createElement('span');track.className='switch-track';track.style.setProperty('--switch-on',urgencyGroupColour(name));sw.append(input,track);
   const title=document.createElement('span');title.textContent=name;row.append(sw,title);root.append(row);
   input.addEventListener('change',()=>{
-   if(!input.checked&&names.filter(n=>!waitingDisabledUrgency.has(n)).length<=1){input.checked=true;return;}
    if(input.checked)waitingDisabledUrgency.delete(name);else waitingDisabledUrgency.add(name);
+   if(!waitingTimeRecords.some(r=>waitingMatches(r))){if(input.checked)waitingDisabledUrgency.add(name);else waitingDisabledUrgency.delete(name);input.checked=!input.checked;return}
    renderWaitingTimesChart();
   });
  }
- const bins=new Map();
- for(const r of waitingTimeRecords){
-  if(excludedSlotTypes.has(r.slot))continue;
-  const group=groupUrgencyAssignments[assignments[r.slot]||''];
-  if(!names.includes(group)||waitingDisabledUrgency.has(group))continue;
-  bins.set(r.day,(bins.get(r.day)||0)+r.count);
+ const dimensions=[['consult','waitingConsultToggles',consultCategoryNames,consultModeColours],['purpose','waitingPurposeToggles',purposeCategoryNames,purposeColours],['capacity','waitingCapacityToggles',capacityCategoryNames,capacityColours],['clinician','waitingClinicianToggles',clinicianGroupNames,clinicianGroupColours]];
+ for(const [kind,id,allNames,colours] of dimensions){
+  const container=$(id);if(!container)continue;
+  const available=new Set(waitingTimeRecords.filter(r=>waitingMatches(r,kind)).map(r=>waitingRowDimensions(r)[kind]).filter(isDashboardToggleOption));
+  const options=allNames.filter(n=>isDashboardToggleOption(n)&&available.has(n));
+  container.replaceChildren();
+  for(const name of options){
+   const row=document.createElement('label');row.className='filter-row';
+   const sw=document.createElement('span');sw.className='switch';
+   const input=document.createElement('input');input.type='checkbox';input.setAttribute('role','switch');input.dataset.filterName=name;input.checked=!waitingFilterDisabled[kind].has(name);
+   const track=document.createElement('span');track.className='switch-track';track.style.setProperty('--switch-on',kind==='clinician'?clinicianGroupColour(name):typeColour(name,colours));sw.append(input,track);
+   const label=document.createElement('span');label.textContent=name;row.append(sw,label);container.append(row);
+   input.addEventListener('change',()=>{
+    if(input.checked)waitingFilterDisabled[kind].delete(name);else waitingFilterDisabled[kind].add(name);
+    if(!waitingTimeRecords.some(r=>waitingMatches(r))){if(input.checked)waitingFilterDisabled[kind].add(name);else waitingFilterDisabled[kind].delete(name);input.checked=!input.checked;return}
+    renderWaitingTimesChart();
+   });
+  }
+  const panel=container.closest('section');if(panel)panel.hidden=!options.length;
  }
- const days=[...bins.keys()].sort((a,b)=>a-b);
- const max=days.at(-1)??0;
+ updateCollapsedFilterSummaries();
+ const bins=new Map();
+ for(const r of waitingTimeRecords){if(!waitingMatches(r))continue;bins.set(r.day,(bins.get(r.day)||0)+r.count)}
+ const days=[...bins.keys()].sort((a,b)=>a-b),max=days.at(-1)??0;
  const x=Array.from({length:max+1},(_,i)=>i),y=x.map(day=>bins.get(day)||0);
- const note=$('waitingTimesNote');if(note)note.textContent=days.length?'Each bar represents one complete 24-hour waiting-time interval (minutes ÷ 1,440).':'No booking-to-appointment waiting-time records for the selected urgency groups.';
+ const note=$('waitingTimesNote');if(note)note.textContent=days.length?'Each bar represents one complete 24-hour waiting-time interval (minutes ÷ 1,440).':'No waiting-time records for the selected filters.';
  Plotly.react(chart,[{type:'bar',x,y,marker:{color:'#7ea9c5'},hovertemplate:'%{x}–%{customdata} days<br>%{y:,} appointments<extra></extra>',customdata:x.map(v=>v+1)}],{
   height:560,autosize:true,margin:{l:75,r:25,t:35,b:75},paper_bgcolor:'#fff',plot_bgcolor:'#fff',bargap:0.04,
   xaxis:{title:'Waiting time (days)',dtick:max<=35?1:undefined,gridcolor:'#edf1f5'},
