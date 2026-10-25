@@ -1994,8 +1994,8 @@ function installDemandCardTooltip(target){
   if(/^\\d{4}-\\d{2}(?:-\\d{2})?$/.test(rawDate)){
    const iso=rawDate.length===7?rawDate+'-01':rawDate;
    const d=new Date(iso+'T12:00:00Z');
-   if(monthlyMode)formatted=d.toLocaleDateString('en-GB',{month:'long',year:'numeric',timeZone:'UTC'});
-   else {const weekStart=mondayOf(iso);formatted='w/b '+new Date(weekStart+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric',timeZone:'UTC'});}
+   if(monthlyMode)formatted=d.toLocaleDateString('en-GB',{month:'short',year:'numeric',timeZone:'UTC'});
+   else {const weekStart=mondayOf(iso);formatted='W/B '+new Date(weekStart+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'});}
   }
   card.replaceChildren();
   const heading=document.createElement('div');heading.className='availability-tooltip-heading';
@@ -2270,6 +2270,27 @@ function waitingMatches(r,ignore){
  }
  return true;
 }
+function installWaitingCardTooltip(target,total){
+ if(!target||typeof target.on!=='function')return;
+ target.querySelector('.availability-tooltip-card')?.remove();
+ const card=document.createElement('div');card.className='availability-tooltip-card';card.hidden=true;target.append(card);
+ if(typeof target.removeAllListeners==='function'){target.removeAllListeners('plotly_hover');target.removeAllListeners('plotly_unhover')}
+ target.on('plotly_hover',data=>{
+  const point=data.points?.find(p=>Number.isFinite(p.y));if(!point){card.hidden=true;return}
+  card.replaceChildren();
+  const heading=document.createElement('div');heading.className='availability-tooltip-heading';heading.textContent=point.x+'–'+(Number(point.x)+1)+' days';card.append(heading);
+  const line=document.createElement('div');line.className='availability-tooltip-line';
+  const dot=document.createElement('span');dot.className='availability-tooltip-dot';dot.style.backgroundColor='#7ea9c5';
+  const value=document.createElement('span');value.textContent=Number(point.y).toLocaleString('en-GB')+' appointments ('+(total?(100*point.y/total).toFixed(1):'0.0')+'%)';line.append(dot,value);card.append(line);
+  card.hidden=false;
+  const rect=target.getBoundingClientRect(),parent=card.offsetParent||target,parentRect=parent.getBoundingClientRect(),event=data.event;
+  const clientX=event?.clientX??rect.left+rect.width/2,clientY=event?.clientY??rect.top+rect.height/2;
+  const left=Math.max(parentRect.left+8,Math.min(parentRect.right-card.offsetWidth-8,clientX+18));
+  const top=clientY+card.offsetHeight+18>parentRect.bottom?clientY-card.offsetHeight-16:clientY+14;
+  card.style.left=left-parentRect.left+'px';card.style.top=Math.max(parentRect.top+8,top)-parentRect.top+'px';
+ });
+ target.on('plotly_unhover',()=>{card.hidden=true});
+}
 function renderWaitingTimesChart(){
  const chart=$('waitingTimesChart'),root=$('waitingUrgencyToggles');
  if(!chart||!root||$('waitingTimesPage')?.classList.contains('hidden')||!window.Plotly)return;
@@ -2353,7 +2374,7 @@ function renderWaitingTimesChart(){
   height:560,autosize:true,margin:{l:75,r:25,t:55,b:75},paper_bgcolor:'#fff',plot_bgcolor:'#fff',bargap:0.04,
   xaxis:{title:'Waiting time (days)',dtick:max<=35?1:undefined,gridcolor:'#edf1f5',rangemode:'tozero'},
   yaxis:{title:'Number of appointments',rangemode:'tozero',gridcolor:'#edf1f5'},showlegend:false
- },{responsive:true,displayModeBar:false});
+ },{responsive:true,displayModeBar:false}).then(()=>installWaitingCardTooltip(chart,total));
 }
 $('waitingSuppressSmallBins')?.addEventListener('change',renderWaitingTimesChart);
 function showPage(which){
