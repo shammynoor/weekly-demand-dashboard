@@ -2006,8 +2006,8 @@ function installDemandCardTooltip(target){
   if(/^\\d{4}-\\d{2}(?:-\\d{2})?$/.test(rawDate)){
    const iso=rawDate.length===7?rawDate+'-01':rawDate;
    const d=new Date(iso+'T12:00:00Z');
-   if(monthlyMode)formatted=d.toLocaleDateString('en-GB',{month:'short',timeZone:'UTC'})+'-'+d.getUTCFullYear();
-   else {const weekStart=mondayOf(iso);formatted='W/B '+new Date(weekStart+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'});}
+   if(monthlyMode)formatted=d.toLocaleDateString('en-GB',{month:'long',year:'numeric',timeZone:'UTC'});
+   else {const weekStart=mondayOf(iso);formatted='Week beginning '+new Date(weekStart+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric',timeZone:'UTC'});}
   }
   card.replaceChildren();
   const heading=document.createElement('div');heading.className='availability-tooltip-heading';
@@ -2087,14 +2087,14 @@ function drawCombinedDemandChart(){
     x:plotPoints.map(x),y:plotPoints.map(p=>p.count),customdata:plotPoints.map(p=>p.date),
     type:'scatter',mode:'lines',connectgaps:false,opacity,
     line:{color:additiveLines?'#2678ad':urgencyGroupColour(category),width,shape:'spline',smoothing:0.5},
-    hoverinfo:'text',hovertext:' '});
+    hoverinfo:'text',text:plotPoints.map(p=>p.date)});
    if(partial)traces.push({name:category+' '+year+' (incomplete)',showlegend:false,
     x:complete.length?[x(complete[complete.length-1]),x(last)]:[x(last)],
     customdata:complete.length?[complete[complete.length-1].date,last.date]:[last.date],
     y:complete.length?[complete[complete.length-1].count,last.count]:[last.count],
     type:'scatter',mode:'lines+markers',opacity,
     line:{color:additiveLines?'#2678ad':urgencyGroupColour(category),width,dash:'dot'},marker:{size:7,symbol:'circle-open'},
-    hoverinfo:'text',hovertext:' '});
+    hoverinfo:'text',text:plotPoints.map(p=>p.date)});
   }
  }
  // One horizontal mean for each visible urgency group, calculated over the
@@ -2428,6 +2428,26 @@ function renderWaitingTimesChart(){
 $('waitingSuppressSmallBins')?.addEventListener('change',renderWaitingTimesChart);
 $('waitingTrendSuppressSmall')?.addEventListener('change',renderWaitingTrendChart);
 $('waitingTrendIgnoreRoutineSameDay')?.addEventListener('change',renderWaitingTrendChart);
+function installTrendCardTooltip(target,useHours){
+ if(!target||typeof target.on!=='function')return;
+ target.querySelector('.availability-tooltip-card')?.remove();
+ const card=document.createElement('div');card.className='availability-tooltip-card';card.hidden=true;target.append(card);
+ if(typeof target.removeAllListeners==='function'){target.removeAllListeners('plotly_hover');target.removeAllListeners('plotly_unhover')}
+ target.on('plotly_hover',data=>{
+  const point=data.points?.find(p=>Number.isFinite(p.y));if(!point){card.hidden=true;return}
+  const month=new Date(String(point.x).slice(0,10)+'T12:00:00Z');
+  const heading=document.createElement('div');heading.className='availability-tooltip-heading';heading.textContent=month.toLocaleDateString('en-GB',{month:'long',year:'numeric',timeZone:'UTC'});
+  const line=document.createElement('div');line.className='availability-tooltip-line';
+  const dot=document.createElement('span');dot.className='availability-tooltip-dot';dot.style.backgroundColor=point.data.line?.color||'#638fac';
+  const value=document.createElement('span');value.textContent=point.data.name+': '+Number(point.y).toFixed(1)+' '+(useHours?'hours':'days');
+  line.append(dot,value);card.replaceChildren(heading,line);card.hidden=false;
+  const parent=card.offsetParent||target,rect=parent.getBoundingClientRect(),event=data.event;
+  const x=event?.clientX??rect.left+rect.width/2,y=event?.clientY??rect.top+rect.height/2;
+  card.style.left=Math.max(8,Math.min(rect.width-card.offsetWidth-8,x-rect.left+18))+'px';
+  card.style.top=Math.max(8,(y+card.offsetHeight+18>rect.bottom?y-card.offsetHeight-16:y+14)-rect.top)+'px';
+ });
+ target.on('plotly_unhover',()=>{card.hidden=true});
+}
 function renderWaitingTrendChart(){
  const chart=$('waitingTrendChart'),root=$('waitingTrendUrgencyToggles');
  if(!chart||!root||$('waitingOverTimePage')?.classList.contains('hidden')||!window.Plotly)return;
@@ -2482,6 +2502,7 @@ function renderWaitingTrendChart(){
   return (at(Math.floor((n+1)/2))+at(Math.floor((n+2)/2)))/2;
  };
  const traces=[];
+ let highestMedian=0;
  let suppressedCount=0;
  for(const group of groupUrgencyNames){
   if(waitingTrendDisabledUrgency.has(group))continue;
@@ -2490,10 +2511,14 @@ function renderWaitingTrendChart(){
   const shown=points.filter(v=>!suppressSmall||v.count>=total*0.0035);
   suppressedCount+=points.length-shown.length;
   if(!shown.length)continue;
-  traces.push({type:'scatter',mode:'lines+markers',name:group,x:shown.map(v=>v.month+'-01'),y:shown.map(v=>median(v.values)),line:{color:urgencyGroupColour(group),width:2.5,shape:'spline',smoothing:0.65},marker:{size:5},connectgaps:false,hovertemplate:'%{x|%b %Y}<br>'+group+': %{y:.1f} days<extra></extra>'});
+  const medians=shown.map(v=>median(v.values));
+  highestMedian=Math.max(highestMedian,...medians);
+  traces.push({type:'scatter',mode:'lines+markers',name:group,x:shown.map(v=>v.month+'-01'),y:medians,line:{color:urgencyGroupColour(group),width:2.5,shape:'spline',smoothing:0.65},marker:{size:5},connectgaps:false,hovertemplate:'%{x|%b %Y}<br>'+group+': %{y:.1f} days<extra></extra>'});
  }
+ const useHours=highestMedian>0&&highestMedian*1.12<2;
+ if(useHours)for(const trace of traces){trace.y=trace.y.map(v=>v*24);trace.hovertemplate=trace.hovertemplate.replace(' days',' hours');}
  const note=$('waitingTrendNote');if(note)note.textContent='Monthly median of booked-to-slot waiting times (days).'+(suppressSmall?' Months below 0.35% of the selected urgency group total are hidden ('+suppressedCount+' points).':'')+(ignoreRoutineSameDay?' Routine appointments booked less than one day ahead are excluded.':'');
- Plotly.react(chart,traces,{height:560,autosize:true,margin:{l:72,r:25,t:40,b:75},paper_bgcolor:'#fff',plot_bgcolor:'#fff',hovermode:'x unified',hoverlabel:{bgcolor:'#fff',bordercolor:'#dce6ef',font:{color:'#142d43',size:12},align:'left'},xaxis:{type:'date',title:'Appointment month',tickformat:'%b %Y',gridcolor:'#edf1f5'},yaxis:{title:{text:'Days',standoff:12},rangemode:'tozero',gridcolor:'#edf1f5'},legend:{orientation:'h',y:1.13,x:0}},{responsive:true,displayModeBar:false});
+ Plotly.react(chart,traces,{height:560,autosize:true,margin:{l:72,r:25,t:40,b:75},paper_bgcolor:'#fff',plot_bgcolor:'#fff',hovermode:'x unified',hoverlabel:{bgcolor:'#fff',bordercolor:'#dce6ef',font:{color:'#142d43',size:12},align:'left'},xaxis:{type:'date',title:'Appointment month',tickformat:'%b %Y',gridcolor:'#edf1f5'},yaxis:{title:{text:useHours?'Hours':'Days',standoff:12},rangemode:'tozero',gridcolor:'#edf1f5'},legend:{orientation:'h',y:1.13,x:0}},{responsive:true,displayModeBar:false}).then(()=>installTrendCardTooltip(chart,useHours));
 }
 function showPage(which){
  closeSettingsMenu();closeAvailabilityNavMenu();closeDemandNavMenu();
