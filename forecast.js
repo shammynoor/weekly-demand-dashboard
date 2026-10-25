@@ -87,8 +87,10 @@ function renderHistoricalWeekday(){
   if(!parts.has(k))parts.set(k,new Map());
   const detail=parts.get(k);detail.set(urgency,(detail.get(urgency)||0)+(Number(r.count)||0));
  }
- const days=[];for(let d=start;d<=end;d=shift(d,1))if(new Date(d+'T12:00:00Z').getUTCDay()===weekday)days.push(d);
- if(!records.length||!groups.length){summary.textContent='No historical booking data or matching urgency categories are available.';return}
+ const excludeHolidayWeeks=$('dailyForecastExcludeBankHolidayWeeks')?.checked!==false;
+ const holidayWeeks=new Set();if(excludeHolidayWeeks){for(let year=Number(start.slice(0,4))-1;year<=Number(end.slice(0,4))+1;year++)for(const holiday of englandWalesBankHolidays(year))holidayWeeks.add(monday(holiday))}
+ const days=[];let skippedHolidayDays=0;for(let d=start;d<=end;d=shift(d,1))if(new Date(d+'T12:00:00Z').getUTCDay()===weekday){if(excludeHolidayWeeks&&holidayWeeks.has(monday(d))){skippedHolidayDays++;continue}days.push(d)}
+ if(!records.length||!groups.length||!days.length){summary.textContent=!days.length?'No matching weekdays remain after excluding bank holiday weeks.':'No historical booking data or matching urgency categories are available.';return}
  const max=Math.max(1,...days.map(d=>totals.get(d)||0));
  for(const d of days){
   const value=totals.get(d)||0,col=document.createElement('div');col.className='forecast-history-column';
@@ -99,8 +101,8 @@ function renderHistoricalWeekday(){
   col.append(bar,date);root.append(col);
  }
  const values=days.map(d=>totals.get(d)||0),average=values.reduce((a,b)=>a+b,0)/(values.length||1);
- summary.textContent=days.length+' '+select.options[select.selectedIndex].text+'s · '+start+' to '+end+' · Average '+Math.round(average)+' bookings · Minimum '+Math.min(...values)+' · Maximum '+Math.max(...values)+'. Each bar shows bookings made on that date across Same Day, Within 3 Days and Urgent Extra; zero-booking days are included.';
+ summary.textContent=days.length+' '+select.options[select.selectedIndex].text+'s · '+start+' to '+end+' · Average '+Math.round(average)+' bookings · Minimum '+Math.min(...values)+' · Maximum '+Math.max(...values)+'. Each bar shows bookings made on that date across Same Day, Within 3 Days and Urgent Extra; zero-booking days are included.'+(excludeHolidayWeeks?' Excluded '+skippedHolidayDays+' dates in bank holiday weeks.':' Bank holiday weeks included.');
 }
 function open(mode){for(const p of ['dailyForecastPage','weeklyForecastPage'])$(p)?.classList.toggle('hidden',p!==(mode==='daily'?'dailyForecastPage':'weeklyForecastPage'));for(const p of ['homePage','chartPage','waitingTimesPage','waitingOverTimePage','categoryPage','availabilityPage','routineAvailabilityPage','plannedAvailabilityPage','dayViewPage','bookingTimesPage','signpostingPage','peoplePage','practiceSettingsPage'])$(p)?.classList.add('hidden');document.querySelectorAll('.dashboard-nav button.active').forEach(b=>b.classList.remove('active'));$('nav'+(mode==='daily'?'Daily':'Weekly')+'Forecast')?.classList.add('active');render(mode);if(mode==='daily')renderHistoricalWeekday()}
-document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('.dashboard-nav button').forEach(b=>{if(b.id!=='navDailyForecast'&&b.id!=='navWeeklyForecast'&&b.id!=='navForecastMenu')b.addEventListener('click',()=>{$('dailyForecastPage')?.classList.add('hidden');$('weeklyForecastPage')?.classList.add('hidden')})});$('dailyForecastWeekday')?.addEventListener('change',renderHistoricalWeekday);for(const mode of ['daily','weekly']){$('nav'+(mode==='daily'?'Daily':'Weekly')+'Forecast')?.addEventListener('click',()=>open(mode));$(mode+'ForecastHistory')?.addEventListener('change',()=>render(mode))}});
+document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('.dashboard-nav button').forEach(b=>{if(b.id!=='navDailyForecast'&&b.id!=='navWeeklyForecast'&&b.id!=='navForecastMenu')b.addEventListener('click',()=>{$('dailyForecastPage')?.classList.add('hidden');$('weeklyForecastPage')?.classList.add('hidden')})});$('dailyForecastWeekday')?.addEventListener('change',renderHistoricalWeekday);$('dailyForecastExcludeBankHolidayWeeks')?.addEventListener('change',renderHistoricalWeekday);for(const mode of ['daily','weekly']){$('nav'+(mode==='daily'?'Daily':'Weekly')+'Forecast')?.addEventListener('click',()=>open(mode));$(mode+'ForecastHistory')?.addEventListener('change',()=>render(mode))}});
 })();
