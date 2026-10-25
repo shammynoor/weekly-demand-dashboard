@@ -1745,7 +1745,7 @@ function historicBookingFilterCounts(){
   if(!monthlyMode&&excludeBankHolidays&&bankHolidayWeeks.has(r.bookedWeek))continue;
   const month=period.slice(0,7);
   if((demandMonthStart&&month<demandMonthStart)||(demandMonthEnd&&month>demandMonthEnd))continue;
-  const urgency=groupUrgencyAssignments[assignments[r.slot]||''];
+  const urgency=capacityUrgencyCategory(r.slot);
   if(!urgency||disabledDemandUrgencyGroups.has(urgency))continue;
   const group=clinicianGroupAssignments[effectiveClinicianType(r.clinician,r.person)];
   const values={purpose:purposeAssignments[r.slot],capacity:capacityAssignments[r.slot],consult:consultCategoryNames.includes(consultAssignments[r.slot])?consultAssignments[r.slot]:(suggestConsultMode(r.slot)||''),clinician:group};
@@ -2169,6 +2169,7 @@ function refreshPriorityEditors(){
       [ordered[from],ordered[to]]=[ordered[to],ordered[from]];
       togglePriority[kind]=ordered;
       saveCategories();refreshPriorityEditors();refreshPriorityToggles();
+      renderUrgentCategoryToggles();renderRoutineCategoryToggles();renderPlannedCategoryToggles();renderDayView();
      });
      return button;
     };
@@ -2187,8 +2188,8 @@ function refreshPriorityEditors(){
 const priorityToggleIds={
  urgency:['demandUrgencyToggles','dayViewUrgencyToggles','routineCategoryToggles','plannedCategoryToggles','bookingTimesUrgencyFilters','urgentCategoryToggles'],
  mode:['consultChartFilters','routineConsultFilters','plannedConsultFilters','bookingTimesConsultFilters'],
- purpose:['purposeChartFilters','routinePurposeFilters','plannedPurposeFilters','bookingTimesPurposeFilters'],
- capacity:['capacityChartFilters','routineCapacityFilters','plannedCapacityFilters','bookingTimesCapacityFilters']
+ purpose:['demandPurposeToggles','urgentPurposeToggles','routinePurposeFilters','plannedPurposeFilters','bookingTimesPurposeFilters'],
+ capacity:['demandCapacityToggles','urgentCapacityToggles','routineCapacityFilters','plannedCapacityFilters','bookingTimesCapacityFilters']
 };
 function refreshPriorityToggles(){
  for(const [kind,ids] of Object.entries(priorityToggleIds))for(const id of ids){
@@ -2609,17 +2610,18 @@ function renderDayView(){
  const dateInput=$('dayViewDate'),root=$('dayViewUrgencyToggles'),stack=$('dayViewStack'),legend=$('dayViewLegend');
  if(!dateInput||!root||!stack||!legend)return;
  if(!dateInput.value)dateInput.value=dayViewLocalDate();
- const names=groupUrgencyNames.filter(isDashboardToggleOption);
+ const names=prioritySort('urgency',groupUrgencyNames.filter(isDashboardToggleOption));
  if(!dayViewUrgencyInitialised&&names.length){dayViewUrgencyInitialised=true;dayViewDisabledUrgencies.clear();}
  const signature=names.join('\u0001');
  if(root.dataset.groups!==signature){
   root.dataset.groups=signature;root.replaceChildren();
   for(const name of names){
-   const label=document.createElement('label');label.className='switch';
-   const input=document.createElement('input');input.type='checkbox';input.checked=!dayViewDisabledUrgencies.has(name);
-   const slider=document.createElement('span');slider.className='slider';slider.style.setProperty('--switch-on',urgencyGroupColour(name));
+   const label=document.createElement('label');label.className='filter-row';
+   const sw=document.createElement('span');sw.className='switch';
+   const input=document.createElement('input');input.type='checkbox';input.setAttribute('role','switch');input.dataset.filterName=name;input.checked=!dayViewDisabledUrgencies.has(name);
+   const slider=document.createElement('span');slider.className='switch-track';slider.style.setProperty('--switch-on',urgencyGroupColour(name));
    const caption=document.createElement('span');caption.textContent=name;
-   label.append(input,slider,caption);root.append(label);
+   sw.append(input,slider);label.append(sw,caption);root.append(label);
    input.addEventListener('change',()=>{if(input.checked)dayViewDisabledUrgencies.delete(name);else dayViewDisabledUrgencies.add(name);renderDayView();});
   }
  }
@@ -3030,7 +3032,7 @@ function capacityUrgencyCategory(slot){
 function renderUrgentCategoryToggles(){
  const root=$('urgentCategoryToggles');if(!root)return;
  applyUrgentUrgencyDefaults();
- const names=urgentCategoryNames();
+ const names=prioritySort('urgency',urgentCategoryNames());
  const current=[...root.querySelectorAll('input[data-filter-name]')].map(x=>x.dataset.filterName);
  if(current.length===names.length&&current.every((x,i)=>x===names[i])){root.querySelectorAll('input[data-filter-name]').forEach(input=>input.nextElementSibling?.style.setProperty('--switch-on',urgentColour(input.dataset.filterName)));return;}
  root.replaceChildren();
@@ -3197,7 +3199,7 @@ function routineDetailedTypes(){
 function renderRoutineCategoryToggles(){
  const root=$('routineCategoryToggles');if(!root)return;
  applyRoutineUrgencyDefaults();
- const names=routineDetailedTypes().filter(isDashboardToggleOption);
+ const names=prioritySort('urgency',routineDetailedTypes().filter(isDashboardToggleOption));
  const old=[...root.querySelectorAll('input[data-filter-name]')].map(el=>el.dataset.filterName);
  if(old.length===names.length&&names.every((name,i)=>name===old[i])){
   root.querySelectorAll('input[data-filter-name]').forEach(input=>input.nextElementSibling?.style.setProperty('--switch-on',urgencyGroupColour(input.dataset.filterName)));
@@ -3376,7 +3378,7 @@ function plannedDetailedTypes(){
 function renderPlannedCategoryToggles(){
  const root=$('plannedCategoryToggles');if(!root)return;
  applyPlannedUrgencyDefaults();
- const names=plannedDetailedTypes().filter(isDashboardToggleOption);
+ const names=prioritySort('urgency',plannedDetailedTypes().filter(isDashboardToggleOption));
  const old=[...root.querySelectorAll('input[data-filter-name]')].map(el=>el.dataset.filterName);
  if(old.length===names.length&&names.every((name,i)=>name===old[i])){
   root.querySelectorAll('input[data-filter-name]').forEach(input=>input.nextElementSibling?.style.setProperty('--switch-on',urgencyGroupColour(input.dataset.filterName)));
