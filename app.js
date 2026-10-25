@@ -874,7 +874,8 @@ async function loadCloudCategories(){
    if(data.urgencyTypeColours&&typeof data.urgencyTypeColours==='object')urgencyTypeColours=Object.fromEntries(Object.entries(data.urgencyTypeColours).filter(([k,v])=>/^#[0-9a-f]{6}$/i.test(v)));
    if(data.clinicianGroupColours&&typeof data.clinicianGroupColours==='object'&&!Array.isArray(data.clinicianGroupColours))clinicianGroupColours=Object.fromEntries(Object.entries(data.clinicianGroupColours).filter(([k,v])=>typeof k==='string'&&/^#[0-9a-f]{6}$/i.test(v)));
    cloudFolder=data.folder&&typeof data.folder.id==='string'?data.folder:null;
-   excludedSlotTypes=new Set(Array.isArray(data.excludedSlotTypes)?data.excludedSlotTypes.filter(x=>typeof x==='string'):[]);
+   if(data.togglePriority&&typeof data.togglePriority==='object')for(const k of Object.keys(togglePriority))togglePriority[k]=Array.isArray(data.togglePriority[k])?data.togglePriority[k].filter(x=>typeof x==='string'):[];
+    excludedSlotTypes=new Set(Array.isArray(data.excludedSlotTypes)?data.excludedSlotTypes.filter(x=>typeof x==='string'):[]);
    const names=validCategoryNames(data.categories);
    const remoteAssignments=validAssignments(data.assignments,names);
    clinicianCategoryNames=Array.isArray(data.clinicianCategories)?validCategoryNames(data.clinicianCategories):clinicianCategoryNames;
@@ -956,7 +957,8 @@ async function saveCloudCategories(options={}){
  const saveSerial=cloudChangeSerial;
  if(manual)cloudNotice('Saving all categories and slot assignments to OneDrive…');
  const snapshot=JSON.stringify({
-  version:7,
+  version:8,
+   togglePriority:{...togglePriority},
   practiceSettings:{name:practiceSettings.name,anchors:{...practiceSettings.anchors}},
   peopleLocum:{...peopleLocum},
   peopleClinicianType:{...peopleClinicianType},
@@ -2137,7 +2139,57 @@ let clinicianGroupNames=[],clinicianGroupAssignments={};
 const STORAGE_KEY='appointment-dashboard-categories-v1';let categoryNames=['Urgent','Routine','Follow up'],assignments={};try{const saved=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');categoryNames=Array.isArray(saved.categories)&&saved.categories.length?saved.categories.filter(x=>typeof x==='string'&&x.trim()&&x!=='Uncategorised'):['Urgent','Routine','Follow up'];assignments=saved.assignments&&typeof saved.assignments==='object'?saved.assignments:{};}catch(e){}let clinicianCategoryNames=[],clinicianAssignments={};try{const local=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');if(Array.isArray(local.clinicianCategories))clinicianCategoryNames=validCategoryNames(local.clinicianCategories);if(local.clinicianAssignments)clinicianAssignments=validAssignments(local.clinicianAssignments,clinicianCategoryNames)}catch(e){}let capacityCategoryNames=['Core Capacity','Additional Capacity'],capacityColours={},capacityAssignments={};try{const local=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');if(Array.isArray(local.capacityCategories))capacityCategoryNames=validCategoryNames(local.capacityCategories);capacityAssignments=validAssignments(local.capacityAssignments||{},capacityCategoryNames);if(local.capacityColours&&typeof local.capacityColours==='object')capacityColours=Object.fromEntries(Object.entries(local.capacityColours).filter(([k,v])=>/^#[0-9a-f]{6}$/i.test(v)));}catch(e){}let purposeCategoryNames=[],purposeColours={},purposeAssignments={};try{const local=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');purposeCategoryNames=validCategoryNames(local.purposeCategories||[]);purposeAssignments=validAssignments(local.purposeAssignments||{},purposeCategoryNames);if(local.purposeColours&&typeof local.purposeColours==='object')purposeColours=Object.fromEntries(Object.entries(local.purposeColours).filter(([k,v])=>/^#[0-9a-f]{6}$/i.test(v)));}catch(e){}let consultModeColours={};let consultCategoryNames=[],consultAssignments={};try{const local=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');if(Array.isArray(local.consultCategories))consultCategoryNames=validCategoryNames(local.consultCategories);if(local.consultAssignments)consultAssignments=validAssignments(local.consultAssignments,consultCategoryNames);if(local.consultModeColours&&typeof local.consultModeColours==='object')consultModeColours=Object.fromEntries(Object.entries(local.consultModeColours).filter(([k,v])=>/^#[0-9a-f]{6}$/i.test(v)))}catch(e){}try{const local=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');if(Array.isArray(local.groupUrgencyCategories))groupUrgencyNames=validCategoryNames(local.groupUrgencyCategories);if(local.groupUrgencyAssignments)groupUrgencyAssignments=validAssignments(local.groupUrgencyAssignments,groupUrgencyNames);if(local.urgencyGroupColours&&typeof local.urgencyGroupColours==='object')urgencyGroupColours=local.urgencyGroupColours;if(local.urgencyTypeColours&&typeof local.urgencyTypeColours==='object')urgencyTypeColours=local.urgencyTypeColours}catch(e){}
 try{const local=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');if(Array.isArray(local.clinicianGroupCategories))clinicianGroupNames=validCategoryNames(local.clinicianGroupCategories);if(local.clinicianGroupAssignments)clinicianGroupAssignments=validAssignments(local.clinicianGroupAssignments,clinicianGroupNames)}catch(e){}
 try{const local=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');if(local.peopleLocum&&typeof local.peopleLocum==='object')peopleLocum=local.peopleLocum;if(local.peopleClinicianType&&typeof local.peopleClinicianType==='object')peopleClinicianType=local.peopleClinicianType;if(local.clinicianTypeColours&&typeof local.clinicianTypeColours==='object')clinicianTypeColours=local.clinicianTypeColours;if(local.urgencyTypeColours&&typeof local.urgencyTypeColours==='object')urgencyTypeColours=local.urgencyTypeColours;if(local.clinicianGroupColours&&typeof local.clinicianGroupColours==='object')clinicianGroupColours=local.clinicianGroupColours}catch(e){}
-function ensureFollowUpCategory(){if(!categoryNames.some(c=>c.toLowerCase().replace(/[\s-]+/g,'')==='followup'))categoryNames.push('Follow up')}ensureFollowUpCategory();function guessCategory(t){return /RED|YELLOW|AMBER|URGENT|SAME DAY|ACUTE/i.test(t)?'Urgent':/GREEN|FOLLOW UP|ROUTINE/i.test(t)?'Routine':null}function saveCategories(sync=true){lastConsultFilterNames=[];try{localStorage.setItem(STORAGE_KEY,JSON.stringify({categories:categoryNames,assignments,clinicianCategories:clinicianCategoryNames,clinicianAssignments,consultCategories:consultCategoryNames,consultAssignments,groupUrgencyCategories:groupUrgencyNames,groupUrgencyAssignments,urgencyGroupColours,clinicianGroupCategories:clinicianGroupNames,clinicianGroupAssignments,peopleLocum,peopleClinicianType,clinicianGroupColours,clinicianTypeColours,urgencyTypeColours,purposeCategories:purposeCategoryNames,purposeColours,purposeAssignments,capacityCategories:capacityCategoryNames,capacityColours,capacityAssignments,consultModeColours,excludedSlotTypes:[...excludedSlotTypes]}));}catch(e){alert('Could not save settings in this browser. Please try again.')}if(sync)markCategoryDirty()}function allCategories(){return [...categoryNames,'Uncategorised']}function rebuildCategoryFilter(){const old=new Set([...slots.selectedOptions].map(o=>o.value));slots.replaceChildren();for(const c of allCategories()){const o=document.createElement('option');o.value=c;o.textContent=c;o.selected=old.has(c);slots.append(o)}}function renderEditor(){renderDropEditor('urgency');updateAvailabilityUrgencyFilter()}
+
+const togglePriority={urgency:[],mode:[],purpose:[],capacity:[]};
+const prioritySources={urgency:()=>groupUrgencyNames,mode:()=>consultCategoryNames,purpose:()=>purposeCategoryNames,capacity:()=>capacityCategoryNames};
+function prioritySort(kind,names){const order=togglePriority[kind]||[];return [...names].sort((a,b)=>(order.indexOf(a)<0?9999:order.indexOf(a))-(order.indexOf(b)<0?9999:order.indexOf(b)))}
+const priorityEditors={urgency:'slotGroupBoxes',mode:'slotConsultModeCards',purpose:'slotPurposeCategoryList',capacity:'slotCapacityCategoryList'};
+function refreshPriorityEditors(){
+ for(const [kind,id] of Object.entries(priorityEditors)){
+  const root=document.getElementById(id);if(!root)continue;
+  const rows=[...root.children].filter(r=>r.classList.contains('slot-mode-item'));
+  const names=prioritySort(kind,prioritySources[kind]());
+  const rowName=r=>[...r.children].find(c=>c.tagName==='SPAN'&&!c.classList.contains('priority-grip')&&!c.classList.contains('clinician-colour-dot'))?.textContent?.trim();
+  for(const name of names){
+   const row=rows.find(r=>rowName(r)===name);if(!row)continue;
+   row.dataset.priorityName=name;row.draggable=isOwner;
+   if(!row.querySelector('.priority-grip')){const grip=document.createElement('span');grip.className='priority-grip';grip.textContent='⠿';grip.title='Drag to change toggle order';row.prepend(grip)}
+   root.append(row);
+   if(row.dataset.priorityBound)continue;row.dataset.priorityBound='1';
+   row.addEventListener('dragstart',e=>{if(!isOwner)return;e.dataTransfer.setData('text/plain',kind+'|'+row.dataset.priorityName);e.dataTransfer.effectAllowed='move'});
+   row.addEventListener('dragover',e=>{if(isOwner)e.preventDefault()});
+   row.addEventListener('drop',e=>{e.preventDefault();if(!isOwner)return;
+    const [sourceKind,...parts]=e.dataTransfer.getData('text/plain').split('|');if(sourceKind!==kind)return;
+    const ordered=prioritySort(kind,prioritySources[kind]());const from=ordered.indexOf(parts.join('|')),to=ordered.indexOf(row.dataset.priorityName);
+    if(from<0||to<0||from===to)return;ordered.splice(to,0,ordered.splice(from,1)[0]);
+    togglePriority[kind]=ordered;saveCategories();refreshPriorityEditors();refreshPriorityToggles();
+   });
+  }
+ }
+}
+const priorityToggleIds={
+ urgency:['demandUrgencyToggles','dayViewUrgencyToggles','routineCategoryToggles','plannedCategoryToggles','bookingTimesUrgencyFilters','urgentCategoryToggles'],
+ mode:['consultChartFilters','routineConsultFilters','plannedConsultFilters','bookingTimesConsultFilters'],
+ purpose:['purposeChartFilters','routinePurposeFilters','plannedPurposeFilters','bookingTimesPurposeFilters'],
+ capacity:['capacityChartFilters','routineCapacityFilters','plannedCapacityFilters','bookingTimesCapacityFilters']
+};
+function refreshPriorityToggles(){
+ for(const [kind,ids] of Object.entries(priorityToggleIds))for(const id of ids){
+  const root=document.getElementById(id);if(!root)continue;
+  const rows=[...root.children];
+  const name=r=>r.querySelector('input')?.dataset.urgencyGroup||r.querySelector('input')?.dataset.filterName||r.querySelector('span:last-child')?.textContent?.trim()||'';
+  for(const n of prioritySort(kind,rows.map(name))){const row=rows.find(r=>name(r)===n);if(row&&row!==root.lastElementChild)root.append(row)}
+ }
+}
+function setupTogglePriority(){
+ for(const id of Object.values(priorityEditors)){const root=document.getElementById(id);if(root)new MutationObserver(()=>{if(root.querySelector('.slot-mode-item:not([data-priority-bound])'))refreshPriorityEditors()}).observe(root,{childList:true})}
+ for(const ids of Object.values(priorityToggleIds))for(const id of ids){const root=document.getElementById(id);if(!root)continue;
+  let busy=false;new MutationObserver(()=>{if(busy)return;busy=true;queueMicrotask(()=>{busy=false;refreshPriorityToggles()})}).observe(root,{childList:true});
+ }
+ refreshPriorityEditors();refreshPriorityToggles();
+}
+
+function ensureFollowUpCategory(){if(!categoryNames.some(c=>c.toLowerCase().replace(/[\s-]+/g,'')==='followup'))categoryNames.push('Follow up')}ensureFollowUpCategory();function guessCategory(t){return /RED|YELLOW|AMBER|URGENT|SAME DAY|ACUTE/i.test(t)?'Urgent':/GREEN|FOLLOW UP|ROUTINE/i.test(t)?'Routine':null}function saveCategories(sync=true){lastConsultFilterNames=[];try{localStorage.setItem(STORAGE_KEY,JSON.stringify({categories:categoryNames,assignments,clinicianCategories:clinicianCategoryNames,clinicianAssignments,consultCategories:consultCategoryNames,consultAssignments,groupUrgencyCategories:groupUrgencyNames,groupUrgencyAssignments,urgencyGroupColours,clinicianGroupCategories:clinicianGroupNames,clinicianGroupAssignments,peopleLocum,peopleClinicianType,clinicianGroupColours,clinicianTypeColours,urgencyTypeColours,purposeCategories:purposeCategoryNames,purposeColours,purposeAssignments,capacityCategories:capacityCategoryNames,capacityColours,capacityAssignments,consultModeColours,togglePriority:{...togglePriority},excludedSlotTypes:[...excludedSlotTypes]}));}catch(e){alert('Could not save settings in this browser. Please try again.')}if(sync)markCategoryDirty()}function allCategories(){return [...categoryNames,'Uncategorised']}function rebuildCategoryFilter(){const old=new Set([...slots.selectedOptions].map(o=>o.value));slots.replaceChildren();for(const c of allCategories()){const o=document.createElement('option');o.value=c;o.textContent=c;o.selected=old.has(c);slots.append(o)}}function renderEditor(){renderDropEditor('urgency');updateAvailabilityUrgencyFilter()}
 function renderGroupUrgencyEditor(){renderDropEditor('groupUrgency');updateAvailabilityUrgencyFilter()}document.getElementById('addCategory').onclick=()=>{const el=document.getElementById('newCategory');const c=el.value.trim();if(!c)return;if(c.toLowerCase()==='uncategorised'||categoryNames.some(x=>x.toLowerCase()===c.toLowerCase())){alert('This category name already exists or is reserved.');return}categoryNames.push(c);el.value='';saveCategories();rebuildCategoryFilter();renderEditor();renderGroupUrgencyEditor()};document.getElementById('newCategory').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('addCategory').click()});document.getElementById('slotSearch').addEventListener('input',renderEditor);
 const PRACTICE_SETTINGS_KEY='demand-iq-practice-settings-v1';
 let practiceSettings={name:'',anchors:{}},practiceSelectedMonth='';
@@ -3600,3 +3652,5 @@ function renderBookingTimesChart(){
  if(note)note.textContent=count?count.toLocaleString('en-GB')+' booked appointments across the loaded CSV files and selected categories.':'No bookings match these filters. Check category assignments in Manage categories.';
 }
 window.addEventListener('resize',()=>{if(!$('bookingTimesPage').classList.contains('hidden'))renderBookingTimesChart()});
+
+setupTogglePriority();
