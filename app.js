@@ -2443,7 +2443,7 @@ function renderWaitingTrendChart(){
  }
  const toggle=(container,name,checked,colour,change)=>{
   const row=document.createElement('label');row.className='filter-row';
-  const sw=document.createElement('span');sw.className='switch',input=document.createElement('input');input.type='checkbox';input.setAttribute('role','switch');input.dataset.filterName=name;input.checked=checked;
+  const sw=document.createElement('span');sw.className='switch';const input=document.createElement('input');input.type='checkbox';input.setAttribute('role','switch');input.dataset.filterName=name;input.checked=checked;
   const track=document.createElement('span');track.className='switch-track';track.style.setProperty('--switch-on',colour);sw.append(input,track);
   const label=document.createElement('span');label.textContent=name;row.append(sw,label);container.append(row);
   input.addEventListener('change',()=>{change(input.checked);renderWaitingTrendChart()});
