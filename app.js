@@ -84,7 +84,7 @@ async function readSharedSettings(){
  return data;
 }
 
-let records=[],weeks=[],types=[],statuses=[],clinicianTypes=[],bookingTimeRecords=[];
+let records=[],weeks=[],types=[],statuses=[],clinicianTypes=[],bookingTimeRecords=[],appointmentTimeRecords=[];
 let availabilityRecords=[];
 let waitingTimeRecords=[],waitingTrendRecords=[];
 let waitingTrendDimensionCache=new WeakMap();
@@ -1147,7 +1147,7 @@ async function showFolderPicker(){$('onedrivePanel').classList.remove('hidden');
 async function showFolderContents(){try{$('pickerPath').textContent=[...folderView.trail.map(x=>x.name),folderView.name].join(' / ');$('pickerEntries').textContent='Loading folders…';const folders=(await children(folderView.id)).filter(x=>x.folder).sort((a,b)=>a.name.localeCompare(b.name));$('pickerEntries').replaceChildren();if(!folders.length)$('pickerEntries').textContent='No subfolders. You can select this folder.';for(const f of folders){const btn=document.createElement('button');btn.className='folder-entry';btn.textContent='📁 '+f.name;btn.onclick=async()=>{folderView={id:f.id,name:f.name,trail:[...folderView.trail,{id:folderView.id,name:folderView.name}]};await showFolderContents()};$('pickerEntries').append(btn)}}catch(e){$('pickerEntries').textContent='Could not list folders: '+e.message}}
 function weekMonday(d){const x=new Date(d);x.setUTCHours(12,0,0,0);x.setUTCDate(x.getUTCDate()-((x.getUTCDay()+6)%7));return x.toISOString().slice(0,10)}
 function parseDate(s){const m=/^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/.exec((s||'').trim());if(!m)return null;const mi=['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'].indexOf(m[2].toLowerCase());if(mi<0)return null;const d=new Date(Date.UTC(Number(m[3]),mi,Number(m[1])));return d.getUTCMonth()===mi&&d.getUTCDate()===Number(m[1])?d:null}
-function aggregateCSV(csv,aggregated,availabilityAggregate,bookingTimeAggregate,peopleAggregate,slotStats,waitingAggregate,waitingTrendAggregate){
+function aggregateCSV(csv,aggregated,availabilityAggregate,bookingTimeAggregate,peopleAggregate,slotStats,waitingAggregate,waitingTrendAggregate,appointmentTimeAggregate){
  const parsed=Papa.parse(csv,{header:true,skipEmptyLines:'greedy'});
  const fields=parsed.meta.fields||[];
  for(const required of ['Appointment Date','Appointment Time','Booked Time to Slot Time','Slot Type','Availability'])if(!fields.includes(required))throw Error('Missing column: '+required);
@@ -1193,6 +1193,12 @@ function aggregateCSV(csv,aggregated,availabilityAggregate,bookingTimeAggregate,
   const akey=JSON.stringify([date,slotType,availability,clinician,person]);
   availabilityAggregate.set(akey,(availabilityAggregate.get(akey)||0)+1);
   if(status!=='booked')continue;
+  const appointmentClock=/^(\d{1,2}):(\d{2})/.exec(time);
+  if(appointmentClock&&Number(appointmentClock[1])<24&&Number(appointmentClock[2])<60){
+   const minute=Number(appointmentClock[1])*60+Number(appointmentClock[2]);
+   const appointmentKey=JSON.stringify([date,minute,slotType,clinician,person]);
+   appointmentTimeAggregate.set(appointmentKey,(appointmentTimeAggregate.get(appointmentKey)||0)+1);
+  }
   const lead=Number(leadRaw.replace(/,/g,''));
   if(waitingAggregate&&leadRaw&&Number.isFinite(lead)&&lead>=0){
    const dayBin=Math.floor(lead/1440);
@@ -1512,11 +1518,11 @@ function updateHomeReportDates(items){const slots=items.filter(f=>/slot[\s_-]*re
 async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;setButtons();showRefreshFeedback('Refreshing data…',true);setSync('Checking OneDrive CSV files…');try{
  const items=(await children(selectedFolder.id)).filter(f=>f.file&&/\.csv$/i.test(f.name)).sort((a,b)=>a.name.localeCompare(b.name));if(!items.length)throw Error('No CSV files found directly inside this folder.');updateHomeReportDates(items);
  const fingerprint=JSON.stringify(items.map(f=>[f.id,f.lastModifiedDateTime,f.size]));if(!force&&fingerprint===lastFingerprint){showRefreshFeedback('Already up to date');setSync(`No changes detected · ${items.length} CSV files · Checked ${new Date().toLocaleTimeString('en-GB')}`);return}
- const aggregate=new Map(),availabilityAggregate=new Map(),bookingTimeAggregate=new Map(),waitingAggregate=new Map(),waitingTrendAggregate=new Map(),peopleAggregate=new Map(),newSlotTypeStats=new Map();let valid=0,skipped=0;const newSignposting=[];let newSignpostingFiles=0,newSlotFiles=0;for(let i=0;i<items.length;i++){const f=items[i];showRefreshFeedback(`Loading file ${i+1} of ${items.length}…`,true);setSync(`Loading ${i+1} of ${items.length}: ${f.name}`);const detail=await graph(sourceItemUrl(f.id));const url=detail['@microsoft.graph.downloadUrl'];if(!url)throw Error('OneDrive did not provide a download URL for '+f.name);const response=await fetch(url,{cache:'no-store'});if(!response.ok)throw Error(`Could not download ${f.name}: HTTP ${response.status}`);const csvText=await response.text();
+ const aggregate=new Map(),availabilityAggregate=new Map(),bookingTimeAggregate=new Map(),appointmentTimeAggregate=new Map(),waitingAggregate=new Map(),waitingTrendAggregate=new Map(),peopleAggregate=new Map(),newSlotTypeStats=new Map();let valid=0,skipped=0;const newSignposting=[];let newSignpostingFiles=0,newSlotFiles=0;for(let i=0;i<items.length;i++){const f=items[i];showRefreshFeedback(`Loading file ${i+1} of ${items.length}…`,true);setSync(`Loading ${i+1} of ${items.length}: ${f.name}`);const detail=await graph(sourceItemUrl(f.id));const url=detail['@microsoft.graph.downloadUrl'];if(!url)throw Error('OneDrive did not provide a download URL for '+f.name);const response=await fetch(url,{cache:'no-store'});if(!response.ok)throw Error(`Could not download ${f.name}: HTTP ${response.status}`);const csvText=await response.text();
  if(isSignpostingFile(f.name)){newSignposting.push(...parseSignpostingCSV(csvText));newSignpostingFiles++;continue}
  if(!/slot[\s_-]*report/i.test(f.name))continue;
  newSlotFiles++;
- const stats=aggregateCSV(csvText,aggregate,availabilityAggregate,bookingTimeAggregate,peopleAggregate,newSlotTypeStats,waitingAggregate,waitingTrendAggregate);valid+=stats.valid;skipped+=stats.skipped}
+ const stats=aggregateCSV(csvText,aggregate,availabilityAggregate,bookingTimeAggregate,peopleAggregate,newSlotTypeStats,waitingAggregate,waitingTrendAggregate,appointmentTimeAggregate);valid+=stats.valid;skipped+=stats.skipped}
  slotTypeFileStats=newSlotTypeStats;renderSlotInclusion();
  signpostingRecords=newSignposting;signpostingFileCount=newSignpostingFiles;signpostingSlotNames=new Set(newSignposting.map(event=>event.destination));
  // Each dated signposting event is also a booked appointment for the main
@@ -1556,6 +1562,7 @@ async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;
  waitingTrendRecords=[...waitingTrendAggregate].map(([key,count])=>{const [slot,clinician,person,appointmentMonth,appointmentDate,leadMinutes]=JSON.parse(key);return {slot,clinician,person,appointmentMonth,appointmentDate,leadMinutes,status:'Booked',count}}).sort((a,b)=>a.leadMinutes-b.leadMinutes);
  waitingTrendDimensionCache=new WeakMap();
  waitingTrendAvailableMonths=[...new Set(waitingTrendRecords.map(r=>r.appointmentMonth).filter(Boolean))].sort();
+ appointmentTimeRecords=[...appointmentTimeAggregate].map(([key,count])=>{const [date,minute,slot,clinician,person]=JSON.parse(key);return {date,minute,slot,clinician,person,count}});
  bookingTimeRecords=[...bookingTimeAggregate].map(([key,count])=>{const [bookedDay,minute,slot,clinician,person]=JSON.parse(key);return {bookedDay,minute,slot,clinician,person,count}});
  availabilityRecords=[...availabilityAggregate].map(([key,count])=>{const [date,slot,availability,clinician,person]=JSON.parse(key);return {date,slot,availability,clinician,person,count}});
  records=[...aggregate].map(([key,count])=>{const [bookedDay,slot,clinician,person]=JSON.parse(key);const bookedWeek=mondayOf(bookedDay);return {week:bookedWeek,bookedWeek,bookedDay,slot,clinician,person,status:'Booked',count}});weeks=[...new Set(records.map(r=>r.bookedWeek))].sort();types=[...new Set([...records.map(r=>r.slot),...availabilityRecords.map(r=>r.slot)])].sort();statuses=['Booked'];clinicianTypes=[...new Set([...records.map(r=>r.clinician),...availabilityRecords.map(r=>r.clinician)])].filter(Boolean).sort();
@@ -2627,6 +2634,8 @@ function renderDayView(){
  }
  const totals=new Map(names.map(name=>[name,0]));
  const bookedSoFar=new Map(names.map(name=>[name,0]));
+ const scheduledTotals=new Map(names.map(name=>[name,0]));
+ const scheduledSoFar=new Map(names.map(name=>[name,0]));
  const timeSlider=$('dayViewTimeSlider');
  const cutoff=timeSlider?Number(timeSlider.value):1440;
  const clock=cutoff===1440?'24:00':String(Math.floor(cutoff/60)).padStart(2,'0')+':'+String(cutoff%60).padStart(2,'0');
@@ -2640,17 +2649,30 @@ function renderDayView(){
   totals.set(urgency,totals.get(urgency)+count);
   if(r.minute<=cutoff)bookedSoFar.set(urgency,bookedSoFar.get(urgency)+count);
  }
+ for(const r of appointmentTimeRecords){
+  if(r.date!==dateInput.value||excludedSlotTypes.has(r.slot)||!Number.isFinite(r.minute))continue;
+  const urgency=capacityUrgencyCategory(r.slot);
+  if(!scheduledTotals.has(urgency)||dayViewDisabledUrgencies.has(urgency))continue;
+  const count=Number(r.count)||0;
+  scheduledTotals.set(urgency,scheduledTotals.get(urgency)+count);
+  if(r.minute<=cutoff)scheduledSoFar.set(urgency,scheduledSoFar.get(urgency)+count);
+ }
  const active=names.filter(name=>!dayViewDisabledUrgencies.has(name));
  const fullTotal=active.reduce((sum,name)=>sum+totals.get(name),0);
  const currentTotal=active.reduce((sum,name)=>sum+bookedSoFar.get(name),0);
+ const scheduledFullTotal=active.reduce((sum,name)=>sum+scheduledTotals.get(name),0);
+ const scheduledCurrentTotal=active.reduce((sum,name)=>sum+scheduledSoFar.get(name),0);
  $('dayViewTotal').textContent=fullTotal.toLocaleString('en-GB');
  const partialStack=$('dayViewPartialStack');
  const partialTotal=$('dayViewPartialTotal'),partialCaption=$('dayViewPartialCaption');
  if(partialTotal)partialTotal.textContent=currentTotal.toLocaleString('en-GB');
  const ampm=cutoff===1440?'11:59 pm':(Math.floor(cutoff/60)%12||12)+':'+String(cutoff%60).padStart(2,'0')+(cutoff<720?' am':' pm');
  if(partialCaption)partialCaption.textContent='appointments booked by '+(cutoff===1440?'end of day':ampm);
+ const scheduledStack=$('dayViewAppointmentsStack');
+ if($('dayViewAppointmentsTotal'))$('dayViewAppointmentsTotal').textContent=scheduledCurrentTotal.toLocaleString('en-GB');
+ if($('dayViewAppointmentsCaption'))$('dayViewAppointmentsCaption').textContent='appointments scheduled by '+(cutoff===1440?'end of day':ampm);
  $('dayViewSelectedDate').textContent=new Date(dateInput.value+'T12:00:00').toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
- stack.replaceChildren();partialStack?.replaceChildren();legend.replaceChildren();
+ stack.replaceChildren();partialStack?.replaceChildren();scheduledStack?.replaceChildren();legend.replaceChildren();
  for(const name of active){
   const full=totals.get(name),current=bookedSoFar.get(name),colour=urgencyGroupColour(name);
   if(full>0){
@@ -2668,6 +2690,18 @@ function renderDayView(){
     partialStack.append(seg);
    }
   }
+  if(scheduledStack&&scheduledFullTotal>0){
+   const scheduledFull=scheduledTotals.get(name),scheduledCurrent=scheduledSoFar.get(name);
+   if(scheduledFull>0){
+    const seg=document.createElement('div');seg.className='day-view-segment day-view-segment-progress';seg.style.flex=String(scheduledFull);
+    const completed=document.createElement('div');completed.className='day-view-segment-completed';completed.style.width=(100*scheduledCurrent/scheduledFull)+'%';completed.style.backgroundColor=colour;
+    const remaining=document.createElement('div');remaining.className='day-view-segment-remaining';remaining.style.backgroundColor=colour;
+    seg.append(completed,remaining);
+    seg.title=name+': '+scheduledCurrent+' of '+scheduledFull+' appointments scheduled by '+clock;
+    if(scheduledFull/scheduledFullTotal>=.075){const value=document.createElement('span');value.className='day-view-segment-count';value.textContent=scheduledCurrent.toLocaleString('en-GB');seg.append(value)}
+    scheduledStack.append(seg);
+   }
+  }
   const item=document.createElement('div');item.className='day-view-legend-item';
   const dot=document.createElement('span');dot.className='day-view-dot';dot.style.backgroundColor=colour;
   const label=document.createElement('span');label.textContent=name;
@@ -2677,6 +2711,7 @@ function renderDayView(){
  $('dayViewEmpty').classList.toggle('hidden',fullTotal!==0);
  stack.setAttribute('aria-label',fullTotal+' appointments booked during the full day on '+dateInput.value);
  partialStack?.setAttribute('aria-label',currentTotal+' of '+fullTotal+' appointments booked by '+clock+' on '+dateInput.value);
+ scheduledStack?.setAttribute('aria-label',scheduledCurrentTotal+' of '+scheduledFullTotal+' appointments scheduled by '+clock+' on '+dateInput.value);
 }
 $('dayViewTimeSlider')?.addEventListener('input',renderDayView);
 $('dayViewDate')?.addEventListener('change',renderDayView);
