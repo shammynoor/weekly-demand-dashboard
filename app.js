@@ -1988,7 +1988,7 @@ function installDemandCardTooltip(target){
   const point=data.points?.find(p=>Number.isFinite(p.y)&&p.data?.line?.color&&typeof p.data?.name==='string');
   if(!point){card.hidden=true;return;}
   const name=point.data.name;
-  const date=typeof point.customdata==='string'?point.customdata:'';
+  const date=typeof point.customdata==='string'?point.customdata:(typeof point.data?.customdata?.[point.pointNumber]==='string'?point.data.customdata[point.pointNumber]:'');
   const rawDate=date||((typeof point.x==='string'&&/^\\d{4}-\\d{2}/.test(point.x))?point.x:'');
   let formatted=rawDate;
   if(/^\\d{4}-\\d{2}(?:-\\d{2})?$/.test(rawDate)){
@@ -2370,7 +2370,7 @@ function renderWaitingTimesChart(){
  const visibleDays=suppress?days.filter(day=>bins.get(day)>=cutoff):days;
  const x=visibleDays,y=visibleDays.map(day=>bins.get(day));
  const note=$('waitingTimesNote');if(note)note.textContent=days.length?'Each bar represents one complete 24-hour waiting-time interval (minutes ÷ 1,440).'+(suppress?' Bins below 0.35% of '+total.toLocaleString('en-GB')+' appointments are hidden ('+(days.length-visibleDays.length)+' bins).':' All non-empty bins are shown.'):'No waiting-time records for the selected filters.';
- Plotly.react(chart,[{type:'bar',x,y,width:0.94,marker:{color:'#7ea9c5'},text:y.map(n=>total?(100*n/total).toFixed(1)+'%':'0%'),textposition:'outside',textfont:{size:10,color:'#47687f'},cliponaxis:false,hovertemplate:'%{x}–%{customdata} days<br>%{y:,} appointments<br>%{text} of total<extra></extra>',customdata:x.map(v=>v+1)}],{
+ Plotly.react(chart,[{type:'bar',x,y,width:0.94,hoverinfo:'none',marker:{color:'#7ea9c5'},text:y.map(n=>total?(100*n/total).toFixed(1)+'%':'0%'),textposition:'outside',textfont:{size:10,color:'#47687f'},cliponaxis:false,hovertemplate:'%{x}–%{customdata} days<br>%{y:,} appointments<br>%{text} of total<extra></extra>',customdata:x.map(v=>v+1)}],{
   height:560,autosize:true,margin:{l:75,r:25,t:55,b:75},paper_bgcolor:'#fff',plot_bgcolor:'#fff',bargap:0.04,
   xaxis:{title:'Waiting time (days)',dtick:max<=35?1:undefined,gridcolor:'#edf1f5',rangemode:'tozero'},
   yaxis:{title:'Number of appointments',rangemode:'tozero',gridcolor:'#edf1f5'},showlegend:false
