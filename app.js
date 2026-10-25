@@ -1992,13 +1992,14 @@ function installDemandCardTooltip(target){
   const point=data.points?.find(p=>Number.isFinite(p.y)&&p.data?.line?.color&&typeof p.data?.name==='string');
   if(!point){card.hidden=true;return;}
   const name=point.data.name;
-  const date=typeof point.customdata==='string'?point.customdata:(typeof point.data?.customdata?.[point.pointNumber]==='string'?point.data.customdata[point.pointNumber]:'');
+  const index=Array.isArray(point.pointNumber)?point.pointNumber[0]:(point.pointIndex??point.pointNumber);
+  const date=typeof point.customdata==='string'?point.customdata:(typeof point.data?.customdata?.[index]==='string'?point.data.customdata[index]:'');
   const rawDate=date||((typeof point.x==='string'&&/^\\d{4}-\\d{2}/.test(point.x))?point.x:'');
   let formatted=rawDate;
   if(/^\\d{4}-\\d{2}(?:-\\d{2})?$/.test(rawDate)){
    const iso=rawDate.length===7?rawDate+'-01':rawDate;
    const d=new Date(iso+'T12:00:00Z');
-   if(monthlyMode)formatted=d.toLocaleDateString('en-GB',{month:'short',year:'numeric',timeZone:'UTC'});
+   if(monthlyMode)formatted=d.toLocaleDateString('en-GB',{month:'short',timeZone:'UTC'})+'-'+d.getUTCFullYear();
    else {const weekStart=mondayOf(iso);formatted='W/B '+new Date(weekStart+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'});}
   }
   card.replaceChildren();
@@ -2079,14 +2080,14 @@ function drawCombinedDemandChart(){
     x:plotPoints.map(x),y:plotPoints.map(p=>p.count),customdata:plotPoints.map(p=>p.date),
     type:'scatter',mode:'lines',connectgaps:false,opacity,
     line:{color:additiveLines?'#2678ad':urgencyGroupColour(category),width,shape:'spline',smoothing:0.5},
-    hoverinfo:'none'});
+    hoverinfo:'text',hovertext:' '});
    if(partial)traces.push({name:category+' '+year+' (incomplete)',showlegend:false,
     x:complete.length?[x(complete[complete.length-1]),x(last)]:[x(last)],
     customdata:complete.length?[complete[complete.length-1].date,last.date]:[last.date],
     y:complete.length?[complete[complete.length-1].count,last.count]:[last.count],
     type:'scatter',mode:'lines+markers',opacity,
     line:{color:additiveLines?'#2678ad':urgencyGroupColour(category),width,dash:'dot'},marker:{size:7,symbol:'circle-open'},
-    hoverinfo:'none'});
+    hoverinfo:'text',hovertext:' '});
   }
  }
  // One horizontal mean for each visible urgency group, calculated over the
