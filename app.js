@@ -1193,12 +1193,6 @@ function aggregateCSV(csv,aggregated,availabilityAggregate,bookingTimeAggregate,
   const akey=JSON.stringify([date,slotType,availability,clinician,person]);
   availabilityAggregate.set(akey,(availabilityAggregate.get(akey)||0)+1);
   if(status!=='booked')continue;
-  const appointmentClock=/^(\d{1,2}):(\d{2})/.exec(time);
-  if(appointmentClock&&Number(appointmentClock[1])<24&&Number(appointmentClock[2])<60){
-   const minute=Number(appointmentClock[1])*60+Number(appointmentClock[2]);
-   const appointmentKey=JSON.stringify([date,minute,slotType,clinician,person]);
-   appointmentTimeAggregate.set(appointmentKey,(appointmentTimeAggregate.get(appointmentKey)||0)+1);
-  }
   const lead=Number(leadRaw.replace(/,/g,''));
   if(waitingAggregate&&leadRaw&&Number.isFinite(lead)&&lead>=0){
    const dayBin=Math.floor(lead/1440);
@@ -1219,6 +1213,9 @@ function aggregateCSV(csv,aggregated,availabilityAggregate,bookingTimeAggregate,
   const bookedDay=booked.toISOString().slice(0,10);
   // Booking clock time, calculated using the same lead-time arithmetic as the demand charts.
   const bookedMinute=booked.getUTCHours()*60+booked.getUTCMinutes();
+  // Day View scheduled workload: appointment DATE is fixed, booking timestamp controls the slider.
+  const scheduledKey=JSON.stringify([date,bookedDay,bookedMinute,slotType,clinician,person]);
+  appointmentTimeAggregate.set(scheduledKey,(appointmentTimeAggregate.get(scheduledKey)||0)+1);
   const timeKey=JSON.stringify([bookedDay,bookedMinute,slotType,clinician,person]);
   bookingTimeAggregate.set(timeKey,(bookingTimeAggregate.get(timeKey)||0)+1);
   const key=JSON.stringify([bookedDay,slotType,clinician,person]);
@@ -1562,7 +1559,7 @@ async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;
  waitingTrendRecords=[...waitingTrendAggregate].map(([key,count])=>{const [slot,clinician,person,appointmentMonth,appointmentDate,leadMinutes]=JSON.parse(key);return {slot,clinician,person,appointmentMonth,appointmentDate,leadMinutes,status:'Booked',count}}).sort((a,b)=>a.leadMinutes-b.leadMinutes);
  waitingTrendDimensionCache=new WeakMap();
  waitingTrendAvailableMonths=[...new Set(waitingTrendRecords.map(r=>r.appointmentMonth).filter(Boolean))].sort();
- appointmentTimeRecords=[...appointmentTimeAggregate].map(([key,count])=>{const [date,minute,slot,clinician,person]=JSON.parse(key);return {date,minute,slot,clinician,person,count}});
+ appointmentTimeRecords=[...appointmentTimeAggregate].map(([key,count])=>{const [date,bookedDay,bookedMinute,slot,clinician,person]=JSON.parse(key);return {date,bookedDay,bookedMinute,slot,clinician,person,count}});
  bookingTimeRecords=[...bookingTimeAggregate].map(([key,count])=>{const [bookedDay,minute,slot,clinician,person]=JSON.parse(key);return {bookedDay,minute,slot,clinician,person,count}});
  availabilityRecords=[...availabilityAggregate].map(([key,count])=>{const [date,slot,availability,clinician,person]=JSON.parse(key);return {date,slot,availability,clinician,person,count}});
  records=[...aggregate].map(([key,count])=>{const [bookedDay,slot,clinician,person]=JSON.parse(key);const bookedWeek=mondayOf(bookedDay);return {week:bookedWeek,bookedWeek,bookedDay,slot,clinician,person,status:'Booked',count}});weeks=[...new Set(records.map(r=>r.bookedWeek))].sort();types=[...new Set([...records.map(r=>r.slot),...availabilityRecords.map(r=>r.slot)])].sort();statuses=['Booked'];clinicianTypes=[...new Set([...records.map(r=>r.clinician),...availabilityRecords.map(r=>r.clinician)])].filter(Boolean).sort();
@@ -2650,12 +2647,12 @@ function renderDayView(){
   if(r.minute<=cutoff)bookedSoFar.set(urgency,bookedSoFar.get(urgency)+count);
  }
  for(const r of appointmentTimeRecords){
-  if(r.date!==dateInput.value||excludedSlotTypes.has(r.slot)||!Number.isFinite(r.minute))continue;
+  if(r.date!==dateInput.value||excludedSlotTypes.has(r.slot)||!Number.isFinite(r.bookedMinute))continue;
   const urgency=capacityUrgencyCategory(r.slot);
   if(!scheduledTotals.has(urgency)||dayViewDisabledUrgencies.has(urgency))continue;
   const count=Number(r.count)||0;
   scheduledTotals.set(urgency,scheduledTotals.get(urgency)+count);
-  if(r.minute<=cutoff)scheduledSoFar.set(urgency,scheduledSoFar.get(urgency)+count);
+  if(r.bookedDay<dateInput.value||(r.bookedDay===dateInput.value&&r.bookedMinute<=cutoff))scheduledSoFar.set(urgency,scheduledSoFar.get(urgency)+count);
  }
  const active=names.filter(name=>!dayViewDisabledUrgencies.has(name));
  const fullTotal=active.reduce((sum,name)=>sum+totals.get(name),0);
@@ -2670,7 +2667,7 @@ function renderDayView(){
  if(partialCaption)partialCaption.textContent='appointments booked by '+(cutoff===1440?'end of day':ampm);
  const scheduledStack=$('dayViewAppointmentsStack');
  if($('dayViewAppointmentsTotal'))$('dayViewAppointmentsTotal').textContent=scheduledCurrentTotal.toLocaleString('en-GB');
- if($('dayViewAppointmentsCaption'))$('dayViewAppointmentsCaption').textContent='appointments scheduled by '+(cutoff===1440?'end of day':ampm);
+ if($('dayViewAppointmentsCaption'))$('dayViewAppointmentsCaption').textContent='appointments scheduled for this day by '+(cutoff===1440?'end of day':ampm);
  $('dayViewSelectedDate').textContent=new Date(dateInput.value+'T12:00:00').toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
  stack.replaceChildren();partialStack?.replaceChildren();scheduledStack?.replaceChildren();legend.replaceChildren();
  for(const name of active){
@@ -2697,7 +2694,7 @@ function renderDayView(){
     const completed=document.createElement('div');completed.className='day-view-segment-completed';completed.style.width=(100*scheduledCurrent/scheduledFull)+'%';completed.style.backgroundColor=colour;
     const remaining=document.createElement('div');remaining.className='day-view-segment-remaining';remaining.style.backgroundColor=colour;
     seg.append(completed,remaining);
-    seg.title=name+': '+scheduledCurrent+' of '+scheduledFull+' appointments scheduled by '+clock;
+    seg.title=name+': '+scheduledCurrent+' of '+scheduledFull+' appointments scheduled for this day by '+clock;
     if(scheduledFull/scheduledFullTotal>=.075){const value=document.createElement('span');value.className='day-view-segment-count';value.textContent=scheduledCurrent.toLocaleString('en-GB');seg.append(value)}
     scheduledStack.append(seg);
    }
