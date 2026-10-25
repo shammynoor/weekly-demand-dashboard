@@ -856,7 +856,13 @@ function restoreChartCheckboxes(){
  const saved=readChartPreferences();
  chartPreferenceRestoring=true;
  try{document.querySelectorAll('#dashboardShell input[type="checkbox"]').forEach(el=>{
-  const key=chartControlKey(el);if(key&&typeof saved[key]==='boolean'&&el.checked!==saved[key])el.checked=saved[key];
+  const key=chartControlKey(el);
+  if(key&&typeof saved[key]==='boolean'&&el.checked!==saved[key]){
+   // A checkbox is only the visual control: its change handler also updates
+   // the filter Set used by the chart. Replay that handler when restoring.
+   el.checked=saved[key];
+   el.dispatchEvent(new Event('change',{bubbles:true}));
+  }
  })}finally{chartPreferenceRestoring=false}
 }
 document.addEventListener('change',event=>{
