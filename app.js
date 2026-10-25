@@ -2665,7 +2665,7 @@ function renderRoutineAvailabilityFilters(){
   names=names.filter(isDashboardToggleOption);
   const root=$(id);if(!root)return;
   const previous=[...root.querySelectorAll('input')].map(el=>el.getAttribute('data-filter-name'));
-  if(previous.length===names.length&&names.every((name,i)=>name===previous[i])){if(id==='routineClinicianFilters')root.querySelectorAll('input[data-filter-name]').forEach(input=>input.nextElementSibling?.style.setProperty('--switch-on',clinicianGroupColour(input.dataset.filterName)));return;}
+  if(previous.length===names.length&&names.every((name,i)=>name===previous[i])){root.querySelectorAll('input[data-filter-name]').forEach(input=>input.nextElementSibling?.style.setProperty('--switch-on',id==='routineClinicianFilters'?clinicianGroupColour(input.dataset.filterName):(consultModeColours[input.dataset.filterName]||'#638fac')));return;}
   root.replaceChildren();
   if(!names.length){const note=document.createElement('span');note.className='hint';note.textContent=empty;root.append(note);return}
   for(const name of names){
@@ -2673,7 +2673,7 @@ function renderRoutineAvailabilityFilters(){
    const switchEl=document.createElement('span');switchEl.className='switch';
    const input=document.createElement('input');input.type='checkbox';input.setAttribute('role','switch');input.setAttribute('data-filter-name',name);
    input.checked=!disabled.has(name);input.setAttribute('aria-label','Include '+name);
-   const track=document.createElement('span');track.className='switch-track';if(id==='routineClinicianFilters')track.style.setProperty('--switch-on',clinicianGroupColour(name));
+   const track=document.createElement('span');track.className='switch-track';track.style.setProperty('--switch-on',id==='routineClinicianFilters'?clinicianGroupColour(name):(consultModeColours[name]||'#638fac'));
    const title=document.createElement('span');title.textContent=name;
    switchEl.append(input,track);row.append(switchEl,title);root.append(row);
    input.addEventListener('change',()=>{
@@ -2844,7 +2844,7 @@ function renderPlannedAvailabilityFilters(){
   names=names.filter(isDashboardToggleOption);
   const root=$(id);if(!root)return;
   const previous=[...root.querySelectorAll('input')].map(el=>el.getAttribute('data-filter-name'));
-  if(previous.length===names.length&&names.every((name,i)=>name===previous[i])){if(id==='plannedClinicianFilters')root.querySelectorAll('input[data-filter-name]').forEach(input=>input.nextElementSibling?.style.setProperty('--switch-on',clinicianGroupColour(input.dataset.filterName)));return;}
+  if(previous.length===names.length&&names.every((name,i)=>name===previous[i])){root.querySelectorAll('input[data-filter-name]').forEach(input=>input.nextElementSibling?.style.setProperty('--switch-on',id==='plannedClinicianFilters'?clinicianGroupColour(input.dataset.filterName):(consultModeColours[input.dataset.filterName]||'#638fac')));return;}
   root.replaceChildren();
   if(!names.length){const note=document.createElement('span');note.className='hint';note.textContent=empty;root.append(note);return}
   for(const name of names){
@@ -2852,7 +2852,7 @@ function renderPlannedAvailabilityFilters(){
    const switchEl=document.createElement('span');switchEl.className='switch';
    const input=document.createElement('input');input.type='checkbox';input.setAttribute('role','switch');input.setAttribute('data-filter-name',name);
    input.checked=!disabled.has(name);input.setAttribute('aria-label','Include '+name);
-   const track=document.createElement('span');track.className='switch-track';if(id==='plannedClinicianFilters')track.style.setProperty('--switch-on',clinicianGroupColour(name));
+   const track=document.createElement('span');track.className='switch-track';track.style.setProperty('--switch-on',id==='plannedClinicianFilters'?clinicianGroupColour(name):(consultModeColours[name]||'#638fac'));
    const title=document.createElement('span');title.textContent=name;
    switchEl.append(input,track);row.append(switchEl,title);root.append(row);
    input.addEventListener('change',()=>{
