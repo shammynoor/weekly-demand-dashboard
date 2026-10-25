@@ -2192,8 +2192,8 @@ const urgentConsultDisabled=new Set();
 // disabling one dimension can cascade and lock every other dimension off.
 function availabilityRecordsInRange(page){
  const urgent=page==='urgent';
- const from=urgent?-urgentWeeksBack:routineStartWeek;
- const to=urgent?urgentWeeksForward:routineEndWeek;
+ const from=urgent?-urgentWeeksBack:page==='planned'?plannedStartWeek:routineStartWeek;
+ const to=urgent?urgentWeeksForward:page==='planned'?plannedEndWeek:routineEndWeek;
  const start=new Date(thisWeek+'T12:00:00Z');start.setUTCDate(start.getUTCDate()+from*7);
  const finish=new Date(thisWeek+'T12:00:00Z');finish.setUTCDate(finish.getUTCDate()+(to+1)*7);
  const first=start.toISOString().slice(0,10),last=finish.toISOString().slice(0,10);
@@ -2202,7 +2202,7 @@ function availabilityRecordsInRange(page){
   if(excludedSlotTypes.has(r.slot))return false;
   if(!(r.count>0)||r.date<first||r.date>=last)return false;
   const category=String(assignments[r.slot]||'').trim();
-  if(urgent?!urgentNames.has(capacityUrgencyCategory(r.slot)):String(groupUrgencyAssignments[category]||'').trim().toLowerCase()!==page)return false;
+  if(!isDashboardToggleOption(capacityUrgencyCategory(r.slot))||(urgent&&!urgentNames.has(capacityUrgencyCategory(r.slot))))return false;
   if(urgent){const day=new Date(r.date+'T12:00:00Z').getUTCDay();if(day===0||day===6)return false;}
   return true;
  });
@@ -2212,7 +2212,7 @@ function availabilityOptionHasData(page,kind,name){
   const category=String(assignments[r.slot]||'').trim();
   const clinician=clinicianGroupAssignments[effectiveClinicianType(r.clinician,r.person)];
   const consult=consultAssignments[r.slot];
-  return kind==='category'?(page==='urgent'?capacityUrgencyCategory(r.slot):category)===name:kind==='clinician'?clinician===name:kind==='purpose'?purposeAssignments[r.slot]===name:consult===name;
+  return kind==='category'?capacityUrgencyCategory(r.slot)===name:kind==='clinician'?clinician===name:kind==='purpose'?purposeAssignments[r.slot]===name:consult===name;
  });
 }
 function availabilityHasVisibleRecords(page){
@@ -2224,8 +2224,9 @@ function availabilityHasVisibleRecords(page){
    !urgentCategoryDisabled.has(capacityUrgencyCategory(r.slot))&&urgentCategoryNames().includes(capacityUrgencyCategory(r.slot))&&
    clinicianGroupNames.includes(clinician)&&!urgentClinicianDisabled.has(clinician)&&
    consultCategoryNames.includes(consult)&&!urgentConsultDisabled.has(consult)&&urgentPurposeMatches(r.slot):
-   clinicianGroupNames.includes(clinician)&&!routineDisabledClinicianGroups.has(clinician)&&
-   consultCategoryNames.includes(consult)&&!routineDisabledConsultModes.has(consult);
+   clinicianGroupNames.includes(clinician)&&!(page==='planned'?plannedDisabledClinicianGroups:routineDisabledClinicianGroups).has(clinician)&&
+   consultCategoryNames.includes(consult)&&!(page==='planned'?plannedDisabledConsultModes:routineDisabledConsultModes).has(consult)&&
+   !(page==='planned'?plannedDisabledTypes:routineDisabledTypes).has(capacityUrgencyCategory(r.slot));
  });
 }
 function changeAvailabilityFilter(page,disabled,name,checked,checkbox){
@@ -2238,7 +2239,7 @@ function changeAvailabilityFilter(page,disabled,name,checked,checkbox){
   checkbox.checked=!previouslyOff;
   return;
  }
- (page==='urgent'?renderAvailabilityChart:renderRoutineAvailabilityChart)();
+ (page==='urgent'?renderAvailabilityChart:page==='planned'?renderPlannedAvailabilityChart:renderRoutineAvailabilityChart)();
 }
 function removeInvalidDashboardToggles(){
  document.querySelectorAll('input[data-filter-name],input[data-classification],input[data-urgency-group]').forEach(input=>{
@@ -2282,7 +2283,7 @@ function refreshAvailabilityOptionStates(page){
 }
 const urgentDisabledClinicianTypes=new Set(),routineDisabledClinicianTypes=new Set();
 function selectedClinicianTypes(page){
- const disabled=page==='urgent'?urgentClinicianDisabled:routineDisabledClinicianGroups;
+ const disabled=page==='urgent'?urgentClinicianDisabled:page==='planned'?plannedDisabledClinicianGroups:routineDisabledClinicianGroups;
  return clinicianCategoryNames.filter(type=>{
   const group=clinicianGroupAssignments[type];
   return group&&clinicianGroupNames.includes(group)&&!disabled.has(group);
@@ -2290,7 +2291,7 @@ function selectedClinicianTypes(page){
 }
 function renderClinicianTypeFilters(page){
  const root=$(page+'ClinicianTypeFilters');if(!root)return;
- const disabled=page==='urgent'?urgentDisabledClinicianTypes:routineDisabledClinicianTypes;
+ const disabled=page==='urgent'?urgentDisabledClinicianTypes:page==='planned'?plannedDisabledClinicianTypes:routineDisabledClinicianTypes;
  const presentTypes=new Set(availabilityRecordsInRange(page).map(r=>effectiveClinicianType(r.clinician,r.person)));
  const names=selectedClinicianTypes(page).filter(name=>presentTypes.has(name)&&isDashboardToggleOption(name));
  const existing=[...root.querySelectorAll('input[data-filter-name]')].map(input=>input.dataset.filterName);
