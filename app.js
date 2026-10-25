@@ -1553,7 +1553,13 @@ function updateHomeReportDates(items){const slots=items.filter(f=>/slot[\s_-]*re
 // A replacement invalidates only its own contribution, not the other CSV files.
 const csvContributionCache=new Map();
 function mergeCSVCounts(target,source){
- for(const [key,count] of source)target.set(key,(target.get(key)||0)+count);
+ for(const [key,value] of source){
+  if(value&&typeof value==='object'&&!Array.isArray(value)){
+   // Slot-type statistics are objects, not numeric aggregate counts.
+   const previous=target.get(key);
+   target.set(key,{count:(previous?.count||0)+(value.count||0),min:previous?.min&&previous.min<value.min?previous.min:value.min,max:previous?.max&&previous.max>value.max?previous.max:value.max});
+  }else target.set(key,(target.get(key)||0)+value);
+ }
 }
 function parseCSVContribution(csvText,name){
  if(isSignpostingFile(name))return {kind:'signposting',events:parseSignpostingCSV(csvText)};
