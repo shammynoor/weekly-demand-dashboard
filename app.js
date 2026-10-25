@@ -2152,13 +2152,15 @@ function refreshPriorityEditors(){
   const rowName=r=>[...r.children].find(c=>c.tagName==='SPAN'&&!c.classList.contains('priority-grip')&&!c.classList.contains('clinician-colour-dot'))?.textContent?.trim();
   for(const name of names){
    const row=rows.find(r=>rowName(r)===name);if(!row)continue;
-   row.dataset.priorityName=name;row.draggable=isOwner;
-   if(!row.querySelector('.priority-grip')){const grip=document.createElement('span');grip.className='priority-grip';grip.textContent='⠿';grip.title='Drag to change toggle order';row.prepend(grip)}
+   row.dataset.priorityName=name;row.draggable=false;
+   if(!row.querySelector('.priority-grip')){const grip=document.createElement('span');grip.className='priority-grip';grip.textContent='⠿';grip.title='Drag to change toggle order';grip.draggable=isOwner;row.prepend(grip)}
    root.append(row);
    if(row.dataset.priorityBound)continue;row.dataset.priorityBound='1';
-   row.addEventListener('dragstart',e=>{if(!isOwner)return;e.dataTransfer.setData('text/plain',kind+'|'+row.dataset.priorityName);e.dataTransfer.effectAllowed='move'});
-   row.addEventListener('dragover',e=>{if(isOwner)e.preventDefault()});
-   row.addEventListener('drop',e=>{e.preventDefault();if(!isOwner)return;
+   row.querySelector('.priority-grip').addEventListener('dragstart',e=>{if(!isOwner)return;e.dataTransfer.setData('text/plain',kind+'|'+row.dataset.priorityName);e.dataTransfer.effectAllowed='move'});
+   row.addEventListener('dragover',e=>{if(isOwner){e.preventDefault();e.dataTransfer.dropEffect='move';row.classList.add('priority-drop-target')}});
+   row.addEventListener('dragleave',()=>row.classList.remove('priority-drop-target'));
+   row.addEventListener('dragend',()=>row.classList.remove('priority-drop-target'));
+   row.addEventListener('drop',e=>{e.preventDefault();row.classList.remove('priority-drop-target');if(!isOwner)return;
     const [sourceKind,...parts]=e.dataTransfer.getData('text/plain').split('|');if(sourceKind!==kind)return;
     const ordered=prioritySort(kind,prioritySources[kind]());const from=ordered.indexOf(parts.join('|')),to=ordered.indexOf(row.dataset.priorityName);
     if(from<0||to<0||from===to)return;ordered.splice(to,0,ordered.splice(from,1)[0]);
