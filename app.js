@@ -3950,12 +3950,19 @@ function renderRoutineAvailabilityChart(){
  const clock=dayView2LondonClock();
  let matched=0;
  const bucketSet=new Set(dates);
+ const activeTypes=new Set(routineDetailedTypes().filter(name=>!routineDisabledTypes.has(name)));
+ const firstDate=weeks[0],lastDate=dayView2AddDays(weeks[weeks.length-1],7);
+ const weekForDate=new Map();
  for(const r of availabilityRecords){
-  if(excludedSlotTypes.has(r.slot))continue;
-  const detailed=String(assignments[r.slot]||'').trim();
+  // Discard historical rows before category checks or date parsing.
+  if(r.date<firstDate||r.date>=lastDate||excludedSlotTypes.has(r.slot))continue;
   const group=capacityUrgencyCategory(r.slot);
-  if(!routineDetailedTypes().includes(group)||routineDisabledTypes.has(group)||!routineClinicianMatches(r.clinician,r.person)||!routineConsultMatches(r.slot))continue;
-  const bucket=isDaily?r.date:mondayOf(r.date);
+  if(!activeTypes.has(group)||!routineClinicianMatches(r.clinician,r.person)||!routineConsultMatches(r.slot))continue;
+  let bucket=r.date;
+  if(!isDaily){
+   if(!weekForDate.has(r.date))weekForDate.set(r.date,mondayOf(r.date));
+   bucket=weekForDate.get(r.date);
+  }
   if(!bucketSet.has(bucket))continue;
   const label=capacityChartStatus(r,routineGroupWithheld,clock);
   if(!label)continue;

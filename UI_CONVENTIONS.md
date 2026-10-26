@@ -2,4 +2,4 @@
 
 ## Mini toggles
 
-The user calls this switch style **mini toggles**. The revised requested size is 60 × 36 px (double the original 30 × 18 px), with a 28 px thumb and 14 px labels. Keep related mini toggles side by side beneath their associated slider, with 10 px between each switch and label and 20 px between controls. Allow whole controls to wrap on narrow screens. Reset inherited transforms and negative margins so labels never overlap switches. Preserve keyboard focus and accessible switch labels. Reuse `.mini-toggle-row` in `index.html` for future requests.
+The user's final mini-toggle reference is the compact Clinician Groups sidebar switch (GP / Physio / Mental Health screenshot), not the larger 60 × 36 px switch. Match its displayed size: approximately 32.4 × 18 CSS px, with a 14 px thumb and 12 px labels. Use actual dimensions with no scale transform or negative margin. Keep related controls side by side below the associated slider, with clear switch-to-label spacing; allow whole controls to wrap on narrow screens. Preserve accessible labels and keyboard focus. Reuse `.mini-toggle-row` in `index.html` for future mini-toggle requests.
