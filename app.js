@@ -2926,6 +2926,9 @@ function dayView2PaceClassification(actual,baseline){
   const margin=Math.max(5,baseline.mean*.15,baseline.high-baseline.mean);
   return actual>=baseline.high+margin?'much-above':'slightly-above';
  }
+ const width=baseline.high-baseline.low;
+ if(width>0&&actual<baseline.low+width/3)return 'normal-low';
+ if(width>0&&actual>baseline.high-width/3)return 'normal-high';
  return 'normal';
 }
 function layoutDayView2PaceRail(rail){
@@ -2939,20 +2942,17 @@ function createDayView2PaceRail(actual,baseline,total,clock){
  const wrapper=document.createElement('div');wrapper.className='day-view2-pace-rail-wrap';
  const lower=Math.ceil(baseline.low),upper=Math.floor(baseline.high),typical=Math.round(baseline.mean);
  const max=Math.max(1,total,actual,Math.ceil(baseline.high),typical),percent=value=>100*value/max;
- const caption=document.createElement('div');caption.className='day-view2-pace-range-caption';caption.textContent='Usual range: '+lower.toLocaleString('en-GB')+'–'+upper.toLocaleString('en-GB')+' by '+clock;
  const rail=document.createElement('div');rail.className='day-view2-pace-rail';rail.setAttribute('role','img');
- rail.setAttribute('aria-label',actual.toLocaleString('en-GB')+' booked; typical '+typical.toLocaleString('en-GB')+'; usual range '+lower.toLocaleString('en-GB')+' to '+upper.toLocaleString('en-GB')+' by '+clock);
+ rail.setAttribute('aria-label',actual.toLocaleString('en-GB')+' booked at '+clock+'; typical '+typical.toLocaleString('en-GB')+' by '+clock+'; usual range '+lower.toLocaleString('en-GB')+' to '+upper.toLocaleString('en-GB')+' by '+clock);
  const mark=(className,left,width)=>{const node=document.createElement('span');node.className=className;node.setAttribute('aria-hidden','true');if(left!=null)node.style.left=percent(left)+'%';if(width!=null)node.style.width=percent(width)+'%';rail.append(node);return node;};
  mark('day-view2-pace-rail-track');
  mark('day-view2-pace-rail-range',baseline.low,baseline.high-baseline.low);
  mark('day-view2-pace-rail-actual',actual);
  mark('day-view2-pace-rail-typical',baseline.mean);
  const label=(text,className,value)=>{const node=mark('day-view2-pace-rail-label '+className,value);node.textContent=text;node.dataset.position=String(percent(value));return node;};
- label('Actual '+actual.toLocaleString('en-GB'),'day-view2-pace-rail-actual-label',actual);
- label('Typical '+typical.toLocaleString('en-GB'),'day-view2-pace-rail-typical-label',baseline.mean);
- const start=mark('day-view2-pace-rail-axis day-view2-pace-rail-start');start.textContent='0 booked';
- const end=mark('day-view2-pace-rail-axis day-view2-pace-rail-end');end.textContent=max.toLocaleString('en-GB')+(max===total?' slots':' bookings');
- wrapper.append(caption,rail);return wrapper;
+ label('Actual '+actual.toLocaleString('en-GB')+' at '+clock,'day-view2-pace-rail-actual-label',actual);
+ label('Typical '+typical.toLocaleString('en-GB')+' by '+clock,'day-view2-pace-rail-typical-label',baseline.mean);
+ wrapper.append(rail);return wrapper;
 }
 function dayView2PaceBaseline(date,minute,names,holidays){
  const key=JSON.stringify([date,minute,[...names].sort(),[...excludedSlotTypes].sort()]);
@@ -2981,9 +2981,7 @@ function createDayView2BookingPace(date,names,totals){
   baseline=dayView2PaceBaseline(date,minute,names,holidays);state=dayView2PaceClassification(totals.booked,baseline);
   if(!baseline.ready){status=baseline.reportedDays>=6?'Booking-time data incomplete':'Not enough history';description=baseline.reportedDays>=6?baseline.reportedDays+' non-bank-holiday '+weekday+' reports found in the last 12 months; '+baseline.samples.length+' have at least 90% booking-time coverage.':baseline.samples.length+' of 6 required comparable '+weekday+' reports available in the last 12 months.';}
   else{
-   status={'much-below':'↘ Much lower than usual','slightly-below':'↘ Slightly lower than usual',normal:'≈ Within usual range','slightly-above':'↗ Slightly higher than usual','much-above':'↗ Much higher than usual'}[state];
-   const difference=Math.round(totals.booked-baseline.mean);
-   description=difference===0?'In line with a typical '+weekday+' by '+clock:Math.abs(difference).toLocaleString('en-GB')+(difference<0?' fewer':' more')+' booked than a typical '+weekday+' by '+clock;
+   status={'much-below':'↘ Much lower than usual','slightly-below':'↘ Slightly lower than usual','normal-low':'≈ Lower end of usual range',normal:'≈ Within usual range','normal-high':'≈ Higher end of usual range','slightly-above':'↗ Slightly higher than usual','much-above':'↗ Much higher than usual'}[state];
   }
  }
  box.dataset.paceState=state;
@@ -2991,11 +2989,11 @@ function createDayView2BookingPace(date,names,totals){
  const title=document.createElement('strong');title.textContent='Booking pace'+(clock?' · as of '+clock:'');
  const badge=document.createElement('span');badge.className='day-view2-pace-badge';badge.textContent=status;badge.setAttribute('role','status');
  header.append(title,badge);
- const subtitle=document.createElement('p');subtitle.className='day-view2-pace-subtitle';subtitle.textContent=description;
- box.append(header,subtitle);
+ box.append(header);
+ if(description){const subtitle=document.createElement('p');subtitle.className='day-view2-pace-subtitle';subtitle.textContent=description;box.append(subtitle);}
  if(baseline?.ready){
   const details=document.createElement('details');details.className='day-view2-pace-details';
-  const summary=document.createElement('summary');summary.textContent='How does this compare?';
+  const summary=document.createElement('summary');summary.textContent='Show me more detail';
   const comparison=createDayView2PaceRail(totals.booked,baseline,total,clock);
   details.append(summary,comparison);box.append(details);
   details.addEventListener('toggle',()=>{if(details.open)requestAnimationFrame(()=>layoutDayView2PaceRail(comparison.querySelector('.day-view2-pace-rail')));});
