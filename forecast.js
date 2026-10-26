@@ -219,8 +219,31 @@ function renderHistoricalWeekday(){
    }
    forecasts.set(name,byWeekday);
   }
-  const predict=(name,dow,day)=>forecasts.get(name)?.get(dow)?.(day);
+  // Holiday-adjacent forecasts use every available working-day observation, irrespective
+  // of the normal historical-window and bank-holiday-week exclusion controls.
+  const adjacentTypes=new Map();
+  for(const d of eventDates(-1))adjacentTypes.set(d,'before');
+  for(const d of eventDates(1))if(!adjacentTypes.has(d))adjacentTypes.set(d,'after');
+  const specialForecasts=new Map(),specialErrors=new Map();
   const quantileNeeds=(numbers,p)=>{if(!numbers.length)return 0;const sorted=[...numbers].sort((a,b)=>a-b),pos=(sorted.length-1)*p,lo=Math.floor(pos),hi=Math.ceil(pos);return sorted[lo]+(sorted[hi]-sorted[lo])*(pos-lo)};
+  for(const type of ['before','after']){
+   const sampleDays=[...adjacentTypes].filter(([d,t])=>t===type&&d>=start&&d<=end).map(([d])=>d);
+   const byGroup=new Map();
+   for(const name of groups){
+    const vals=sampleDays.map(d=>normalise(d,(parts.get(d)||new Map()).get(name)||0));
+    byGroup.set(name,sampleDays.length>=4?fitModel(sampleDays,vals):null);
+   }
+   specialForecasts.set(type,byGroup);
+   const errors=[];
+   for(const d of sampleDays){
+    const estimates=dailyGroups.map(name=>byGroup.get(name)?.(d));
+    if(estimates.some(v=>v==null))continue;
+    const observed=dailyGroups.reduce((sum,name)=>sum+normalise(d,(parts.get(d)||new Map()).get(name)||0),0);
+    errors.push(observed-estimates.reduce((a,b)=>a+b,0));
+   }
+   specialErrors.set(type,[quantileNeeds(errors,.15),quantileNeeds(errors,.85)]);
+  }
+  const predict=(name,dow,day)=>{const type=adjacentTypes.get(day);return type?(specialForecasts.get(type)?.get(name)?.(day)??undefined):forecasts.get(name)?.get(dow)?.(day)};
   // Empirical 70% uncertainty from the residuals of each day's combined selected groups.
   const dailyErrors=new Map();
   for(let dow=1;dow<=5;dow++){
@@ -288,13 +311,15 @@ function renderHistoricalWeekday(){
    let dailyTotal=0,dailyValid=true;
    for(let dow=1;dow<=5;dow++){
     const day=shift(weekStart,dow-1),predictions=dailyGroups.map(name=>predict(name,dow,day)),td=document.createElement('td');
+    const adjacent=adjacentTypes.get(day);if(adjacent&&!bankHolidayDates.has(day)){td.classList.add(adjacent==='before'?'forecast-needs-before-holiday':'forecast-needs-after-holiday')}
     if(bankHolidayDates.has(day)){td.className='forecast-needs-bank-holiday';const main=document.createElement('div');main.textContent='Bank holiday';const detail=document.createElement('div');detail.className='forecast-needs-holiday-name';detail.textContent=bankHolidayNames.get(day)||'Public holiday';td.append(main,detail);td.title=day+': '+detail.textContent;}
     else if(!dailyGroups.length){td.textContent='—';td.title='No urgency groups are set to daily totals';}
     else if(predictions.some(value=>value===undefined)){td.textContent='—';dailyValid=false;td.title='At least 12 observed weekdays are needed for a prediction';}
     else{
      const prediction=predictions.reduce((a,b)=>a+b,0),suggested=Math.ceil(prediction);
      td.title=day+': predicted '+prediction.toFixed(1)+' bookings; suggested minimum '+suggested+' appointment slots';
-     addForecastCell(td,prediction,dailyErrors.get(dow));dailyTotal+=suggested;
+     if(adjacent){const label=document.createElement('div');label.className='forecast-needs-adjacent-label';label.textContent=adjacent==='before'?'Day before bank holiday':'Day after bank holiday';td.append(label)}
+     addForecastCell(td,prediction,adjacent?specialErrors.get(adjacent):dailyErrors.get(dow));dailyTotal+=suggested;
     }
     tr.append(td);
    }
