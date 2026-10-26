@@ -1,5 +1,11 @@
 (function(){
 const $=id=>document.getElementById(id);
+function forecastLocalDate(){
+ const parts=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/London',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
+ const p=Object.fromEntries(parts.map(part=>[part.type,part.value]));
+ return p.year+'-'+p.month+'-'+p.day;
+}
+
 const yearStyles=document.createElement('style');yearStyles.textContent='.forecast-year-band{position:absolute;top:0;bottom:0;background:rgba(70,115,155,.035);border-left:1px solid #d0dae5;pointer-events:none;z-index:0}.forecast-year-alt{background:rgba(70,115,155,.1)}.forecast-year-band span{position:absolute;top:2px;left:8px;font-size:12px;font-weight:bold;color:#526f86}.forecast-history-column{position:relative;z-index:1}.forecast-season-line{z-index:3}.forecast-prediction-band{fill-opacity:.12}';yearStyles.textContent+='.forecast-stacked-bar{display:flex;flex-direction:column-reverse;overflow:hidden;background:transparent!important}.forecast-bar-segment{width:100%;flex-shrink:0;min-height:0} .forecast-y-axis{position:sticky;left:0;top:0;width:0;align-self:stretch;z-index:5;pointer-events:none}.forecast-y-tick{position:absolute;left:0;transform:translateY(-50%);display:block;min-width:34px;padding:2px 4px;background:rgba(255,255,255,.88);font-size:10px;text-align:right;color:#47647b;font-variant-numeric:tabular-nums}';document.head.append(yearStyles);
 const shift=(date,n)=>{const d=new Date(date+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10)};
 const monday=d=>shift(d,-((new Date(d+'T12:00:00Z').getUTCDay()+6)%7));
@@ -29,7 +35,7 @@ const names=prioritySort('urgency',groupUrgencyNames.filter(isDashboardToggleOpt
 if(filter.dataset.names!==names.join('|')){filter.dataset.names=names.join('|');filter.replaceChildren();for(const n of names){const row=document.createElement('label');row.className='filter-row';const sw=document.createElement('span');sw.className='switch';const inp=document.createElement('input');inp.type='checkbox';inp.checked=!disabled[mode].has(n);const track=document.createElement('span');track.className='switch-track';track.style.setProperty('--switch-on',urgencyGroupColour(n));sw.append(inp,track);row.append(sw,document.createTextNode(n));filter.append(row);inp.addEventListener('change',()=>{inp.checked?disabled[mode].delete(n):disabled[mode].add(n);render(mode)})}}
 root.replaceChildren();if(!records.length){root.textContent='Load appointment data to generate a forecast.';return}
 const selected=names.filter(n=>!disabled[mode].has(n));if(!selected.length){root.textContent='Select at least one urgency group.';return}
-const today=dayViewLocalDate(),latest=records.reduce((x,r)=>r.bookedDay&&r.bookedDay>x?r.bookedDay:x,'');
+const today=forecastLocalDate(),latest=records.reduce((x,r)=>r.bookedDay&&r.bookedDay>x?r.bookedDay:x,'');
 const end=latest&&latest<today?latest:shift(today,-1),weeks=Number($(prefix+'History').value),start=shift(end,1-weeks*7);
 const byDate=new Map(),allDates=new Set();
 for(const r of records){if(!r.bookedDay||r.bookedDay>end||excludedSlotTypes.has(r.slot))continue;allDates.add(r.bookedDay);const n=capacityUrgencyCategory(r.slot);if(!selected.includes(n))continue;const k=r.bookedDay+'|'+n;byDate.set(k,(byDate.get(k)||0)+r.count)}
@@ -135,7 +141,7 @@ function renderHistoricalWeekday(){
  const root=$('dailyForecastHistoryChart'),summary=$('dailyForecastHistorySummary'),select=$('dailyForecastWeekday');
  if(!root||!summary||!select)return;
  root.replaceChildren();renderDailyUrgencyFilters();renderUrgencyPlanningModes();
- const weekday=Number(select.value),special=weekday===6||weekday===7,today=dayViewLocalDate(),end=shift(today,-1);
+ const weekday=Number(select.value),special=weekday===6||weekday===7,today=forecastLocalDate(),end=shift(today,-1);
  const earliestBooking=records.reduce((min,r)=>r.bookedDay&&(!min||r.bookedDay<min)?r.bookedDay:min,null);
  const start=special?(earliestBooking||shift(end,-365)):shift(end,1-7*Number($('dailyForecastHistory')?.value||52));
  const holidayDates=new Set();for(let year=Number(start.slice(0,4))-1;year<=Number(end.slice(0,4))+6;year++)for(const holiday of englandWalesBankHolidays(year))holidayDates.add(holiday);
