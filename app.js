@@ -3707,18 +3707,14 @@ function renderAvailabilityChart(){
  const weekdays=new Set(dates.filter(d=>{const n=new Date(d+'T12:00:00Z').getUTCDay();return n!==0&&n!==6}));
  const counts=new Map();
  const clock=dayView2LondonClock();
+ const selectedNames=new Set(names);
  for(const r of availabilityRecords){
   if(!weekdays.has(r.date))continue;
   const capacityStatus=String(capacityAssignments[r.slot]||'').trim().toLowerCase();
-  // Sent External is an additive series, independent of all dashboard filters,
-  // including excluded slot types, urgency, clinician, mode and purpose.
-  if(capacityStatus==='sent external'){
-   if(urgentAddSignposted){
-    const key=JSON.stringify([r.date,'Sent External']);
-    counts.set(key,(counts.get(key)||0)+r.count);
-   }
-   continue; // Never count these records twice in the main capacity series.
-  }
+  const referral=capacityUrgencyCategory(r.slot).trim().toLowerCase()==='111 referral';
+  // Referral slots can be recorded as Sent External; retain them in their
+  // configured urgency group instead of hiding them with the retired toggle.
+  if(capacityStatus==='sent external'&&!referral)continue;
   if(excludedSlotTypes.has(r.slot))continue;
   if(!selectedNames.has(capacityUrgencyCategory(r.slot))||(!referral&&!urgentClinicianMatches(r.clinician,r.person))||(!referral&&!urgentConsultMatches(r.slot))||(!referral&&!urgentPurposeMatches(r.slot)))continue;
   const urgency=capacityUrgencyCategory(r.slot);
