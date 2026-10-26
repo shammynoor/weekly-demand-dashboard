@@ -3883,7 +3883,7 @@ function renderAvailabilityChart(){
  buckets.forEach((date,i)=>{if((weekly||weekdays.has(date))&&totals[i])annotations.push({x:date,xref:'x',y:totals[i],yref:'y',text:String(totals[i]),showarrow:false,font:{size:weekly?13:10,color:'#425b70'},yshift:15+Math.max(0,names.length-1)*5,yanchor:'bottom'})});
  const note=$('availabilityNote');if(note)note.textContent=names.length?'':'Select an Urgent detailed Appointment Types to display appointments.';
  Plotly.react(target,traces,{dragmode:false,
-  autosize:true,height:640,barmode:'stack',barcornerradius:weekly?3:5,bargap:weekly?0.045:0.025,margin:{l:62,r:18,t:85,b:100},paper_bgcolor:'white',plot_bgcolor:'#e1eaf1',
+  autosize:true,height:640,barmode:'stack',barcornerradius:weekly?6:5,bargap:weekly?0.11:0.025,margin:{l:62,r:18,t:85,b:100},paper_bgcolor:'white',plot_bgcolor:'#e1eaf1',
   legend:{orientation:'h',x:0.5,y:-0.23,xanchor:'center',yanchor:'top',font:{size:13,color:'#42576a'},bgcolor:'rgba(255,255,255,0)'},
   xaxis:{type:'category',categoryorder:'array',categoryarray:buckets,tickmode:'array',tickvals:buckets,ticktext:buckets.map(date=>weekly?'':weekdays.has(date)?new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'short',timeZone:'UTC'}):''),tickangle:-90,tickfont:{size:12,color:'#444444'},showgrid:false,range:[-.5,buckets.length-.5],fixedrange:true},
   yaxis:{title:{text:'Appointment slots',font:{size:12,color:'#708397'}},tickfont:{size:12,color:'#52677b'},range:[0,max],gridcolor:'#e0e8ef',gridwidth:1,zeroline:false,showline:false},annotations,shapes,hovermode:'closest',hoverlabel:{bgcolor:'#ffffff',bordercolor:'#dce5ed',font:{family:'Arial',size:12,color:'#182b3b'},align:'left',namelength:0}
@@ -4055,7 +4055,7 @@ function renderRoutineAvailabilityChart(){
  const note=$('routineAvailabilityNote');
  if(note)note.textContent=matched?'':"No matching Routine Appointment Types appointments found. Check Manage categories → Appointment Types.";
  Plotly.react(target,traces,{dragmode:false,
-  height:640,autosize:true,barmode:'stack',barcornerradius:isDaily?5:3,bargap:isDaily?0.07:0.11,
+  height:640,autosize:true,barmode:'stack',barcornerradius:isDaily?5:6,bargap:isDaily?0.07:0.11,
   margin:{l:62,r:18,t:85,b:100},paper_bgcolor:'#fff',plot_bgcolor:plotBackground,
   legend:{orientation:'h',x:0.5,y:-0.20,xanchor:'center',yanchor:'top',font:{size:13,color:'#42576a'},traceorder:'normal'},
   xaxis:{type:'category',categoryorder:'array',categoryarray:dates,range:[-0.5,dates.length-0.5],tickmode:'array',tickvals:dates,ticktext:isDaily?dates.map(date=>new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'short',timeZone:'UTC'})):dates.map(()=>''),tickangle:-90,tickfont:{size:10},showticklabels:isDaily,showgrid:false,showline:true,linecolor:'#a9b9c7',linewidth:1.5,zeroline:false,fixedrange:true},
