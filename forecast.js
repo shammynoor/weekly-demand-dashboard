@@ -34,7 +34,7 @@ const prefix=mode==='daily'?'dailyForecast':'weeklyForecast',root=$(prefix+'Char
 const names=prioritySort('urgency',groupUrgencyNames.filter(isDashboardToggleOption)).filter(n=>isDaily(n)===(mode==='daily'));
 if(filter.dataset.names!==names.join('|')){filter.dataset.names=names.join('|');filter.replaceChildren();for(const n of names){const row=document.createElement('label');row.className='filter-row';const sw=document.createElement('span');sw.className='switch';const inp=document.createElement('input');inp.type='checkbox';inp.checked=!disabled[mode].has(n);const track=document.createElement('span');track.className='switch-track';track.style.setProperty('--switch-on',urgencyGroupColour(n));sw.append(inp,track);row.append(sw,document.createTextNode(n));filter.append(row);inp.addEventListener('change',()=>{inp.checked?disabled[mode].delete(n):disabled[mode].add(n);render(mode)})}}
 root.replaceChildren();if(!records.length){root.textContent='Load appointment data to generate a forecast.';return}
-const selected=names.filter(n=>!disabled[mode].has(n));if(!selected.length){root.textContent='Select at least one urgency group.';return}
+const selected=names.filter(n=>!disabled[mode].has(n));if(!selected.length){root.textContent='Select at least one Appointment Types.';return}
 const today=forecastLocalDate(),latest=records.reduce((x,r)=>r.bookedDay&&r.bookedDay>x?r.bookedDay:x,'');
 const end=latest&&latest<today?latest:shift(today,-1),weeks=Number($(prefix+'History').value),start=shift(end,1-weeks*7);
 const byDate=new Map(),allDates=new Set();
@@ -187,7 +187,7 @@ function renderHistoricalWeekday(){
  const days=[];let skippedHolidayDays=0;
  if(special){for(const d of eventDates(weekday===6?-1:1))if(d>=start&&d<=end)days.push(d)}
  else for(let d=start;d<=end;d=shift(d,1))if(new Date(d+'T12:00:00Z').getUTCDay()===weekday){if(excludeHolidayWeeks&&holidayWeeks.has(monday(d))){skippedHolidayDays++;continue}days.push(d)}
- if(!records.length||!groups.length||!days.length){summary.textContent=!days.length?'No matching weekdays remain after excluding bank holiday weeks.':'No historical booking data or matching urgency categories are available.';return}
+ if(!records.length||!groups.length||!days.length){summary.textContent=!days.length?'No matching weekdays remain after excluding bank holiday weeks.':'No historical booking data or matching Appointment Types are available.';return}
  const values=days.map(d=>normalise(d,totals.get(d)||0));
  const average=values.reduce((a,b)=>a+b,0)/values.length;
  const sd=Math.sqrt(values.reduce((a,b)=>a+(b-average)**2,0)/values.length);
@@ -345,7 +345,7 @@ function renderHistoricalWeekday(){
     const day=shift(weekStart,dow-1),predictions=dailyGroups.map(name=>predict(name,dow,day)),td=document.createElement('td');
     const adjacent=adjacentTypes.get(day);if(adjacent&&!bankHolidayDates.has(day)){td.classList.add(adjacent==='before'?'forecast-needs-before-holiday':'forecast-needs-after-holiday')}
     if(bankHolidayDates.has(day)){td.className='forecast-needs-bank-holiday';const main=document.createElement('div');main.textContent='Bank holiday';const detail=document.createElement('div');detail.className='forecast-needs-holiday-name';detail.textContent=bankHolidayNames.get(day)||'Public holiday';td.append(main,detail);td.title=day+': '+detail.textContent;}
-    else if(!dailyGroups.length){td.textContent='—';td.title='No urgency groups are set to daily totals';}
+    else if(!dailyGroups.length){td.textContent='—';td.title='No Appointment Types are set to daily totals';}
     else if(predictions.some(value=>value===undefined)){td.textContent='—';dailyValid=false;td.title='At least 12 observed weekdays are needed for a prediction';}
     else{
      const prediction=predictions.reduce((a,b)=>a+b,0),suggested=Math.ceil(prediction);

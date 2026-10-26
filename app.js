@@ -287,12 +287,12 @@ function renderSlotGroupBoxes(){
  };
  const editor=(oldName='')=>{
   const row=document.createElement('div');row.className='slot-mode-editor';
-  const input=document.createElement('input');input.type='text';input.value=oldName;input.placeholder='Urgency group';
+  const input=document.createElement('input');input.type='text';input.value=oldName;input.placeholder='Appointment Types';
   const save=document.createElement('button');save.type='button';save.textContent='Save';
   const cancel=document.createElement('button');cancel.type='button';cancel.textContent='Cancel';
   const commit=()=>{
    const name=input.value.trim();
-   if(!name||name.toLowerCase()==='uncategorised'||groupUrgencyNames.some(x=>x.toLowerCase()===name.toLowerCase()&&x!==oldName)){alert('Enter a unique urgency group name.');return}
+   if(!name||name.toLowerCase()==='uncategorised'||groupUrgencyNames.some(x=>x.toLowerCase()===name.toLowerCase()&&x!==oldName)){alert('Enter a unique Appointment Types name.');return}
    if(oldName){
     groupUrgencyNames=groupUrgencyNames.map(x=>x===oldName?name:x);
     for(const slot of Object.keys(assignments))if(assignments[slot]===oldName)assignments[slot]=name;
@@ -313,7 +313,7 @@ function renderSlotGroupBoxes(){
   rename.addEventListener('click',()=>{const edit=editor(name);row.replaceWith(edit.row);edit.input.focus();edit.input.select()});
   const remove=document.createElement('button');remove.type='button';remove.textContent='×';remove.title='Delete '+name;
   remove.addEventListener('click',()=>{
-   if(!confirm('Delete urgency group "'+name+'"? Its slot assignments will become unassigned.'))return;
+   if(!confirm('Delete Appointment Types "'+name+'"? Its slot assignments will become unassigned.'))return;
    groupUrgencyNames=groupUrgencyNames.filter(x=>x!==name);delete urgencyGroupColours[name];
    for(const slot of Object.keys(assignments))if(assignments[slot]===name)assignments[slot]='Uncategorised';
    bookingTimesDisabledUrgency.delete(name);changed();
@@ -581,7 +581,7 @@ function renderSlotTable(){
   if(stats){const details=document.createElement('span');details.className='slot-type-found-details';details.style.display='block';details.textContent=` — ${stats.count.toLocaleString('en-GB')} found (${formatSlotMonth(stats.min)} – ${formatSlotMonth(stats.max)})`;slotCell.append(details);}
   const countCell=document.createElement('td');countCell.className='slot-found-count';countCell.textContent=(stats?.count||0).toLocaleString('en-GB');
   const urgencyCell=document.createElement('td');urgencyCell.className='people-assigned-cell';
-  const urgencySelect=document.createElement('select');urgencySelect.className='people-clinician-select';urgencySelect.setAttribute('aria-label','Urgency for '+slot);
+  const urgencySelect=document.createElement('select');urgencySelect.className='people-clinician-select';urgencySelect.setAttribute('aria-label','Appointment Types for '+slot);
   for(const name of ['',...groupUrgencyNames]){const option=document.createElement('option');option.value=name;option.textContent=name||'Unassigned';urgencySelect.append(option)}
   urgencySelect.value=groupUrgencyNames.includes(assignments[slot])?assignments[slot]:'';
   urgencySelect.addEventListener('change',()=>{
@@ -624,7 +624,7 @@ function renderSlotTable(){
 /* Smart allocation: suggestions are transient until explicitly approved. */
 let smartSlotSuggestions=[];
 const smartDimensions=()=>[
- {key:'urgency',label:'Urgency',names:groupUrgencyNames,map:assignments},
+ {key:'urgency',label:'Appointment Types',names:groupUrgencyNames,map:assignments},
  {key:'mode',label:'Consult Mode',names:consultCategoryNames,map:consultAssignments},
  {key:'purpose',label:'Slot Purpose',names:purposeCategoryNames,map:purposeAssignments},
  {key:'capacity',label:'Capacity Status',names:capacityCategoryNames,map:capacityAssignments}
@@ -1378,7 +1378,7 @@ function renderDropEditor(dimension){
  }
  pool.append(makeZone('Uncategorised',true));
  for(const c of cfg.names)boxes.append(makeZone(c));
- $(cfg.summary).textContent=cfg.items.filter(t=>cfg.names.includes(cfg.assign[t])).length+' of '+cfg.items.length+(dimension==='groupUrgency'?' detailed urgency categories':dimension==='clinicianGroup'?' detailed clinician categories':dimension==='clinician'?' clinician user types':' slot types')+' assigned. Drag a slot icon into a category box (or select it, then click a box).';
+ $(cfg.summary).textContent=cfg.items.filter(t=>cfg.names.includes(cfg.assign[t])).length+' of '+cfg.items.length+(dimension==='groupUrgency'?' detailed Appointment Types':dimension==='clinicianGroup'?' detailed clinician categories':dimension==='clinician'?' clinician user types':' slot types')+' assigned. Drag a slot icon into a category box (or select it, then click a box).';
 }
 
 // Only replace an existing CSV in the selected source folder. Never create files,
@@ -1740,7 +1740,7 @@ async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;
 const drawingErrors=[];
  for(const [label,draw] of [
   ['category filters',()=>rebuildCategoryFilter()],
-  ['urgency categories',()=>renderEditor()],
+  ['Appointment Types',()=>renderEditor()],
   ['clinician categories',()=>renderClinicianEditor()],
   ['clinician groups',()=>renderClinicianGroupEditor()],
   ['consult categories',()=>renderConsultEditor()],
@@ -1986,7 +1986,7 @@ function hideEmptyHistoricBookingFilters(){
   const selected=groupUrgencyNames.filter(name=>isDashboardToggleOption(name)&&!disabledDemandUrgencyGroups.has(name)).length;
   additive.disabled=selected<=1;
   const row=additive.closest('label');
-  if(row){row.hidden=false;row.style.opacity=selected<=1?'0.4':'';row.style.cursor=selected<=1?'not-allowed':'';row.title=selected<=1?'Select at least two urgency groups to enable Additive Lines':'';}
+  if(row){row.hidden=false;row.style.opacity=selected<=1?'0.4':'';row.style.cursor=selected<=1?'not-allowed':'';row.title=selected<=1?'Select at least two Appointment Types to enable Additive Lines':'';}
  }
  refreshActivitySecondarySummaries();
 }
@@ -2144,7 +2144,7 @@ function renderDemandUrgencyToggles(){
  const root=$('demandUrgencyToggles');if(!root)return;
  const names=groupUrgencyNames.filter(isDashboardToggleOption);
  if(names.length===lastDemandUrgencyGroupNames.length&&names.every((n,i)=>n===lastDemandUrgencyGroupNames[i])){
-  root.querySelectorAll('input[data-urgency-group]').forEach(input=>{input.checked=!disabledDemandUrgencyGroups.has(input.dataset.urgencyGroup);input.nextElementSibling?.style.setProperty('--switch-on',urgencyGroupColour(input.dataset.urgencyGroup));});
+  root.querySelectorAll('input[data-Appointment Types]').forEach(input=>{input.checked=!disabledDemandUrgencyGroups.has(input.dataset.urgencyGroup);input.nextElementSibling?.style.setProperty('--switch-on',urgencyGroupColour(input.dataset.urgencyGroup));});
   return;
  }
  if(!demandUrgencyDefaultsApplied&&names.length){
@@ -2154,7 +2154,7 @@ function renderDemandUrgencyToggles(){
  }
  lastDemandUrgencyGroupNames=names;
  root.replaceChildren();
- if(!names.length){const note=document.createElement('span');note.className='hint';note.textContent='Create urgency groups in Slot settings.';root.append(note);return;}
+ if(!names.length){const note=document.createElement('span');note.className='hint';note.textContent='Create Appointment Types in Slot settings.';root.append(note);return;}
  for(const name of names){
   const row=document.createElement('label');row.className='filter-row';
   const switchEl=document.createElement('span');switchEl.className='switch';
@@ -2304,7 +2304,7 @@ function drawCombinedDemandChart(){
   showlegend:!continuousMode,legend:{orientation:'h',y:1.14,x:0,xanchor:'left',yanchor:'bottom',entrywidth:85,entrywidthmode:'pixels',traceorder:'normal'},
   xaxis:continuousMode?{type:'date',title:monthlyMode?'Booking month':'Booking date',tickformat:'%b %Y',gridcolor:'#edf1f5',...(range?{range}: {})}:axis,
   yaxis:{title:'Appointments',range:[0,yAxisTop],nticks:6,gridcolor:'#edf1f5'},hovermode:'closest',
-  annotations:!selected.length?[{text:'Select an urgency type to display appointments',xref:'paper',yref:'paper',x:.5,y:.5,showarrow:false}]:averageAnnotations
+  annotations:!selected.length?[{text:'Select an appointment type to display appointments',xref:'paper',yref:'paper',x:.5,y:.5,showarrow:false}]:averageAnnotations
  },{responsive:true,displaylogo:false,displayModeBar:false,scrollZoom:false,doubleClick:false}).then(()=>{installDemandCardTooltip($('combinedDemandChart'));$('combinedDemandChart')?.querySelectorAll('.annotation rect').forEach(rect=>{rect.setAttribute('rx','14');rect.setAttribute('ry','14');});});
 }
 drawCombinedDemandChart();
@@ -2771,7 +2771,7 @@ function renderWaitingTrendChart(){
  }
  const useHours=highestMedian>0&&highestMedian*1.12<2;
  if(useHours)for(const trace of traces){trace.y=trace.y.map(v=>v*24);trace.hovertemplate=trace.hovertemplate.replace(' days',' hours');}
- const note=$('waitingTrendNote');if(note)note.textContent='Monthly median of booked-to-slot waiting times (days).'+(suppressSmall?' Months below 0.35% of the selected urgency group total are hidden ('+suppressedCount+' points).':'')+(ignoreRoutineSameDay?' Routine appointments booked less than one day ahead are excluded.':'');
+ const note=$('waitingTrendNote');if(note)note.textContent='Monthly median of booked-to-slot waiting times (days).'+(suppressSmall?' Months below 0.35% of the selected Appointment Types total are hidden ('+suppressedCount+' points).':'')+(ignoreRoutineSameDay?' Routine appointments booked less than one day ahead are excluded.':'');
  Plotly.react(chart,traces,{height:560,autosize:true,margin:{l:72,r:25,t:40,b:75},paper_bgcolor:'#fff',plot_bgcolor:'#fff',hovermode:'x unified',hoverlabel:{bgcolor:'#fff',bordercolor:'#dce6ef',font:{color:'#142d43',size:12},align:'left'},xaxis:{type:'date',title:'Appointment month',tickformat:'%b %Y',gridcolor:'#edf1f5'},yaxis:{title:{text:useHours?'Hours':'Days',standoff:12},rangemode:'tozero',gridcolor:'#edf1f5'},legend:{orientation:'h',y:1.13,x:0}},{responsive:true,displayModeBar:false}).then(()=>installTrendCardTooltip(chart,useHours));
 }
 
@@ -3054,8 +3054,8 @@ function dayView2PaceContext(date,names,totals){
  const year=Number(date.slice(0,4)),holidays=new Set([...englandWalesBankHolidays(year-1),...englandWalesBankHolidays(year)]);
  const total=Object.values(totals).reduce((sum,count)=>sum+count,0);
  let baseline=null,state='unavailable',status,description;
- if(!names.length){status='Select urgency groups';description='Choose an urgency group to compare today’s booking pace.';}
- else if(!total){status='No Slot Report data';description='No Slot Report capacity is reported for today and the selected urgency groups.';}
+ if(!names.length){status='Select Appointment Types';description='Choose an appointment type to compare today’s booking pace.';}
+ else if(!total){status='No Slot Report data';description='No Slot Report capacity is reported for today and the selected Appointment Types.';}
  else if(!hasTimestamp){status='Snapshot time unavailable';description='Import a Slot Report with a file timestamp to compare the same time of day.';}
  else if(snapshotDate!==date){status='Awaiting today’s data';description='The latest Slot Report is from '+snapshot.toLocaleDateString('en-GB',{day:'numeric',month:'long',timeZone:'Europe/London'})+'. Refresh today’s report for a weekday comparison.';}
  else if([...holidays].some(holiday=>mondayOf(holiday)===mondayOf(date))){status='Bank holiday week';description='A normal '+weekday+' comparison is not shown during a bank-holiday week.';}
@@ -3154,7 +3154,7 @@ function renderDayView2(){
 
  const urgencyLegend=$('dayView2UrgencyLegend');urgencyLegend.replaceChildren();
  for(const name of [...selected.groups.keys()].sort((a,b)=>dayView2UrgencyOrder(a)-dayView2UrgencyOrder(b))){
-  const key=document.createElement('span');const dot=document.createElement('i');dot.className='day-view2-urgency-key';dot.style.backgroundColor=urgencyGroupColour(name);dot.setAttribute('aria-hidden','true');
+  const key=document.createElement('span');const dot=document.createElement('i');dot.className='day-view2-appointment type-key';dot.style.backgroundColor=urgencyGroupColour(name);dot.setAttribute('aria-hidden','true');
   key.append(dot,document.createTextNode(name));urgencyLegend.append(key);
  }
  $('dayView2Total').textContent=number(total)+' total slots';
@@ -3177,17 +3177,17 @@ function renderDayView2(){
  if(weekendGap){const gap=document.createElement('div');gap.className='day-view2-weekend-gap';gap.textContent='Weekend · '+dayView2DateLabel(dayView2AddDays(previousDate,1))+' – '+dayView2DateLabel(dayView2AddDays(laneDate,-1));lanes.append(gap);}
  const lane=document.createElement('section');lane.className='day-view2-lane';lane.dataset.date=laneDate;
  const heading=document.createElement('div');heading.className='day-view2-lane-heading';
- const title=document.createElement('h3');title.textContent=offset===0?'Capacity by urgency group':(offset===1?(!weekendGap&&date===dayView2LocalDate()?'Tomorrow':'Next working day'):'Two working days ahead')+' · '+laneDateLabel;
+ const title=document.createElement('h3');title.textContent=offset===0?'Capacity by Appointment Types':(offset===1?(!weekendGap&&date===dayView2LocalDate()?'Tomorrow':'Next working day'):'Two working days ahead')+' · '+laneDateLabel;
  const summary=document.createElement('span');summary.textContent=number(laneTotals.booked)+' booked · '+number(laneTotals.available)+' available'+(laneTotals.missedEmpty?' · '+number(laneTotals.missedEmpty)+' Missed Empty':'')+' · '+number(laneTotal)+' total';
  heading.append(title,summary);
- const bar=document.createElement('div');bar.className='day-view2-bar';bar.setAttribute('role','group');bar.setAttribute('aria-label',laneDateLabel+' capacity by urgency group, then booking status');
+ const bar=document.createElement('div');bar.className='day-view2-bar';bar.setAttribute('role','group');bar.setAttribute('aria-label',laneDateLabel+' capacity by Appointment Types, then booking status');
 
  const orderedGroups=[...laneDay.groups].sort((a,b)=>dayView2UrgencyOrder(a[0])-dayView2UrgencyOrder(b[0]));
  for(const [name,counts] of orderedGroups){
   const groupTotal=statuses.reduce((sum,status)=>sum+counts[status],0);
   if(!groupTotal)continue;
   const colour=urgencyGroupColour(name);
-  const groupSpan=document.createElement('div');groupSpan.className='day-view2-urgency-span';groupSpan.style.flex='0 0 calc((100% - var(--day-view2-gap-budget)) * '+(groupTotal/scaleMax)+')';groupSpan.setAttribute('role','group');groupSpan.setAttribute('aria-label',name);
+  const groupSpan=document.createElement('div');groupSpan.className='day-view2-appointment type-span';groupSpan.style.flex='0 0 calc((100% - var(--day-view2-gap-budget)) * '+(groupTotal/scaleMax)+')';groupSpan.setAttribute('role','group');groupSpan.setAttribute('aria-label',name);
   installDayView2GroupTooltip(groupSpan,{name,date:laneDateLabel,counts,colour});
 
   for(const status of statuses){
@@ -3213,7 +3213,7 @@ function renderDayView2(){
  if(offset===0){const pace=createDayView2BookingPace(date,[...selected.groups.keys()],slotTotals,paceContext);if(pace){if(paceExpanded)pace.querySelector('details')?.setAttribute('open','');lane.append(pace);}const further=createDayView2FurtherBooking(paceContext);if(further)lane.append(further);}
  if(!laneTotal){
   const noData=document.createElement('p');noData.className='muted day-view2-note';
-  noData.textContent=!laneDay.groups.size?'Select an urgency group to view capacity.':'No capacity reported for '+laneDateLabel+' and the selected urgency groups.';
+  noData.textContent=!laneDay.groups.size?'Select an appointment type to view capacity.':'No capacity reported for '+laneDateLabel+' and the selected Appointment Types.';
   lane.append(noData);
  }
  if(laneDay.unknown&&offset>0){const unknownNote=document.createElement('p');unknownNote.className='muted day-view2-note';unknownNote.textContent=number(laneDay.unknown)+' slots with unrecognised statuses are excluded from this day’s totals.';lane.append(unknownNote);}
@@ -3224,7 +3224,7 @@ function renderDayView2(){
  if(typeof ResizeObserver!=='undefined'){dayView2SegmentObserver=new ResizeObserver(()=>layoutDayView2SegmentCounts(lanes));dayView2SegmentObserver.observe(lanes);}
  const empty=$('dayView2Empty');
  empty.classList.toggle('hidden',total>0);
- empty.textContent=!selected.groups.size?'Select an urgency group to view capacity.':!availabilityRecords.length?'Load your Slot Reports to view daily capacity.':selected.unknown?'No recognised capacity statuses for this date and selection.':'No capacity reported for this date and selection.';
+ empty.textContent=!selected.groups.size?'Select an appointment type to view capacity.':!availabilityRecords.length?'Load your Slot Reports to view daily capacity.':selected.unknown?'No recognised capacity statuses for this date and selection.':'No capacity reported for this date and selection.';
  const unknown=$('dayView2Unknown');unknown.classList.toggle('hidden',selected.unknown===0);unknown.textContent=number(selected.unknown)+' slots have an unrecognised status and are excluded from these totals.';
  const upcoming=$('dayView2Upcoming');upcoming.replaceChildren();
  for(let i=1;i<=7;i++){
@@ -3392,7 +3392,7 @@ function changeAvailabilityFilter(page,disabled,name,checked,checkbox){
  (page==='urgent'?renderAvailabilityChart:page==='planned'?renderPlannedAvailabilityChart:renderRoutineAvailabilityChart)();
 }
 function removeInvalidDashboardToggles(){
- document.querySelectorAll('input[data-filter-name],input[data-classification],input[data-urgency-group]').forEach(input=>{
+ document.querySelectorAll('input[data-filter-name],input[data-classification],input[data-Appointment Types]').forEach(input=>{
   const name=input.dataset.filterName||input.dataset.classification||input.dataset.urgencyGroup;
   if(!isDashboardToggleOption(name)){
    input.checked=false;
@@ -3635,7 +3635,7 @@ function renderUrgentCategoryToggles(){
  const current=[...root.querySelectorAll('input[data-filter-name]')].map(x=>x.dataset.filterName);
  if(current.length===names.length&&current.every((x,i)=>x===names[i])){root.querySelectorAll('input[data-filter-name]').forEach(input=>input.nextElementSibling?.style.setProperty('--switch-on',urgentColour(input.dataset.filterName)));return;}
  root.replaceChildren();
- if(!names.length){root.textContent='Create urgency categories in Slot Settings to display capacity.';return}
+ if(!names.length){root.textContent='Create Appointment Types in Slot Settings to display capacity.';return}
  for(const name of names){
   const row=document.createElement('label');row.className='filter-row';
   const sw=document.createElement('span');sw.className='switch';
@@ -3824,7 +3824,7 @@ function renderAvailabilityChart(){
   annotations.push({x,xref:'x',y:1.005,yref:'paper',text:capacityTodayLabel(),align:'left',showarrow:false,font:{size:17,color:'#206ca6'},xanchor:'left',yanchor:'top',xshift:7,yshift:-8});
  }
  buckets.forEach((date,i)=>{if((weekly||weekdays.has(date))&&totals[i])annotations.push({x:date,xref:'x',y:totals[i],yref:'y',text:String(totals[i]),showarrow:false,font:{size:weekly?13:10,color:'#425b70'},yshift:15+Math.max(0,names.length-1)*5,yanchor:'bottom'})});
- const note=$('availabilityNote');if(note)note.textContent=names.length?'':'Select an Urgent detailed urgency category to display appointments.';
+ const note=$('availabilityNote');if(note)note.textContent=names.length?'':'Select an Urgent detailed Appointment Types to display appointments.';
  Plotly.react(target,traces,{dragmode:false,
   autosize:true,height:640,barmode:'stack',barcornerradius:weekly?3:5,bargap:weekly?0.045:0.025,margin:{l:62,r:18,t:85,b:100},paper_bgcolor:'white',plot_bgcolor:'#e1eaf1',
   legend:{orientation:'h',x:0.5,y:-0.23,xanchor:'center',yanchor:'top',font:{size:13,color:'#42576a'},bgcolor:'rgba(255,255,255,0)'},
@@ -3857,7 +3857,7 @@ function renderRoutineCategoryToggles(){
   return;
  }
  root.replaceChildren();
- if(!names.length){root.textContent='Create urgency categories in Slot Settings.';return}
+ if(!names.length){root.textContent='Create Appointment Types in Slot Settings.';return}
  for(const name of names){
   const row=document.createElement('label');row.className='filter-row';
   const sw=document.createElement('span');sw.className='switch';
@@ -3996,7 +3996,7 @@ function renderRoutineAvailabilityChart(){
  for(let i=0;i<weeks.length-1;i++){const boundary=isDaily?(i+1)*7-0.5:i+0.5;shapes.push({type:'line',xref:'x',yref:'paper',x0:boundary,x1:boundary,y0:0,y1:1,line:{color:'#bdcbd6',width:1,dash:'dot'},layer:'above'});}
  if(todayX!==null)annotations.push({xref:'x',yref:'paper',x:todayX,y:0.96,text:capacityTodayLabel(),align:'left',showarrow:false,xanchor:'left',yanchor:'top',xshift:7,font:{size:17,color:'#206ca6'}});
  const note=$('routineAvailabilityNote');
- if(note)note.textContent=matched?'':"No matching Routine urgency-group appointments found. Check Manage categories → Urgency Group.";
+ if(note)note.textContent=matched?'':"No matching Routine Appointment Types appointments found. Check Manage categories → Appointment Types.";
  Plotly.react(target,traces,{dragmode:false,
   height:640,autosize:true,barmode:'stack',barcornerradius:isDaily?5:3,bargap:isDaily?0.07:0.11,
   margin:{l:62,r:18,t:85,b:100},paper_bgcolor:'#fff',plot_bgcolor:plotBackground,
@@ -4032,7 +4032,7 @@ function renderPlannedCategoryToggles(){
   return;
  }
  root.replaceChildren();
- if(!names.length){root.textContent='Create urgency categories in Slot Settings.';return}
+ if(!names.length){root.textContent='Create Appointment Types in Slot Settings.';return}
  for(const name of names){
   const row=document.createElement('label');row.className='filter-row';
   const sw=document.createElement('span');sw.className='switch';
@@ -4166,7 +4166,7 @@ function renderPlannedAvailabilityChart(){
  for(let i=0;i<weeks.length-1;i++){const boundary=isDaily?(i+1)*7-0.5:i+0.5;shapes.push({type:'line',xref:'x',yref:'paper',x0:boundary,x1:boundary,y0:0,y1:1,line:{color:'#bdcbd6',width:1,dash:'dot'},layer:'above'});}
  if(todayX!==null)annotations.push({xref:'x',yref:'paper',x:todayX,y:0.96,text:'Today',showarrow:false,xanchor:'left',yanchor:'top',xshift:7,font:{size:17,color:'#206ca6'}});
  const note=$('plannedAvailabilityNote');
- if(note)note.textContent=matched?'':"No matching Planned urgency-group appointments found. Check Manage categories → Urgency Group.";
+ if(note)note.textContent=matched?'':"No matching Planned Appointment Types appointments found. Check Manage categories → Appointment Types.";
  Plotly.react(target,traces,{dragmode:false,
   height:640,autosize:true,barmode:'stack',barcornerradius:isDaily?5:3,bargap:isDaily?0.07:0.11,
   margin:{l:62,r:18,t:85,b:100},paper_bgcolor:'#fff',plot_bgcolor:plotBackground,
