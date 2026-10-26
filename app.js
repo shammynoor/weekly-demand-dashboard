@@ -1664,6 +1664,7 @@ const drawingErrors=[];
   ['consult categories',()=>renderConsultEditor()],
   ['weekly charts',()=>refresh()],
   ['availability chart',()=>renderAvailabilityChart()],
+  ['Day View 2',()=>renderDayView2()],
   ['routine availability chart',()=>renderRoutineAvailabilityChart()],
   ['booking times chart',()=>renderBookingTimesChart()],
   ['signposting chart',()=>renderSignpostingChart()]
@@ -2261,7 +2262,7 @@ function refreshPriorityEditors(){
       [ordered[from],ordered[to]]=[ordered[to],ordered[from]];
       togglePriority[kind]=ordered;
       saveCategories();refreshPriorityEditors();refreshPriorityToggles();
-      renderUrgentCategoryToggles();renderRoutineCategoryToggles();renderPlannedCategoryToggles();renderDayView();
+      renderUrgentCategoryToggles();renderRoutineCategoryToggles();renderPlannedCategoryToggles();renderDayView();renderDayView2();
      });
      return button;
     };
@@ -2278,7 +2279,7 @@ function refreshPriorityEditors(){
  }
 }
 const priorityToggleIds={
- urgency:['demandUrgencyToggles','dayViewUrgencyToggles','routineCategoryToggles','plannedCategoryToggles','bookingTimesUrgencyFilters','urgentCategoryToggles'],
+ urgency:['demandUrgencyToggles','dayViewUrgencyToggles','dayView2UrgencyToggles','routineCategoryToggles','plannedCategoryToggles','bookingTimesUrgencyFilters','urgentCategoryToggles'],
  mode:['consultChartFilters','routineConsultFilters','plannedConsultFilters','bookingTimesConsultFilters'],
  purpose:['demandPurposeToggles','urgentPurposeToggles','routinePurposeFilters','plannedPurposeFilters','bookingTimesPurposeFilters'],
  capacity:['demandCapacityToggles','urgentCapacityToggles','routineCapacityFilters','plannedCapacityFilters','bookingTimesCapacityFilters']
@@ -2802,10 +2803,120 @@ $('dayViewTimeSlider')?.addEventListener('input',renderDayView);
 $('dayViewDate')?.addEventListener('change',renderDayView);
 $('dayViewToday')?.addEventListener('click',()=>{$('dayViewDate').value=dayViewLocalDate();renderDayView();});
 
+
+// Day View 2 uses appointment-date availability snapshots, independently of booking-date Day View.
+const dayView2DisabledUrgencies=new Set();
+function dayView2LocalDate(){
+ const parts=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/London',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
+ const p=Object.fromEntries(parts.map(part=>[part.type,part.value]));
+ return p.year+'-'+p.month+'-'+p.day;
+}
+function dayView2AddDays(date,days){
+ const value=new Date(date+'T12:00:00Z');value.setUTCDate(value.getUTCDate()+days);return value.toISOString().slice(0,10);
+}
+function collectDayView2Capacity(date,names,disabled,rows){
+ const statuses=['booked','available','embargoed','blocked'];
+ const active=names.filter(name=>!disabled.has(name));
+ const days=new Map(Array.from({length:8},(_,i)=>[dayView2AddDays(date,i),{groups:new Map(active.map(name=>[name,{booked:0,available:0,embargoed:0,blocked:0}])),totals:{booked:0,available:0,embargoed:0,blocked:0},unknown:0,matched:0}]));
+ for(const r of rows){
+  const day=days.get(r.date);
+  if(!day||excludedSlotTypes.has(r.slot)||String(capacityAssignments[r.slot]||'').trim().toLowerCase()==='sent external')continue;
+  const group=day.groups.get(capacityUrgencyCategory(r.slot));
+  if(!group)continue;
+  const count=Number(r.count);
+  if(!Number.isFinite(count)||count<=0)continue;
+  day.matched+=count;
+  const status=String(r.availability||'').trim().toLowerCase();
+  if(!statuses.includes(status)){day.unknown+=count;continue;}
+  group[status]+=count;day.totals[status]+=count;
+ }
+ return days;
+}
+function renderDayView2(){
+ const page=$('dayView2Page'),input=$('dayView2Date'),filters=$('dayView2UrgencyToggles');
+ if(!page||page.classList.contains('hidden')||!input||!filters)return;
+ if(!input.value)input.value=dayView2LocalDate();
+ const date=input.value,names=prioritySort('urgency',groupUrgencyNames.filter(isDashboardToggleOption));
+ const signature=JSON.stringify(names);
+ if(filters.dataset.groups!==signature){
+  filters.dataset.groups=signature;filters.replaceChildren();
+  for(const name of names){
+   const label=document.createElement('label');label.className='filter-row';
+   const sw=document.createElement('span');sw.className='switch';
+   const checkbox=document.createElement('input');checkbox.type='checkbox';checkbox.setAttribute('role','switch');checkbox.dataset.filterName=name;checkbox.setAttribute('aria-label','Include '+name);
+   const track=document.createElement('span');track.className='switch-track';
+   const caption=document.createElement('span');caption.textContent=name;
+   sw.append(checkbox,track);label.append(sw,caption);filters.append(label);
+   checkbox.addEventListener('change',()=>{if(checkbox.checked)dayView2DisabledUrgencies.delete(name);else dayView2DisabledUrgencies.add(name);renderDayView2();});
+  }
+ }
+ filters.querySelectorAll('input[data-filter-name]').forEach(checkbox=>{
+  checkbox.checked=!dayView2DisabledUrgencies.has(checkbox.dataset.filterName);
+  checkbox.nextElementSibling.style.setProperty('--switch-on',urgencyGroupColour(checkbox.dataset.filterName));
+ });
+ const days=collectDayView2Capacity(date,names,dayView2DisabledUrgencies,availabilityRecords),selected=days.get(date),totals=selected.totals;
+ const statuses=['booked','available','embargoed','blocked'];
+ const number=n=>n.toLocaleString('en-GB');
+ const total=statuses.reduce((sum,status)=>sum+totals[status],0);
+ $('dayView2SelectedDate').textContent=new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric',timeZone:'UTC'});
+ for(const status of statuses)$('dayView2'+status[0].toUpperCase()+status.slice(1)).textContent=number(totals[status]);
+ $('dayView2Total').textContent=number(total)+' total slots';
+ const bookable=totals.booked+totals.available;
+ $('dayView2Fill').textContent=bookable?Math.round(100*totals.booked/bookable)+'% of bookable capacity filled':'No bookable slots reported';
+ $('dayView2Detail').textContent='Select a capacity segment for its count and meaning.';
+ const lanes=$('dayView2Lanes');lanes.replaceChildren();
+ for(const [name,counts] of selected.groups){
+  const lane=document.createElement('section');lane.className='day-view2-lane';
+  const heading=document.createElement('div');heading.className='day-view2-lane-heading';
+  const title=document.createElement('h3');title.textContent=name;
+  const dot=document.createElement('span');dot.className='day-view-dot';dot.style.backgroundColor=urgencyGroupColour(name);
+  title.prepend(dot);
+  const summary=document.createElement('span');summary.textContent=number(counts.booked)+' booked · '+number(counts.available)+' available';
+  heading.append(title,summary);
+  const laneTotal=statuses.reduce((sum,status)=>sum+counts[status],0);
+  const bar=document.createElement('div');bar.className='day-view2-bar';bar.setAttribute('role','group');bar.setAttribute('aria-label',name+' capacity breakdown');
+  for(const status of statuses){
+   if(!counts[status])continue;
+   const segment=document.createElement('button');segment.type='button';segment.className='day-view2-segment day-view2-'+status;segment.style.flex=String(counts[status]);
+   segment.setAttribute('aria-label',name+': '+number(counts[status])+' '+status+' slots');
+   segment.title=name+': '+number(counts[status])+' '+status+' slots';
+   if(counts[status]/laneTotal>=.12)segment.textContent=number(counts[status]);
+   segment.addEventListener('click',()=>{
+    const meaning={booked:'Already booked for this appointment date.',available:'Free to book in the loaded report; appointment times are not supplied, so this may include earlier slots.',embargoed:'Held from booking. The report does not supply a release time.',blocked:'Currently unavailable; these slots are not counted as free to book.'};
+    $('dayView2Detail').textContent=name+' · '+number(counts[status])+' '+status+' slots. '+meaning[status];
+   });
+   bar.append(segment);
+  }
+  const caption=document.createElement('p');caption.className='day-view2-lane-caption';
+  caption.textContent=laneTotal?number(counts.embargoed)+' embargoed · '+number(counts.blocked)+' blocked · '+number(laneTotal)+' total':'No capacity reported for this urgency group.';
+  lane.append(heading,bar,caption);lanes.append(lane);
+ }
+ const empty=$('dayView2Empty');
+ empty.classList.toggle('hidden',total>0);
+ empty.textContent=!selected.groups.size?'Select an urgency group to view capacity.':!availabilityRecords.length?'Load your Slot Reports to view daily capacity.':selected.unknown?'No recognised capacity statuses for this date and selection.':'No capacity reported for this date and selection.';
+ const unknown=$('dayView2Unknown');unknown.classList.toggle('hidden',selected.unknown===0);unknown.textContent=number(selected.unknown)+' slots have an unrecognised status and are excluded from these totals.';
+ const upcoming=$('dayView2Upcoming');upcoming.replaceChildren();
+ for(let i=1;i<=7;i++){
+  const nextDate=dayView2AddDays(date,i),day=days.get(nextDate),card=document.createElement('button');
+  card.type='button';card.className='secondary day-view2-upcoming-day';
+  const dateLabel=document.createElement('strong');dateLabel.textContent=new Date(nextDate+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',timeZone:'UTC'});
+  const embargoed=document.createElement('span');embargoed.textContent=number(day.totals.embargoed)+' embargoed';
+  const blocked=document.createElement('span');blocked.textContent=number(day.totals.blocked)+' blocked';
+  card.append(dateLabel,embargoed,blocked);
+  if(!day.matched){const note=document.createElement('small');note.textContent='No capacity reported';card.append(note);}
+  card.setAttribute('aria-label','View '+dateLabel.textContent+': '+embargoed.textContent+', '+blocked.textContent);
+  card.addEventListener('click',()=>{input.value=nextDate;renderDayView2();});upcoming.append(card);
+ }
+}
+$('dayView2Date')?.addEventListener('change',renderDayView2);
+$('dayView2Today')?.addEventListener('click',()=>{$('dayView2Date').value=dayView2LocalDate();renderDayView2();});
+$('dayView2Previous')?.addEventListener('click',()=>{$('dayView2Date').value=dayView2AddDays($('dayView2Date').value||dayView2LocalDate(),-1);renderDayView2();});
+$('dayView2Next')?.addEventListener('click',()=>{$('dayView2Date').value=dayView2AddDays($('dayView2Date').value||dayView2LocalDate(),1);renderDayView2();});
+
 function showPage(which){
  closeSettingsMenu();closeAvailabilityNavMenu();closeDemandNavMenu();
  if(!isOwner&&(which==='categories'||which==='people'||which==='practiceSettings'))return;
- for(const [page,nav,name] of [['homePage','navHome','home'],['chartPage','navChart','chart'],['waitingTimesPage','navWaitingTimes','waitingTimes'],['waitingOverTimePage','navWaitingTrend','waitingTrend'],['categoryPage','navCategories','categories'],['availabilityPage','navAvailability','availability'],['routineAvailabilityPage','navRoutineAvailability','routineAvailability'],['plannedAvailabilityPage','navPlannedAvailability','plannedAvailability'],['dayViewPage','navDayView','dayView'],['bookingTimesPage','navBookingTimes','bookingTimes'],['signpostingPage','navSignposting','signposting'],['peoplePage','navPeople','people'],['practiceSettingsPage','navPracticeSettings','practiceSettings']]){
+ for(const [page,nav,name] of [['homePage','navHome','home'],['chartPage','navChart','chart'],['waitingTimesPage','navWaitingTimes','waitingTimes'],['waitingOverTimePage','navWaitingTrend','waitingTrend'],['categoryPage','navCategories','categories'],['availabilityPage','navAvailability','availability'],['routineAvailabilityPage','navRoutineAvailability','routineAvailability'],['plannedAvailabilityPage','navPlannedAvailability','plannedAvailability'],['dayViewPage','navDayView','dayView'],['dayView2Page','navDayView2','dayView2'],['bookingTimesPage','navBookingTimes','bookingTimes'],['signpostingPage','navSignposting','signposting'],['peoplePage','navPeople','people'],['practiceSettingsPage','navPracticeSettings','practiceSettings']]){
   $(page).classList.toggle('hidden',which!==name);$(nav).classList.toggle('active',which===name);
  }
  if(which==='home')updateHomePracticeName();
@@ -2816,13 +2927,14 @@ function showPage(which){
  else if(which==='routineAvailability')setTimeout(renderRoutineAvailabilityChart,0);
  else if(which==='plannedAvailability')setTimeout(renderPlannedAvailabilityChart,0);
  else if(which==='dayView')setTimeout(renderDayView,0);
+ else if(which==='dayView2')setTimeout(renderDayView2,0);
  else if(which==='bookingTimes')setTimeout(renderBookingTimesChart,0);
  else if(which==='signposting')setTimeout(renderSignpostingChart,0);
  else if(which==='people'){renderPeopleGroups();renderPeopleGroupFilter();renderPeople();}
  else if(which==='practiceSettings'){renderPracticeSettings();}
  else {renderSlotGroupBoxes();renderSlotTable();renderEditor();renderGroupUrgencyEditor();renderClinicianEditor();renderClinicianGroupEditor();renderConsultEditor()}
 }document.getElementById('navHome').onclick=()=>showPage('home');document.getElementById('navChart').onclick=()=>showPage('chart');document.getElementById('navWaitingTimes').onclick=()=>showPage('waitingTimes');document.getElementById('navWaitingTrend').onclick=()=>showPage('waitingTrend');document.getElementById('navCategories').onclick=()=>showPage('categories');document.getElementById('navAvailability').onclick=()=>showPage('availability');document.getElementById('navRoutineAvailability').onclick=()=>showPage('routineAvailability');
-document.getElementById('navPlannedAvailability').onclick=()=>showPage('plannedAvailability');document.getElementById('navDayView').onclick=()=>showPage('dayView');document.getElementById('navBookingTimes').onclick=()=>showPage('bookingTimes');document.getElementById('navSignposting').onclick=()=>showPage('signposting');document.getElementById('navPeople').onclick=()=>showPage('people');document.getElementById('navPracticeSettings').onclick=()=>showPage('practiceSettings');$('demandAdditiveLines')?.addEventListener('change',()=>{const chart=$('combinedDemandChart');if(chart&&window.Plotly)Plotly.purge(chart);scheduleDemandRefresh();});$('slotTableSearch').addEventListener('input',renderSlotTable);for(const id of ['slotGroupFilter','slotModeFilter','slotPurposeFilter','slotCapacityFilter'])$(id)?.addEventListener('change',renderSlotTable);$('slotUnassignedOnly').addEventListener('change',renderSlotTable);$('slotModeUnassignedOnly').addEventListener('change',renderSlotTable);$('slotPurposeUnassignedOnly').addEventListener('change',renderSlotTable);$('slotCapacityUnassignedOnly').addEventListener('change',renderSlotTable);$('peopleSearch').addEventListener('input',renderPeople);$('peopleGroupFilter').addEventListener('change',renderPeople);$('peopleUnassignedOnly').addEventListener('change',()=>{const only=$('peopleUnassignedOnly').checked;$('peopleGroupFilter').disabled=only;renderPeople()});
+document.getElementById('navPlannedAvailability').onclick=()=>showPage('plannedAvailability');document.getElementById('navDayView').onclick=()=>showPage('dayView');document.getElementById('navDayView2').onclick=()=>showPage('dayView2');document.getElementById('navBookingTimes').onclick=()=>showPage('bookingTimes');document.getElementById('navSignposting').onclick=()=>showPage('signposting');document.getElementById('navPeople').onclick=()=>showPage('people');document.getElementById('navPracticeSettings').onclick=()=>showPage('practiceSettings');$('demandAdditiveLines')?.addEventListener('change',()=>{const chart=$('combinedDemandChart');if(chart&&window.Plotly)Plotly.purge(chart);scheduleDemandRefresh();});$('slotTableSearch').addEventListener('input',renderSlotTable);for(const id of ['slotGroupFilter','slotModeFilter','slotPurposeFilter','slotCapacityFilter'])$(id)?.addEventListener('change',renderSlotTable);$('slotUnassignedOnly').addEventListener('change',renderSlotTable);$('slotModeUnassignedOnly').addEventListener('change',renderSlotTable);$('slotPurposeUnassignedOnly').addEventListener('change',renderSlotTable);$('slotCapacityUnassignedOnly').addEventListener('change',renderSlotTable);$('peopleSearch').addEventListener('input',renderPeople);$('peopleGroupFilter').addEventListener('change',renderPeople);$('peopleUnassignedOnly').addEventListener('change',()=>{const only=$('peopleUnassignedOnly').checked;$('peopleGroupFilter').disabled=only;renderPeople()});
 function renderClinicianEditor(){renderDropEditor('clinician');updateClinicianChartFilter()}
 function renderClinicianGroupEditor(){renderDropEditor('clinicianGroup');if(!$('peoplePage')?.classList.contains('hidden'))renderPeopleGroups()}
 $('addClinicianCategory').onclick=()=>{const el=$('newClinicianCategory');const c=el.value.trim();if(!c)return;if(c.toLowerCase()==='uncategorised'||clinicianCategoryNames.some(x=>x.toLowerCase()===c.toLowerCase())){alert('This clinician category name already exists or is reserved.');return}clinicianCategoryNames.push(c);el.value='';saveCategories();renderClinicianEditor();renderClinicianGroupEditor()};
