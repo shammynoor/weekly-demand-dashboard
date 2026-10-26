@@ -2850,7 +2850,8 @@ function collectDayView2Capacity(date,names,disabled,rows){
  const days=new Map(Array.from({length:8},(_,i)=>[dayView2AddDays(date,i),{groups:new Map(active.map(name=>[name,{booked:0,available:0,embargoed:0,blocked:0}])),totals:{booked:0,available:0,embargoed:0,blocked:0},unknown:0,matched:0}]));
  for(const r of rows){
   const day=days.get(r.date);
-  if(!day||excludedSlotTypes.has(r.slot)||String(capacityAssignments[r.slot]||'').trim().toLowerCase()==='sent external')continue;
+  // Include mapped referral/signposting groups when selected, including Sent External.
+  if(!day||excludedSlotTypes.has(r.slot))continue;
   const group=day.groups.get(capacityUrgencyCategory(r.slot));
   if(!group)continue;
   const count=Number(r.count);
