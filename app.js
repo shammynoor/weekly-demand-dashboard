@@ -2865,32 +2865,47 @@ function renderDayView2(){
  $('dayView2Fill').textContent=bookable?Math.round(100*totals.booked/bookable)+'% of bookable capacity filled':'No bookable slots reported';
  $('dayView2Detail').textContent='Select a capacity segment for its count and meaning.';
  const lanes=$('dayView2Lanes');lanes.replaceChildren();
- for(const [name,counts] of selected.groups){
-  const lane=document.createElement('section');lane.className='day-view2-lane';
-  const heading=document.createElement('div');heading.className='day-view2-lane-heading';
-  const title=document.createElement('h3');title.textContent=name;
-  const dot=document.createElement('span');dot.className='day-view-dot';dot.style.backgroundColor=urgencyGroupColour(name);
-  title.prepend(dot);
-  const summary=document.createElement('span');summary.textContent=number(counts.booked)+' booked · '+number(counts.available)+' available';
-  heading.append(title,summary);
-  const laneTotal=statuses.reduce((sum,status)=>sum+counts[status],0);
-  const bar=document.createElement('div');bar.className='day-view2-bar';bar.setAttribute('role','group');bar.setAttribute('aria-label',name+' capacity breakdown');
+ const lane=document.createElement('section');lane.className='day-view2-lane';
+ const heading=document.createElement('div');heading.className='day-view2-lane-heading';
+ const title=document.createElement('h3');title.textContent='Capacity by urgency group';
+ const summary=document.createElement('span');summary.textContent=number(totals.booked)+' booked · '+number(totals.available)+' available';
+ heading.append(title,summary);
+ const bar=document.createElement('div');bar.className='day-view2-bar';bar.setAttribute('role','group');bar.setAttribute('aria-label','Combined capacity by urgency group, then booking status');
+ const groupLegend=document.createElement('div');groupLegend.className='day-view2-group-legend';
+ const groupOrder=name=>{
+  const key=name.toLowerCase().replace(/[^a-z0-9]/g,'');
+  if(key==='sameday')return 0;
+  if(key==='within3days'||key==='withinthreedays')return 1;
+  if(key.includes('urgent')&&key.includes('extra'))return 3;
+  return 2;
+ };
+ const orderedGroups=[...selected.groups].sort((a,b)=>groupOrder(a[0])-groupOrder(b[0]));
+ for(const [name,counts] of orderedGroups){
+  const colour=urgencyGroupColour(name);
   for(const status of statuses){
    if(!counts[status])continue;
    const segment=document.createElement('button');segment.type='button';segment.className='day-view2-segment day-view2-'+status;segment.style.flex=String(counts[status]);
+   segment.dataset.urgency=name;segment.dataset.status=status;
+   if(status==='booked'){
+    segment.style.setProperty('--day-view2-group-colour',colour);
+    const hex=/^#([0-9a-f]{6})$/i.exec(colour);
+    if(hex){const rgb=[0,2,4].map(i=>parseInt(hex[1].slice(i,i+2),16)/255).map(c=>c<=0.04045?c/12.92:Math.pow((c+0.055)/1.055,2.4));segment.style.setProperty('--day-view2-booked-text',0.2126*rgb[0]+0.7152*rgb[1]+0.0722*rgb[2]>0.179?'#152b43':'#ffffff');}
+   }
    segment.setAttribute('aria-label',name+': '+number(counts[status])+' '+status+' slots');
    segment.title=name+': '+number(counts[status])+' '+status+' slots';
-   if(counts[status]/laneTotal>=.12)segment.textContent=number(counts[status]);
+   if(counts[status]/total>=.04)segment.textContent=number(counts[status]);
    segment.addEventListener('click',()=>{
     const meaning={booked:'Already booked for this appointment date.',available:'Free to book in the loaded report; appointment times are not supplied, so this may include earlier slots.',embargoed:'Held from booking. The report does not supply a release time.',blocked:'Currently unavailable; these slots are not counted as free to book.'};
     $('dayView2Detail').textContent=name+' · '+number(counts[status])+' '+status+' slots. '+meaning[status];
    });
    bar.append(segment);
   }
-  const caption=document.createElement('p');caption.className='day-view2-lane-caption';
-  caption.textContent=laneTotal?number(counts.embargoed)+' embargoed · '+number(counts.blocked)+' blocked · '+number(laneTotal)+' total':'No capacity reported for this urgency group.';
-  lane.append(heading,bar,caption);lanes.append(lane);
+  const item=document.createElement('div');item.className='day-view2-group-legend-item';
+  const nameLabel=document.createElement('strong');const dot=document.createElement('span');dot.className='day-view-dot';dot.style.backgroundColor=colour;nameLabel.append(dot,document.createTextNode(name));
+  const values=document.createElement('span');values.textContent=statuses.map(status=>number(counts[status])+' '+status).join(' · ');
+  item.append(nameLabel,values);groupLegend.append(item);
  }
+ lane.append(heading,bar,groupLegend);lanes.append(lane);
  const empty=$('dayView2Empty');
  empty.classList.toggle('hidden',total>0);
  empty.textContent=!selected.groups.size?'Select an urgency group to view capacity.':!availabilityRecords.length?'Load your Slot Reports to view daily capacity.':selected.unknown?'No recognised capacity statuses for this date and selection.':'No capacity reported for this date and selection.';
