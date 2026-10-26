@@ -3415,54 +3415,46 @@ document.querySelectorAll('.collapse-filter-button').forEach(button=>{
 });
 function installAvailabilityCardTooltip(target){
  if(!target||typeof target.on!=='function')return;
- const previous=target.querySelector('.availability-tooltip-card');if(previous)previous.remove();
- const card=document.createElement('div');card.className='availability-tooltip-card';card.hidden=true;
- target.appendChild(card);
- if(typeof target.removeAllListeners==='function'){
-  target.removeAllListeners('plotly_hover');target.removeAllListeners('plotly_unhover');
- }
+ target.querySelector('.availability-tooltip-card')?.remove();
+ const card=document.createElement('div');card.className='availability-tooltip-card';card.hidden=true;target.appendChild(card);
+ if(typeof target.removeAllListeners==='function'){target.removeAllListeners('plotly_hover');target.removeAllListeners('plotly_unhover')}
+ const number=n=>Number(n||0).toLocaleString('en-GB');
  target.on('plotly_hover',data=>{
-  const point=data.points?.find(p=>typeof p.customdata==='string'&&p.customdata.includes('<br>'));
+  const point=data.points?.find(p=>p.x!=null&&p.curveNumber!=null);
   if(!point){card.hidden=true;return}
-  const parts=point.customdata.split('<br>');card.replaceChildren();
-  const plain=html=>{const el=document.createElement('span');el.innerHTML=html;return el.textContent||''};
-  const heading=document.createElement('div');heading.className='availability-tooltip-heading';heading.textContent=plain(parts[0]);card.appendChild(heading);
-  // Match tooltip dots to the *actual* trace colours (including custom
-  // category colours and the current grouped/un-grouped unavailable states).
-  const chartColours=new Map();
-  for(const trace of target.data||[]){
-   if(!trace.name||!trace.marker?.color)continue;
-   const colour=Array.isArray(trace.marker.color)?trace.marker.color[0]:trace.marker.color;
-   if(typeof colour==='string')chartColours.set(trace.name,colour);
-  }
-  for(const part of parts.slice(1)){
-   const row=document.createElement('div');row.className='availability-tooltip-line';
-   const text=plain(part);
-   // Hide zero-count categories while retaining the total row.
-   if(!part.startsWith('<b>') && /:\s*0(?:\.0+)?\s*$/.test(text))continue;
-   if(part.startsWith('<b>'))row.classList.add('availability-tooltip-total');
-   else {
-    const separator=text.lastIndexOf(': ');
-    const label=separator>=0?text.slice(0,separator):text;
-    const dot=document.createElement('span');dot.className='availability-tooltip-dot';
-    const colour=chartColours.get(label)||'#aab6c1';
-    dot.style.backgroundColor=colour;
-    if(/^#(?:fff|ffffff)$/i.test(colour))dot.style.borderColor='#9eacb8';
-    row.appendChild(dot);
+  const bucket=String(point.x),details=target._capacityHoverData?.get(bucket);
+  card.replaceChildren();
+  if(details){
+   const title=document.createElement('div');title.className='availability-tooltip-heading';title.textContent=details.heading;card.append(title);
+   for(const group of details.groups){
+    if(!group.total)continue;
+    const header=document.createElement('div');header.className='availability-tooltip-group';
+    const dot=document.createElement('span');dot.className='availability-tooltip-dot';dot.style.backgroundColor=group.colour;
+    const name=document.createElement('strong');name.textContent=group.name+' · '+number(group.total);
+    header.append(dot,name);card.append(header);
+    for(const [status,value] of group.items){
+     if(!value)continue;
+     const row=document.createElement('div');row.className='availability-tooltip-line availability-tooltip-subline';
+     const label=document.createElement('span');label.textContent=status;
+     const amount=document.createElement('span');amount.textContent=number(value);
+     row.append(label,amount);card.append(row);
+    }
    }
-   const value=document.createElement('span');value.textContent=text;row.appendChild(value);
-   card.appendChild(row);
+   const total=document.createElement('div');total.className='availability-tooltip-line availability-tooltip-total';total.textContent='Total: '+number(details.total);card.append(total);
+  }else{
+   const raw=point.customdata;if(typeof raw!=='string'){card.hidden=true;return}
+   const div=document.createElement('div');div.innerHTML=raw.replaceAll('<br>','<br>');card.textContent=div.textContent||'';
   }
   card.hidden=false;
   const rect=target.getBoundingClientRect(),event=data.event;
   const x=event?.clientX!=null?event.clientX-rect.left:rect.width/2;
   const y=event?.clientY!=null?event.clientY-rect.top:rect.height/2;
-  const left=Math.max(8,Math.min(rect.width-card.offsetWidth-8,x+18));
-  const top=y+card.offsetHeight+18>rect.height?y-card.offsetHeight-16:y+14;
-  card.style.left=left+'px';card.style.top=Math.max(8,top)+'px';
+  card.style.left=Math.max(8,Math.min(rect.width-card.offsetWidth-8,x+18))+'px';
+  card.style.top=Math.max(8,y+card.offsetHeight+18>rect.height?y-card.offsetHeight-16:y+14)+'px';
  });
  target.on('plotly_unhover',()=>{card.hidden=true});
 }
+
 function simpleAvailabilityHover(heading,labels,values,total){
  return '<b>'+heading+'</b><br>'+labels.map((label,i)=>label+': '+Number(values[i]||0).toLocaleString('en-GB')).join('<br>')+'<br><b>Total: '+total.toLocaleString('en-GB')+'</b>';
 }
@@ -3673,6 +3665,18 @@ function capacityChartStatus(row,held,clock){
  if(status==='available'&&(row.date<clock.date||(row.date===clock.date&&Number.isFinite(row.minute)&&row.minute<clock.minute)))return 'Missed Empty';
  return ({booked:'Booked',available:'Available',embargoed:held?'Held Back':'Embargoed',blocked:held?'Held Back':'Blocked'})[status]||null;
 }
+function capacityHoverDetails(dates,names,counts,held,heading){
+ const statuses=['Missed Empty','Booked','Available',...(held?['Held Back']:['Embargoed','Blocked'])];
+ const result=new Map();
+ for(const date of dates){
+  const groups=names.map(name=>{
+   const items=statuses.map(status=>[status,counts.get(JSON.stringify([date,name,status]))||0]);
+   return {name,colour:urgencyGroupColour(name),items,total:items.reduce((sum,item)=>sum+item[1],0)};
+  });
+  result.set(date,{heading:heading(date),groups,total:groups.reduce((sum,g)=>sum+g.total,0)});
+ }
+ return result;
+}
 function capacityGroupedSeries(dates,names,counts,held,heading,extras=[]){
  const statuses=['Missed Empty','Booked','Available',...(held?['Held Back']:['Embargoed','Blocked'])];
  const colours={'Available':'#ffffff','Embargoed':'#586674','Blocked':'#354454','Held Back':'#48535f'};
@@ -3735,6 +3739,7 @@ function renderAvailabilityChart(){
  const heading=date=>weekly?'Week commencing '+new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'}):new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'short',year:'numeric',timeZone:'UTC'});
  const extras=[];
  const {traces,totals}=capacityGroupedSeries(buckets,names,counts,urgentGroupWithheld,heading,extras);
+ target._capacityHoverData=capacityHoverDetails(buckets,names,counts,urgentGroupWithheld,heading);
  const max=Math.ceil(Math.max(1,...totals)*1.2/10)*10;
  const weekLabels=Array.from({length:weekCount},(_,i)=>{const offset=i-urgentWeeksBack;return offset===0?'This Week':offset===-1?'Last Week':offset<0?Math.abs(offset)+' weeks ago':offset===1?'Next Week':offset+' weeks'});
  const annotations=weekLabels.map((text,i)=>({x:weekly?buckets[i]:dates[i*7+2],xref:'x',y:1.045,yref:'paper',text,showarrow:false,font:{size:13,color:'#344b60'},xanchor:'center',yanchor:'bottom'}));
@@ -3896,6 +3901,7 @@ function renderRoutineAvailabilityChart(){
  const plotBackground='#e1eaf1';
  const types=routineDetailedTypes().filter(name=>!routineDisabledTypes.has(name));
  const {traces,totals}=capacityGroupedSeries(dates,types,byBucket,routineGroupWithheld,heading);
+ target._capacityHoverData=capacityHoverDetails(dates,types,byBucket,routineGroupWithheld,heading);
  const max=Math.max(1,...totals);
  const annotations=totals.flatMap((total,i)=>total?[{xref:'x',x:i,y:total,text:total.toLocaleString('en-GB'),showarrow:false,yshift:15+Math.max(0,types.length-1)*5,font:{size:isDaily?10:13,color:'#425b70'}}]:[]);
  const weekTitles=weeks.map((_,i)=>{const offset=routineStartWeek+i;return offset===0?'This Week':offset===-1?'Last Week':offset<0?Math.abs(offset)+' weeks ago':offset===1?'Next Week':offset+' weeks'});
