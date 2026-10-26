@@ -2766,6 +2766,7 @@ const dayView2DisabledUrgencies=new Set();
 let dayView2SegmentObserver=null;
 function layoutDayView2SegmentCounts(root){
  for(const segment of root.querySelectorAll('.day-view2-segment')){const text=segment.dataset.count||'';segment.textContent=segment.clientWidth>=text.length*8+12?text:'';}
+ for(const rail of root.querySelectorAll('.day-view2-pace-rail'))layoutDayView2PaceRail(rail);
 }
 function dayView2RefreshAge(timestamp,now=Date.now()){
  if(timestamp===null||!Number.isFinite(timestamp))return 'Data refreshed: timestamp unavailable';
@@ -2915,7 +2916,43 @@ function calculateDayView2PaceBaseline({date,minute,names,availability,bookings,
 }
 function dayView2PaceClassification(actual,baseline){
  if(!baseline.ready)return 'unavailable';
- return actual<baseline.low?'below':actual>baseline.high?'above':'normal';
+ // A much larger departure must clear both normal historical variation and
+ // a meaningful margin (15% of the typical count, with a five-slot minimum).
+ if(actual<baseline.low){
+  const margin=Math.max(5,baseline.mean*.15,baseline.mean-baseline.low);
+  return actual<=baseline.low-margin?'much-below':'slightly-below';
+ }
+ if(actual>baseline.high){
+  const margin=Math.max(5,baseline.mean*.15,baseline.high-baseline.mean);
+  return actual>=baseline.high+margin?'much-above':'slightly-above';
+ }
+ return 'normal';
+}
+function layoutDayView2PaceRail(rail){
+ const width=rail.clientWidth;if(!width)return;
+ for(const label of rail.querySelectorAll('.day-view2-pace-rail-label')){
+  const half=label.getBoundingClientRect().width/2;
+  label.style.left=Math.max(half,Math.min(width-half,width*Number(label.dataset.position)/100))+'px';
+ }
+}
+function createDayView2PaceRail(actual,baseline,total,clock){
+ const wrapper=document.createElement('div');wrapper.className='day-view2-pace-rail-wrap';
+ const lower=Math.ceil(baseline.low),upper=Math.floor(baseline.high),typical=Math.round(baseline.mean);
+ const max=Math.max(1,total,actual,Math.ceil(baseline.high),typical),percent=value=>100*value/max;
+ const caption=document.createElement('div');caption.className='day-view2-pace-range-caption';caption.textContent='Usual range: '+lower.toLocaleString('en-GB')+'–'+upper.toLocaleString('en-GB')+' by '+clock;
+ const rail=document.createElement('div');rail.className='day-view2-pace-rail';rail.setAttribute('role','img');
+ rail.setAttribute('aria-label',actual.toLocaleString('en-GB')+' booked; typical '+typical.toLocaleString('en-GB')+'; usual range '+lower.toLocaleString('en-GB')+' to '+upper.toLocaleString('en-GB')+' by '+clock);
+ const mark=(className,left,width)=>{const node=document.createElement('span');node.className=className;node.setAttribute('aria-hidden','true');if(left!=null)node.style.left=percent(left)+'%';if(width!=null)node.style.width=percent(width)+'%';rail.append(node);return node;};
+ mark('day-view2-pace-rail-track');
+ mark('day-view2-pace-rail-range',baseline.low,baseline.high-baseline.low);
+ mark('day-view2-pace-rail-actual',actual);
+ mark('day-view2-pace-rail-typical',baseline.mean);
+ const label=(text,className,value)=>{const node=mark('day-view2-pace-rail-label '+className,value);node.textContent=text;node.dataset.position=String(percent(value));return node;};
+ label('Actual '+actual.toLocaleString('en-GB'),'day-view2-pace-rail-actual-label',actual);
+ label('Typical '+typical.toLocaleString('en-GB'),'day-view2-pace-rail-typical-label',baseline.mean);
+ const start=mark('day-view2-pace-rail-axis day-view2-pace-rail-start');start.textContent='0 booked';
+ const end=mark('day-view2-pace-rail-axis day-view2-pace-rail-end');end.textContent=max.toLocaleString('en-GB')+(max===total?' slots':' bookings');
+ wrapper.append(caption,rail);return wrapper;
 }
 function dayView2PaceBaseline(date,minute,names,holidays){
  const key=JSON.stringify([date,minute,[...names].sort(),[...excludedSlotTypes].sort()]);
@@ -2944,7 +2981,7 @@ function createDayView2BookingPace(date,names,totals){
   baseline=dayView2PaceBaseline(date,minute,names,holidays);state=dayView2PaceClassification(totals.booked,baseline);
   if(!baseline.ready){status=baseline.reportedDays>=6?'Booking-time data incomplete':'Not enough history';description=baseline.reportedDays>=6?baseline.reportedDays+' non-bank-holiday '+weekday+' reports found in the last 12 months; '+baseline.samples.length+' have at least 90% booking-time coverage.':baseline.samples.length+' of 6 required comparable '+weekday+' reports available in the last 12 months.';}
   else{
-   status={below:'↘ Below usual range',normal:'≈ Within usual range',above:'↗ Above usual range'}[state];
+   status={'much-below':'↘ Much lower than usual','slightly-below':'↘ Slightly lower than usual',normal:'≈ Within usual range','slightly-above':'↗ Slightly higher than usual','much-above':'↗ Much higher than usual'}[state];
    const difference=Math.round(totals.booked-baseline.mean);
    description=difference===0?'In line with a typical '+weekday+' by '+clock:Math.abs(difference).toLocaleString('en-GB')+(difference<0?' fewer':' more')+' booked than a typical '+weekday+' by '+clock;
   }
@@ -2956,20 +2993,12 @@ function createDayView2BookingPace(date,names,totals){
  header.append(title,badge);
  const subtitle=document.createElement('p');subtitle.className='day-view2-pace-subtitle';subtitle.textContent=description;
  box.append(header,subtitle);
- if(baseline){
+ if(baseline?.ready){
   const details=document.createElement('details');details.className='day-view2-pace-details';
-  const summary=document.createElement('summary');summary.textContent='How does this compare?';details.append(summary);
-  const content=document.createElement('div');content.className='day-view2-pace-comparison';
-  const row=(label,value)=>{const line=document.createElement('div'),key=document.createElement('span'),text=document.createElement('strong');key.textContent=label;text.textContent=value;line.append(key,text);content.append(line);};
-  row('Booked for today in this snapshot',totals.booked.toLocaleString('en-GB'));
-  if(baseline.ready){row('Typical '+weekday+' by '+clock,Math.round(baseline.mean).toLocaleString('en-GB'));row('Usual range by '+clock,Math.ceil(baseline.low)+'–'+Math.floor(baseline.high));}
-  row('Comparison',baseline.samples.length+' comparable '+weekday+'s from the last 12 months');
-  row('History window',baseline.start+' to '+dayView2AddDays(date,-1));
-  row('Reports with insufficient booking-time data',String(baseline.incompleteDays));
-  if(baseline.estimatedDays)row('Reports with small timing gaps estimated',String(baseline.estimatedDays));
-  row('Urgency groups',names.join(', '));
-  const note=document.createElement('p');note.textContent='Counts appointments scheduled for the same weekday, including those booked before that day. Uses every available matching weekday in the previous 12 months and automatically excludes entire England and Wales bank-holiday weeks. Reports need at least 90% booking-time coverage; small gaps are estimated proportionally from the timed bookings. Missing reports are not counted as zero. Historical booking times are reconstructed from the loaded exports; subsequent cancellations and rescheduling are not available.';
-  content.append(note);details.append(content);box.append(details);
+  const summary=document.createElement('summary');summary.textContent='How does this compare?';
+  const comparison=createDayView2PaceRail(totals.booked,baseline,total,clock);
+  details.append(summary,comparison);box.append(details);
+  details.addEventListener('toggle',()=>{if(details.open)requestAnimationFrame(()=>layoutDayView2PaceRail(comparison.querySelector('.day-view2-pace-rail')));});
  }
  return box;
 }
