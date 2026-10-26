@@ -3619,7 +3619,8 @@ function applyFlatAvailabilityBars(target,isDaily=false,separateGroups=false){
     return;
    }
    const colour=Array.isArray(marker.color)?marker.color[j]||baseColour:baseColour;
-   if(!marker.pattern?.shape)path.style.setProperty('fill',colour,'important');
+   const missed=barTraces[i]?.name?.endsWith(' · Missed Empty');
+   if(missed){const urgency=barTraces[i]?.meta?.capacityGroup;path.style.setProperty('fill',urgencyGroupColour(urgency),'important');path.style.setProperty('fill-opacity','0.18','important');path.style.setProperty('stroke',urgencyGroupColour(urgency),'important');path.style.setProperty('stroke-width','1.8px','important');path.style.setProperty('stroke-dasharray','4 2','important');}else if(!marker.pattern?.shape)path.style.setProperty('fill',colour,'important');
    path.style.setProperty('fill-opacity','1','important');
    path.style.setProperty('stroke','rgba(255,255,255,0.85)','important');
    path.style.setProperty('stroke-width','0.65px','important');
@@ -3686,11 +3687,11 @@ function capacityGroupedSeries(dates,names,counts,held,heading,extras=[]){
  for(const group of names){
   const colour=group.endsWith(' · Extra')?(capacityColours.Extra||'#8aa6bd'):urgencyGroupColour(group);
   const summaries=dates.map(date=>simpleAvailabilityHover(heading(date)+' · '+group,statuses,statuses.map(status=>value(date,group,status)),statuses.reduce((n,status)=>n+value(date,group,status),0)));
-  for(const status of statuses)traces.push({type:'bar',name:group+' · '+status,meta:{capacityGroup:group},showlegend:false,x:dates,y:dates.map(date=>value(date,group,status)),marker:{color:status==='Booked'?colour:status==='Missed Empty'?'#ffffff':colours[status],line:{width:0},...(status==='Missed Empty'?{pattern:{shape:'/',fgcolor:colour,bgcolor:'#ffffff',fillmode:'replace',size:6,solidity:0.17}}:{})},customdata:summaries,hovertemplate:'%{customdata}<extra></extra>'});
+  for(const status of statuses)traces.push({type:'bar',name:group+' · '+status,meta:{capacityGroup:group},showlegend:false,x:dates,y:dates.map(date=>value(date,group,status)),marker:{color:status==='Booked'?colour:status==='Missed Empty'?'#ffffff':colours[status],line:{width:0},...(status==='Missed Empty'?{line:{color:colour,width:1.5,dash:'dash'}}:{})},customdata:summaries,hovertemplate:'%{customdata}<extra></extra>'});
  }
  for(const group of names)traces.push({type:'scatter',mode:'markers',name:group,x:[null],y:[null],marker:{symbol:'circle',size:14,color:group.endsWith(' · Extra')?(capacityColours.Extra||'#8aa6bd'):urgencyGroupColour(group)},showlegend:true,hoverinfo:'skip'});
  // A patterned bar trace supplies an accurate striped legend swatch.
- traces.push({type:'bar',name:'Missed Empty',x:[null],y:[null],showlegend:true,marker:{color:'#ffffff',pattern:{shape:'/',fgcolor:'#586674',bgcolor:'#ffffff',fillmode:'replace',size:6,solidity:0.17}},hoverinfo:'skip'});
+ traces.push({type:'bar',name:'Missed Empty',x:[null],y:[null],showlegend:true,marker:{color:'#e9edf1',line:{color:'#586674',width:2}},hoverinfo:'skip'});
  for(const status of statuses.filter(s=>!['Booked','Missed Empty'].includes(s)))traces.push({type:'scatter',mode:'markers',name:status,x:[null],y:[null],marker:{symbol:'circle',size:14,color:colours[status],line:{color:status==='Available'?'#a7b8c6':colours[status],width:status==='Available'?1.5:0}},showlegend:true,hoverinfo:'skip'});
  for(const item of extras)traces.push({type:'bar',name:item.name,meta:{capacityGroup:item.name},x:dates,y:dates.map(date=>counts.get(JSON.stringify([date,item.name]))||0),marker:{color:item.colour},showlegend:true,customdata:dates.map(date=>simpleAvailabilityHover(heading(date),[item.name],[counts.get(JSON.stringify([date,item.name]))||0],counts.get(JSON.stringify([date,item.name]))||0)),hovertemplate:'%{customdata}<extra></extra>'});
  return {traces,totals};
