@@ -3202,7 +3202,7 @@ function showPage(which){
  else if(which==='signposting')setTimeout(renderSignpostingChart,0);
  else if(which==='people'){renderPeopleGroups();renderPeopleGroupFilter();renderPeople();}
  else if(which==='practiceSettings'){renderPracticeSettings();}
- else {renderSlotGroupBoxes();renderSlotTable();renderEditor();renderGroupUrgencyEditor();renderClinicianEditor();renderClinicianGroupEditor();renderConsultEditor()}
+ else if(which==='categories'){renderSlotGroupBoxes();renderSlotTable();renderEditor();renderGroupUrgencyEditor();renderClinicianEditor();renderClinicianGroupEditor();renderConsultEditor()}
 }document.getElementById('navHome').onclick=()=>showPage('home');document.getElementById('navChart').onclick=()=>showPage('chart');document.getElementById('navWaitingTimes').onclick=()=>showPage('waitingTimes');document.getElementById('navWaitingTrend').onclick=()=>showPage('waitingTrend');document.getElementById('navCategories').onclick=()=>showPage('categories');document.getElementById('navAvailability').onclick=()=>showPage('availability');document.getElementById('navRoutineAvailability').onclick=()=>showPage('routineAvailability');
 document.getElementById('navPlannedAvailability').onclick=()=>showPage('plannedAvailability');document.getElementById('navDayView2').onclick=()=>showPage('dayView');document.getElementById('navBookingTimes').onclick=()=>showPage('bookingTimes');document.getElementById('navSignposting').onclick=()=>showPage('signposting');document.getElementById('navPeople').onclick=()=>showPage('people');document.getElementById('navPracticeSettings').onclick=()=>showPage('practiceSettings');$('demandAdditiveLines')?.addEventListener('change',()=>{const chart=$('combinedDemandChart');if(chart&&window.Plotly)Plotly.purge(chart);scheduleDemandRefresh();});$('slotTableSearch').addEventListener('input',renderSlotTable);for(const id of ['slotGroupFilter','slotModeFilter','slotPurposeFilter','slotCapacityFilter'])$(id)?.addEventListener('change',renderSlotTable);$('slotUnassignedOnly').addEventListener('change',renderSlotTable);$('slotModeUnassignedOnly').addEventListener('change',renderSlotTable);$('slotPurposeUnassignedOnly').addEventListener('change',renderSlotTable);$('slotCapacityUnassignedOnly').addEventListener('change',renderSlotTable);$('peopleSearch').addEventListener('input',renderPeople);$('peopleGroupFilter').addEventListener('change',renderPeople);$('peopleUnassignedOnly').addEventListener('change',()=>{const only=$('peopleUnassignedOnly').checked;$('peopleGroupFilter').disabled=only;renderPeople()});
 function renderClinicianEditor(){renderDropEditor('clinician');updateClinicianChartFilter()}
@@ -3337,6 +3337,15 @@ function removeInvalidDashboardToggles(){
 }
 function refreshAvailabilityOptionStates(page){
  removeInvalidDashboardToggles();
+ // Build eligibility once per render instead of rescanning all CSV rows per toggle.
+ const available={category:new Set(),clinician:new Set(),consult:new Set(),purpose:new Set()};
+ const disabledCategories=page==='urgent'?urgentCategoryDisabled:page==='planned'?plannedDisabledTypes:routineDisabledTypes;
+ for(const row of availabilityRecordsInRange(page)){
+  const group=capacityUrgencyCategory(row.slot);available.category.add(group);
+  if(disabledCategories.has(group))continue;
+  available.clinician.add(clinicianGroupAssignments[effectiveClinicianType(row.clinician,row.person)]);
+  available.consult.add(consultAssignments[row.slot]);available.purpose.add(purposeAssignments[row.slot]);
+ }
  const configs=page==='urgent'?
   [['urgentCategoryToggles','category',urgentCategoryDisabled],['urgentClinicianToggles','clinician',urgentClinicianDisabled],['urgentConsultToggles','consult',urgentConsultDisabled],['urgentPurposeToggles','purpose',urgentPurposeDisabled]]:
   page==='planned'?[['plannedClinicianFilters','clinician',plannedDisabledClinicianGroups],['plannedConsultFilters','consult',plannedDisabledConsultModes]]:[['routineClinicianFilters','clinician',routineDisabledClinicianGroups],['routineConsultFilters','consult',routineDisabledConsultModes]];
@@ -3344,7 +3353,7 @@ function refreshAvailabilityOptionStates(page){
   const root=$(id);if(!root)continue;
   for(const input of root.querySelectorAll('input[data-filter-name]')){
    const name=input.dataset.filterName;
-   const possible=availabilityOptionHasData(page,kind,name);
+   const possible=available[kind].has(name);
    // Keep user choices intact when an option temporarily has no data.
    // Urgency categories are configured in Slot Settings and must remain visible
    // and selectable even when there are no matching records in this date range.
@@ -3611,9 +3620,7 @@ function applyFlatAvailabilityBars(target,isDaily=false,separateGroups=false){
   const baseColour=typeof marker.color==='string'?marker.color:'#c2cdd5';
   traceElement.querySelectorAll('.point path').forEach((path,j)=>{
    if(separateGroups&&gaps)path.setAttribute('transform','translate(0,'+(-gaps[j])+')');
-   let height=0;
-   try{height=path.getBBox().height}catch(_){}
-   if(height<0.6){
+   if(!(Number(barTraces[i]?.y?.[j])>0)){
     path.style.setProperty('fill','none','important');
     path.style.setProperty('stroke','none','important');
     return;
@@ -3694,7 +3701,7 @@ function capacityGroupedSeries(dates,names,counts,held,heading,extras=[]){
  traces.push({type:'bar',name:'Missed Empty',x:[null],y:[null],showlegend:true,marker:{color:'#e9edf1',line:{color:'#586674',width:2}},hoverinfo:'skip'});
  for(const status of statuses.filter(s=>!['Booked','Missed Empty'].includes(s)))traces.push({type:'scatter',mode:'markers',name:status,x:[null],y:[null],marker:{symbol:'circle',size:14,color:colours[status],line:{color:status==='Available'?'#a7b8c6':colours[status],width:status==='Available'?1.5:0}},showlegend:true,hoverinfo:'skip'});
  for(const item of extras)traces.push({type:'bar',name:item.name,meta:{capacityGroup:item.name},x:dates,y:dates.map(date=>counts.get(JSON.stringify([date,item.name]))||0),marker:{color:item.colour},showlegend:true,customdata:dates.map(date=>simpleAvailabilityHover(heading(date),[item.name],[counts.get(JSON.stringify([date,item.name]))||0],counts.get(JSON.stringify([date,item.name]))||0)),hovertemplate:'%{customdata}<extra></extra>'});
- return {traces,totals};
+ return {traces:traces.filter(trace=>trace.showlegend||trace.y.some(value=>value>0)),totals};
 }
 function renderAvailabilityChart(){
  const target=$('availabilityChart');
