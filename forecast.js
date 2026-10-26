@@ -143,6 +143,7 @@ function forecastHorizonWeeks(){
 }
 function updateForecastHorizonLabels(){
  const weeks=forecastHorizonWeeks();
+ $('dailyForecastHorizon')?.style.setProperty('--forecast-horizon-progress',String((weeks-3)/11*100)+'%');
  const title=$('dailyForecastHorizonTitle'),value=$('dailyForecastHorizonValue');
  if(title)title.textContent=String(weeks);
  if(value)value.textContent=String(weeks);
