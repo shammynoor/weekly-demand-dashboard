@@ -22,29 +22,44 @@ let isOwner=false,sharedDriveId='',sharedFolderId='';
 let folderAccessVerified=false,folderAccessDenied=false;
 function sharedPath(){return '/shares/'+SHARED_TOKEN+'/driveItem'}
 function sourceItemUrl(id){return isOwner?'/me/drive/items/'+encodeURIComponent(id):'/drives/'+encodeURIComponent(sharedDriveId)+'/items/'+encodeURIComponent(id)}
-const settingsMenu=()=>document.querySelector('.nav-settings-menu');
-function closeSettingsMenu(){const menu=settingsMenu();menu?.classList.remove('open');document.getElementById('navSettingsCog')?.setAttribute('aria-expanded','false');}
-document.getElementById('navSettingsCog')?.addEventListener('click',event=>{event.stopPropagation();const menu=settingsMenu();const open=menu.classList.toggle('open');event.currentTarget.setAttribute('aria-expanded',String(open));});
-document.addEventListener('click',event=>{if(!event.target.closest('.nav-settings-menu'))closeSettingsMenu();});
-document.addEventListener('keydown',event=>{if(event.key==='Escape')closeSettingsMenu();});
-for(const id of ['navCategories','navPeople','navPracticeSettings'])document.getElementById(id)?.addEventListener('click',()=>{settingsMenu()?.classList.add('menu-dismissed');closeSettingsMenu();document.activeElement?.blur?.();});
-settingsMenu()?.addEventListener('pointerleave',()=>settingsMenu()?.classList.remove('menu-dismissed'));
-const availabilityNavMenu=document.querySelector('.nav-availability-menu');
-const availabilityNavTrigger=document.getElementById('navAvailabilityMenu');
-function closeAvailabilityNavMenu(){availabilityNavMenu?.classList.remove('open');availabilityNavTrigger?.setAttribute('aria-expanded','false');}
-availabilityNavTrigger?.addEventListener('click',event=>{event.stopPropagation();const open=availabilityNavMenu.classList.toggle('open');availabilityNavTrigger.setAttribute('aria-expanded',String(open));});
-document.addEventListener('click',event=>{if(!event.target.closest('.nav-availability-menu'))closeAvailabilityNavMenu();});
-document.addEventListener('keydown',event=>{if(event.key==='Escape')closeAvailabilityNavMenu();});
-for(const id of ['navAvailability','navRoutineAvailability'])document.getElementById(id)?.addEventListener('click',()=>{availabilityNavMenu?.classList.add('menu-dismissed');closeAvailabilityNavMenu();document.activeElement?.blur?.();});
-availabilityNavMenu?.addEventListener('pointerleave',()=>availabilityNavMenu.classList.remove('menu-dismissed'));
-const demandNavMenu=document.querySelector('.nav-demand-menu');
-const demandNavTrigger=document.getElementById('navDemandMenu');
-function closeDemandNavMenu(){demandNavMenu?.classList.remove('open');demandNavTrigger?.setAttribute('aria-expanded','false');}
-demandNavTrigger?.addEventListener('click',event=>{event.stopPropagation();closeAvailabilityNavMenu();const open=demandNavMenu.classList.toggle('open');demandNavTrigger.setAttribute('aria-expanded',String(open));});
-document.addEventListener('click',event=>{if(!event.target.closest('.nav-demand-menu'))closeDemandNavMenu();});
-document.addEventListener('keydown',event=>{if(event.key==='Escape')closeDemandNavMenu();});
-for(const id of ['navChart','navWaitingTimes','navBookingTimes','navSignposting'])document.getElementById(id)?.addEventListener('click',()=>{demandNavMenu?.classList.add('menu-dismissed');closeDemandNavMenu();document.activeElement?.blur?.();});
-demandNavMenu?.addEventListener('pointerleave',()=>demandNavMenu.classList.remove('menu-dismissed'));
+// One menu lifecycle for Activity, Capacity, Forecast and Settings.
+const dashboardMenus=[...document.querySelectorAll('.dashboard-nav > .nav-demand-menu,.dashboard-nav > .nav-availability-menu,.dashboard-nav > .nav-settings-menu')];
+function setDashboardMenuOpen(menu,open){
+ menu.classList.toggle('open',open);
+ menu.querySelector(':scope > button')?.setAttribute('aria-expanded',String(open));
+ if(!open)delete menu.dataset.clickOpen;
+}
+function closeDashboardMenus(except=null){
+ for(const menu of dashboardMenus)if(menu!==except)setDashboardMenuOpen(menu,false);
+}
+window.closeDashboardMenus=closeDashboardMenus;
+for(const menu of dashboardMenus){
+ const trigger=menu.querySelector(':scope > button');
+ if(!trigger)continue;
+ menu.classList.add('nav-menu-managed');menu.classList.remove('menu-dismissed');
+ trigger.setAttribute('aria-haspopup','true');trigger.setAttribute('aria-expanded','false');
+ menu.addEventListener('pointerenter',event=>{if(event.pointerType!=='touch'){closeDashboardMenus(menu);setDashboardMenuOpen(menu,true);}});
+ menu.addEventListener('pointerleave',()=>setDashboardMenuOpen(menu,false));
+ trigger.addEventListener('click',event=>{
+  event.stopPropagation();const open=menu.dataset.clickOpen!=='true';
+  closeDashboardMenus(menu);setDashboardMenuOpen(menu,open);
+  if(open)menu.dataset.clickOpen='true';
+ });
+ trigger.addEventListener('keydown',event=>{
+  if(event.key!=='ArrowDown'&&event.key!=='ArrowUp')return;
+  event.preventDefault();closeDashboardMenus(menu);setDashboardMenuOpen(menu,true);
+  const items=[...menu.querySelectorAll(':scope > div button:not(:disabled)')];
+  (event.key==='ArrowUp'?items[items.length-1]:items[0])?.focus();
+ });
+ menu.addEventListener('click',event=>{if(event.target.closest('button')!==trigger){closeDashboardMenus();hideDayView2Tooltip();}});
+ menu.addEventListener('focusout',event=>{if(!menu.contains(event.relatedTarget))setDashboardMenuOpen(menu,false);});
+}
+document.addEventListener('pointerdown',event=>{if(!event.target.closest('.nav-menu-managed'))closeDashboardMenus();});
+document.addEventListener('keydown',event=>{
+ if(event.key!=='Escape')return;
+ const active=dashboardMenus.find(menu=>menu.classList.contains('open'));
+ closeDashboardMenus();if(active?.contains(document.activeElement))active.querySelector(':scope > button')?.focus();
+});
 function applyAccessMode(){
  document.body.classList.toggle('viewer-mode',!isOwner);
  for(const id of ['navCategories','navPeople','chooseFolder','sourceSetup']){const el=document.getElementById(id);if(el)el.hidden=!isOwner}
@@ -2699,6 +2714,51 @@ function renderWaitingTrendChart(){
 }
 
 // Day View uses appointment-date availability snapshots and Monday–Friday navigation.
+
+let dayView2Tooltip=null;
+function hideDayView2Tooltip(){if(dayView2Tooltip)dayView2Tooltip.hidden=true;}
+function positionDayView2Tooltip(event,anchor){
+ const card=dayView2Tooltip;if(!card||card.hidden)return;
+ const bounds=anchor.getBoundingClientRect();
+ const x=event?.clientX??bounds.left+bounds.width/2,y=event?.clientY??bounds.top;
+ card.style.left=Math.max(12,Math.min(window.innerWidth-card.offsetWidth-12,x+16))+'px';
+ const top=y+card.offsetHeight+16>window.innerHeight?y-card.offsetHeight-14:y+14;
+ card.style.top=Math.max(12,Math.min(window.innerHeight-card.offsetHeight-12,top))+'px';
+}
+function installDayView2GroupTooltip(group,{name,date,counts,colour}){
+ const show=(event,anchor=group)=>{
+  if(!dayView2Tooltip){dayView2Tooltip=document.createElement('div');dayView2Tooltip.className='availability-tooltip-card day-view2-tooltip';dayView2Tooltip.id='dayView2Tooltip';dayView2Tooltip.setAttribute('role','tooltip');document.body.append(dayView2Tooltip);}
+  const card=dayView2Tooltip;card.replaceChildren();
+  const heading=document.createElement('div');heading.className='availability-tooltip-heading';heading.textContent=name;
+  const day=document.createElement('div');day.className='availability-tooltip-line day-view2-tooltip-date';day.textContent=date;
+  card.append(heading,day);
+  const statuses=[['booked','Booked',colour],['available','Available','#ffffff'],['embargoed','Embargoed','#586674'],['blocked','Blocked','#354454']];
+  let total=0;
+  for(const [status,label,fill] of statuses){
+   const count=Number(counts[status])||0;total+=count;
+   const row=document.createElement('div');row.className='availability-tooltip-line';
+   const dot=document.createElement('span');dot.className='availability-tooltip-dot';dot.style.backgroundColor=fill;
+   const caption=document.createElement('span');caption.className='day-view2-tooltip-label';caption.textContent=label;
+   const value=document.createElement('strong');value.textContent=count.toLocaleString('en-GB');
+   row.append(dot,caption,value);card.append(row);
+  }
+  const row=document.createElement('div');row.className='availability-tooltip-line availability-tooltip-total';
+  const caption=document.createElement('span');caption.className='day-view2-tooltip-label';caption.textContent='Total';
+  const value=document.createElement('strong');value.textContent=total.toLocaleString('en-GB');row.append(caption,value);card.append(row);
+  anchor.setAttribute('aria-describedby',card.id);card.hidden=false;positionDayView2Tooltip(event,anchor);
+ };
+ group.addEventListener('pointerenter',event=>{if(event.pointerType!=='touch')show(event);});
+ group.addEventListener('pointermove',event=>positionDayView2Tooltip(event,group));
+ group.addEventListener('pointerleave',hideDayView2Tooltip);
+ group.addEventListener('focusin',event=>show(null,event.target));
+ group.addEventListener('focusout',event=>{if(!group.contains(event.relatedTarget))hideDayView2Tooltip();});
+ group.addEventListener('click',event=>show(event,event.target));
+}
+document.addEventListener('pointerdown',event=>{if(!event.target.closest('.day-view2-urgency-span'))hideDayView2Tooltip();});
+document.addEventListener('scroll',hideDayView2Tooltip,true);
+window.addEventListener('resize',hideDayView2Tooltip);
+document.addEventListener('keydown',event=>{if(event.key==='Escape')hideDayView2Tooltip();});
+
 const dayView2DisabledUrgencies=new Set();
 let dayView2SegmentObserver=null;
 function layoutDayView2SegmentCounts(root){
@@ -2845,7 +2905,7 @@ function renderDayView2(){
  const bookable=totals.booked+totals.available;
  $('dayView2Fill').textContent=bookable?Math.round(100*totals.booked/bookable)+'% of bookable capacity filled':'No bookable slots reported';
  $('dayView2Detail').textContent='Select a capacity segment for its count and meaning.';
- const lanes=$('dayView2Lanes');dayView2SegmentObserver?.disconnect();lanes.replaceChildren();
+ const lanes=$('dayView2Lanes');hideDayView2Tooltip();dayView2SegmentObserver?.disconnect();lanes.replaceChildren();
  // One slot-to-pixel scale for all three days, including identical group-gap allowance.
  const visibleDays=Array.from({length:3},(_,i)=>days.get(dayView2AddWorkingDays(date,i)));
  const scaleMax=Math.max(1,...visibleDays.map(day=>statuses.reduce((sum,status)=>sum+day.totals[status],0)));
@@ -2872,6 +2932,7 @@ function renderDayView2(){
   if(!groupTotal)continue;
   const colour=urgencyGroupColour(name);
   const groupSpan=document.createElement('div');groupSpan.className='day-view2-urgency-span';groupSpan.style.flex='0 0 calc((100% - var(--day-view2-gap-budget)) * '+(groupTotal/scaleMax)+')';groupSpan.setAttribute('role','group');groupSpan.setAttribute('aria-label',name);
+  installDayView2GroupTooltip(groupSpan,{name,date:laneDateLabel,counts,colour});
 
   for(const status of statuses){
    if(!counts[status])continue;
@@ -2883,7 +2944,6 @@ function renderDayView2(){
     if(hex){const rgb=[0,2,4].map(i=>parseInt(hex[1].slice(i,i+2),16)/255).map(c=>c<=0.04045?c/12.92:Math.pow((c+0.055)/1.055,2.4));segment.style.setProperty('--day-view2-booked-text',0.2126*rgb[0]+0.7152*rgb[1]+0.0722*rgb[2]>0.179?'#152b43':'#ffffff');}
    }
    segment.setAttribute('aria-label',laneDateLabel+' · '+name+': '+number(counts[status])+' '+status+' slots');
-   segment.title=laneDateLabel+' · '+name+': '+number(counts[status])+' '+status+' slots';
    if(counts[status]/laneTotal>=.04)segment.textContent=number(counts[status]);
    segment.addEventListener('click',()=>{
     const meaning={booked:'Already booked for this appointment date.',available:'Free to book in the loaded report; appointment times are not supplied, so this may include earlier slots.',embargoed:'Held from booking. The report does not supply a release time.',blocked:'Currently unavailable; these slots are not counted as free to book.'};
@@ -2931,7 +2991,9 @@ $('dayView2Next')?.addEventListener('click',()=>{$('dayView2Date').value=dayView
 function showPage(which){
  if(which==='dayView2')which='dayView';
  closeDayView2Calendar();
- closeSettingsMenu();closeAvailabilityNavMenu();closeDemandNavMenu();
+ closeDashboardMenus();hideDayView2Tooltip();
+ for(const id of ['dailyForecastPage','weeklyForecastPage'])$(id)?.classList.add('hidden');
+ for(const id of ['navDailyForecast','navWeeklyForecast'])$(id)?.classList.remove('active');
  if(!isOwner&&(which==='categories'||which==='people'||which==='practiceSettings'))return;
  for(const [page,nav,name] of [['homePage','navHome','home'],['chartPage','navChart','chart'],['waitingTimesPage','navWaitingTimes','waitingTimes'],['waitingOverTimePage','navWaitingTrend','waitingTrend'],['categoryPage','navCategories','categories'],['availabilityPage','navAvailability','availability'],['routineAvailabilityPage','navRoutineAvailability','routineAvailability'],['plannedAvailabilityPage','navPlannedAvailability','plannedAvailability'],['dayView2Page','navDayView2','dayView'],['bookingTimesPage','navBookingTimes','bookingTimes'],['signpostingPage','navSignposting','signposting'],['peoplePage','navPeople','people'],['practiceSettingsPage','navPracticeSettings','practiceSettings']]){
   $(page).classList.toggle('hidden',which!==name);$(nav).classList.toggle('active',which===name);
