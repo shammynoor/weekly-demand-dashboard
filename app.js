@@ -1249,7 +1249,9 @@ function aggregateCSV(csv,aggregated,availabilityAggregate,bookingTimeAggregate,
   const person=normalisePersonName(r['Full Name of the Session Holder of the Session']);
   if(person&&peopleAggregate){const key=JSON.stringify([person,clinician]);peopleAggregate.set(key,(peopleAggregate.get(key)||0)+1)}
   if(slotStats){const stat=slotStats.get(slotType)||{count:0,min:date,max:date};stat.count++;if(date<stat.min)stat.min=date;if(date>stat.max)stat.max=date;slotStats.set(slotType,stat)}
-  const akey=JSON.stringify([date,slotType,availability,clinician,person]);
+  const slotClock=/^(\d{1,2}):(\d{2})/.exec(time);
+  const appointmentMinute=slotClock&&Number(slotClock[1])<24&&Number(slotClock[2])<60?Number(slotClock[1])*60+Number(slotClock[2]):null;
+  const akey=JSON.stringify([date,slotType,availability,clinician,person,appointmentMinute,'slot']);
   availabilityAggregate.set(akey,(availabilityAggregate.get(akey)||0)+1);
   if(status!=='booked')continue;
   const lead=Number(leadRaw.replace(/,/g,''));
@@ -1273,7 +1275,7 @@ function aggregateCSV(csv,aggregated,availabilityAggregate,bookingTimeAggregate,
   // Booking clock time, calculated using the same lead-time arithmetic as the demand charts.
   const bookedMinute=booked.getUTCHours()*60+booked.getUTCMinutes();
   // Day View scheduled workload: appointment DATE is fixed, booking timestamp controls the slider.
-  const scheduledKey=JSON.stringify([date,bookedDay,bookedMinute,slotType,clinician,person]);
+  const scheduledKey=JSON.stringify([date,bookedDay,bookedMinute,slotType,clinician,person,'slot']);
   appointmentTimeAggregate.set(scheduledKey,(appointmentTimeAggregate.get(scheduledKey)||0)+1);
   const timeKey=JSON.stringify([bookedDay,bookedMinute,slotType,clinician,person]);
   bookingTimeAggregate.set(timeKey,(bookingTimeAggregate.get(timeKey)||0)+1);
@@ -1571,7 +1573,7 @@ function renderSignpostingChart(){
  },{responsive:true,displaylogo:false,displayModeBar:false,scrollZoom:false,doubleClick:false});
  status.textContent=signpostingRecords.length.toLocaleString('en-GB')+' signposting records · '+sortedDestinations.length+' destinations · '+signpostingFileCount+' CSV file'+(signpostingFileCount===1?'':'s')+'. Empty cells filled from preceding rows.';
 }
-function updateHomeReportDates(items){const slots=items.filter(f=>/slot[\s_-]*report/i.test(f.name));const signs=items.filter(f=>isSignpostingFile(f.name));const display=files=>{if(!files.length)return 'No report found';const dates=files.map(f=>Date.parse(f.lastModifiedDateTime||'')).filter(Number.isFinite);return dates.length?new Date(Math.max(...dates)).toLocaleString('en-GB',{day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'Europe/London'}):'Modified date unavailable'};$('homeSlotModified').textContent=display(slots);$('homeSignpostingModified').textContent=display(signs)}
+function updateHomeReportDates(items){const slots=items.filter(f=>/slot[\s_-]*report/i.test(f.name));const signs=items.filter(f=>isSignpostingFile(f.name));const display=files=>{if(!files.length)return 'No report found';const dates=files.map(f=>Date.parse(f.lastModifiedDateTime||'')).filter(Number.isFinite);return dates.length?new Date(Math.max(...dates)).toLocaleString('en-GB',{day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:true,timeZone:'Europe/London'}):'Modified date unavailable'};$('homeSlotModified').textContent=display(slots);$('homeSignpostingModified').textContent=display(signs)}
 // Parsed per-file contributions are retained for the current browser session.
 // A replacement invalidates only its own contribution, not the other CSV files.
 const csvContributionCache=new Map();
@@ -1625,9 +1627,9 @@ async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;
  // Commit the new cache only after all changed files have parsed successfully.
  for(const id of csvContributionCache.keys())if(!activeIds.has(id))csvContributionCache.delete(id);
  for(const [id,contribution] of pendingCache)csvContributionCache.set(id,contribution);
- // Date the newest contributing clinical CSV was last modified, committed only
+ // Date the newest Slot Report CSV was last modified, committed only
  // after every changed file has downloaded and parsed successfully.
- const capacityFileDates=items.filter(file=>['slot','signposting'].includes(pendingCache.get(file.id)?.kind)).map(file=>Date.parse(file.lastModifiedDateTime||'')).filter(Number.isFinite);
+ const capacityFileDates=items.filter(file=>pendingCache.get(file.id)?.kind==='slot').map(file=>Date.parse(file.lastModifiedDateTime||'')).filter(Number.isFinite);
  capacityCSVLatestModified=capacityFileDates.length?Math.max(...capacityFileDates):null;
  slotTypeFileStats=newSlotTypeStats;renderSlotInclusion();
  signpostingRecords=newSignposting;signpostingFileCount=newSignpostingFiles;signpostingSlotNames=new Set(newSignposting.map(event=>event.destination));
@@ -1639,7 +1641,7 @@ async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;
  const signpostingClinician='Signposting (no clinician recorded)';
  for(const event of newSignposting){
   const slot=event.destination,date=event.date;
-  const availabilityKey=JSON.stringify([date,slot,'Booked',signpostingClinician,'']);
+  const availabilityKey=JSON.stringify([date,slot,'Booked',signpostingClinician,'',null,'signposting']);
   availabilityAggregate.set(availabilityKey,(availabilityAggregate.get(availabilityKey)||0)+1);
   const bookedWeek=mondayOf(date);
   {
@@ -1650,7 +1652,7 @@ async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;
     const minute=Number(tm[1])*60+Number(tm[2]);
     const timeKey=JSON.stringify([date,minute,slot,signpostingClinician,'']);
     bookingTimeAggregate.set(timeKey,(bookingTimeAggregate.get(timeKey)||0)+1);
-    const scheduledKey=JSON.stringify([date,date,minute,slot,signpostingClinician,'']);
+    const scheduledKey=JSON.stringify([date,date,minute,slot,signpostingClinician,'','signposting']);
     appointmentTimeAggregate.set(scheduledKey,(appointmentTimeAggregate.get(scheduledKey)||0)+1);
    }
   }
@@ -1670,9 +1672,9 @@ async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;
  waitingTrendRecords=[...waitingTrendAggregate].map(([key,count])=>{const [slot,clinician,person,appointmentMonth,appointmentDate,leadMinutes]=JSON.parse(key);return {slot,clinician,person,appointmentMonth,appointmentDate,leadMinutes,status:'Booked',count}}).sort((a,b)=>a.leadMinutes-b.leadMinutes);
  waitingTrendDimensionCache=new WeakMap();
  waitingTrendAvailableMonths=[...new Set(waitingTrendRecords.map(r=>r.appointmentMonth).filter(Boolean))].sort();
- appointmentTimeRecords=[...appointmentTimeAggregate].map(([key,count])=>{const [date,bookedDay,bookedMinute,slot,clinician,person]=JSON.parse(key);return {date,bookedDay,bookedMinute,slot,clinician,person,count}});
+ appointmentTimeRecords=[...appointmentTimeAggregate].map(([key,count])=>{const [date,bookedDay,bookedMinute,slot,clinician,person,source]=JSON.parse(key);return {date,bookedDay,bookedMinute,slot,clinician,person,source:source||'slot',count}});
  bookingTimeRecords=[...bookingTimeAggregate].map(([key,count])=>{const [bookedDay,minute,slot,clinician,person]=JSON.parse(key);return {bookedDay,minute,slot,clinician,person,count}});
- availabilityRecords=[...availabilityAggregate].map(([key,count])=>{const [date,slot,availability,clinician,person]=JSON.parse(key);return {date,slot,availability,clinician,person,count}});
+ availabilityRecords=[...availabilityAggregate].map(([key,count])=>{const [date,slot,availability,clinician,person,minute,source]=JSON.parse(key);return {date,slot,availability,clinician,person,minute:Number.isFinite(minute)?minute:null,source:source||'slot',count}});
  records=[...aggregate].map(([key,count])=>{const [bookedDay,slot,clinician,person]=JSON.parse(key);const bookedWeek=mondayOf(bookedDay);return {week:bookedWeek,bookedWeek,bookedDay,slot,clinician,person,status:'Booked',count}});weeks=[...new Set(records.map(r=>r.bookedWeek))].sort();types=[...new Set([...records.map(r=>r.slot),...availabilityRecords.map(r=>r.slot)])].sort();statuses=['Booked'];clinicianTypes=[...new Set([...records.map(r=>r.clinician),...availabilityRecords.map(r=>r.clinician)])].filter(Boolean).sort();
  // Assign obvious names on first encounter; retain any existing manual choices.
  // Do not guess assignments: unknown slot types stay Uncategorised until manually assigned.
@@ -2735,12 +2737,12 @@ function installDayView2GroupTooltip(group,{name,date,counts,colour}){
   const heading=document.createElement('div');heading.className='availability-tooltip-heading';heading.textContent=name;
   const day=document.createElement('div');day.className='availability-tooltip-line day-view2-tooltip-date';day.textContent=date;
   card.append(heading,day);
-  const statuses=[['booked','Booked',colour],['available','Available','#ffffff'],['embargoed','Embargoed','#586674'],['blocked','Blocked','#354454']];
+  const statuses=[['missedEmpty','Missed Empty','stripe'],['booked','Booked',colour],['available','Available','#ffffff'],['embargoed','Embargoed','#586674'],['blocked','Blocked','#354454']];
   let total=0;
   for(const [status,label,fill] of statuses){
    const count=Number(counts[status])||0;total+=count;
    const row=document.createElement('div');row.className='availability-tooltip-line';
-   const dot=document.createElement('span');dot.className='availability-tooltip-dot';dot.style.backgroundColor=fill;
+   const dot=document.createElement('span');dot.className='availability-tooltip-dot';if(status==='missedEmpty')dot.style.background='repeating-linear-gradient(135deg,#fff 0px,#fff 5px,'+colour+' 5px,'+colour+' 6px)';else dot.style.backgroundColor=fill;
    const caption=document.createElement('span');caption.className='day-view2-tooltip-label';caption.textContent=label;
    const value=document.createElement('strong');value.textContent=count.toLocaleString('en-GB');
    row.append(dot,caption,value);card.append(row);
@@ -2768,19 +2770,32 @@ function layoutDayView2SegmentCounts(root){
  for(const segment of root.querySelectorAll('.day-view2-segment')){const text=segment.dataset.count||'';segment.textContent=segment.clientWidth>=text.length*8+12?text:'';}
  for(const rail of root.querySelectorAll('.day-view2-pace-rail'))layoutDayView2PaceRail(rail);
 }
+function isDayView2SlotReportRecord(row){
+ return row.source!=='signposting'&&row.clinician!=='Signposting (no clinician recorded)';
+}
+function dayView2LondonClock(value=new Date()){
+ const p=Object.fromEntries(new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/London',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).formatToParts(value).map(part=>[part.type,part.value]));
+ return {date:p.year+'-'+p.month+'-'+p.day,minute:Number(p.hour)*60+Number(p.minute)+Number(p.second)/60};
+}
+function dayView2Time(minute){
+ const value=Math.floor(minute),hour=Math.floor(value/60)%24;
+ return (hour%12||12)+':'+String(value%60).padStart(2,'0')+(hour>=12?'pm':'am');
+}
+
 function dayView2RefreshAge(timestamp,now=Date.now()){
  if(timestamp===null||!Number.isFinite(timestamp))return 'Data refreshed: timestamp unavailable';
  const minutes=Math.floor(Math.max(0,now-timestamp)/60000);
  if(minutes===0)return 'Data refreshed just now';
  if(minutes<60)return 'Data refreshed '+minutes+' minute'+(minutes===1?'':'s')+' ago';
  const hours=Math.floor(minutes/60);
+ if(minutes<240)return 'Data refreshed '+hours+' hour'+(hours===1?'':'s')+' '+(minutes%60)+' minute'+(minutes%60===1?'':'s')+' ago';
  if(hours<24)return 'Data refreshed '+hours+' hour'+(hours===1?'':'s')+' ago';
  const days=Math.floor(hours/24);return 'Data refreshed '+days+' day'+(days===1?'':'s')+' ago';
 }
 function updateDayView2RefreshAge(){
  const label=$('dayView2Refreshed');if(!label)return;
  label.textContent=dayView2RefreshAge(capacityCSVLatestModified);
- label.title=capacityCSVLatestModified===null?'No imported clinical CSV timestamp is available.':'Latest imported clinical CSV: '+new Date(capacityCSVLatestModified).toLocaleString('en-GB',{day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'Europe/London'});
+ label.title=capacityCSVLatestModified===null?'No imported Slot Report timestamp is available.':'Latest imported Slot Report: '+new Date(capacityCSVLatestModified).toLocaleString('en-GB',{day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:true,timeZone:'Europe/London'});
 }
 function dayView2UrgencyOrder(name){
  const key=name.toLowerCase().replace(/[^a-z0-9]/g,'');
@@ -2850,21 +2865,22 @@ for(const [id,step] of [['dayView2CalendarPrevious',-1],['dayView2CalendarNext',
 document.addEventListener('click',event=>{if(!event.target.closest('#dayView2DateControls'))closeDayView2Calendar();});
 document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!$('dayView2Calendar')?.hidden){closeDayView2Calendar();$('dayView2DatePicker')?.focus();}});
 
-function collectDayView2Capacity(date,names,disabled,rows){
+function collectDayView2Capacity(date,names,disabled,rows,clock=dayView2LondonClock()){
  date=dayView2WorkingDate(date);
- const statuses=['booked','available','embargoed','blocked'];
+ const statuses=['missedEmpty','booked','available','embargoed','blocked'];
+ const empty=()=>({missedEmpty:0,booked:0,available:0,embargoed:0,blocked:0});
  const active=names.filter(name=>!disabled.has(name));
- const days=new Map(Array.from({length:8},(_,i)=>[dayView2AddWorkingDays(date,i),{groups:new Map(active.map(name=>[name,{booked:0,available:0,embargoed:0,blocked:0}])),totals:{booked:0,available:0,embargoed:0,blocked:0},unknown:0,matched:0}]));
+ const days=new Map(Array.from({length:8},(_,i)=>[dayView2AddWorkingDays(date,i),{groups:new Map(active.map(name=>[name,empty()])),totals:empty(),unknown:0,matched:0}]));
  for(const r of rows){
   const day=days.get(r.date);
-  // Include mapped referral/signposting groups when selected, including Sent External.
   if(!day||excludedSlotTypes.has(r.slot))continue;
   const group=day.groups.get(capacityUrgencyCategory(r.slot));
   if(!group)continue;
   const count=Number(r.count);
   if(!Number.isFinite(count)||count<=0)continue;
   day.matched+=count;
-  const status=String(r.availability||'').trim().toLowerCase();
+  let status=String(r.availability||'').trim().toLowerCase();
+  if(status==='available'&&(r.date<clock.date||(r.date===clock.date&&Number.isFinite(r.minute)&&r.minute<clock.minute)))status='missedEmpty';
   if(!statuses.includes(status)){day.unknown+=count;continue;}
   group[status]+=count;day.totals[status]+=count;
  }
@@ -2873,7 +2889,7 @@ function collectDayView2Capacity(date,names,disabled,rows){
 
 // Compare appointments scheduled for today with prior matching weekdays at the
 // same report-clock time. Do not treat missing reports/timestamps as zero demand.
-function calculateDayView2PaceBaseline({date,minute,names,availability,bookings,excluded,groupForSlot,holidays}){
+function calculateDayView2PaceBaseline({date,minute,remainingMinute=minute,names,availability,bookings,excluded,groupForSlot,holidays}){
  const target=new Date(date+'T12:00:00Z'),year=target.getUTCFullYear()-1,month=target.getUTCMonth();
  const start=new Date(Date.UTC(year,month,Math.min(target.getUTCDate(),new Date(Date.UTC(year,month+1,0)).getUTCDate()),12)).toISOString().slice(0,10);
  const weekStart=day=>{const d=new Date(day+'T12:00:00Z');d.setUTCDate(d.getUTCDate()-((d.getUTCDay()+6)%7));return d.toISOString().slice(0,10);};
@@ -2881,31 +2897,32 @@ function calculateDayView2PaceBaseline({date,minute,names,availability,bookings,
  const active=new Set(names),candidates=new Map();
  // Every matching weekday in the previous calendar year; no 12-sample cap.
  for(let day=dayView2AddDays(date,-7);day>=start;day=dayView2AddDays(day,-7)){
-  if(!holidayWeeks.has(weekStart(day)))candidates.set(day,{date:day,total:0,booked:0,timed:0,byTime:0});
+  if(!holidayWeeks.has(weekStart(day)))candidates.set(day,{date:day,total:0,booked:0,timed:0,byTime:0,later:0});
  }
  for(const row of availability){
   const day=candidates.get(row.date);
-  if(!day||excluded.has(row.slot)||!active.has(groupForSlot(row.slot)))continue;
+  if(!day||!isDayView2SlotReportRecord(row)||excluded.has(row.slot)||!active.has(groupForSlot(row.slot)))continue;
   const status=String(row.availability||'').trim().toLowerCase(),count=Number(row.count);
   if(!['booked','available','embargoed','blocked'].includes(status)||!Number.isFinite(count)||count<=0)continue;
   day.total+=count;if(status==='booked')day.booked+=count;
  }
  for(const row of bookings){
   const day=candidates.get(row.date);
-  if(!day||excluded.has(row.slot)||!active.has(groupForSlot(row.slot)))continue;
+  if(!day||!isDayView2SlotReportRecord(row)||excluded.has(row.slot)||!active.has(groupForSlot(row.slot)))continue;
   const count=Number(row.count),clock=Number(row.bookedMinute);
   if(!Number.isFinite(count)||count<=0||row.bookedMinute==null||!Number.isFinite(clock)||clock<0||clock>=1440||!/^\d{4}-\d{2}-\d{2}$/.test(row.bookedDay||''))continue;
   // Late-entered bookings are known timestamps, but did not exist by the
   // comparison clock on the appointment date. They are not missing history.
   day.timed+=count;
   if(row.bookedDay<row.date||(row.bookedDay===row.date&&clock<=minute))day.byTime+=count;
+  if(row.bookedDay===row.date&&clock>remainingMinute)day.later+=count;
  }
  const reported=[...candidates.values()].filter(day=>day.total>0);
  const samples=reported.filter(day=>day.booked===0?day.timed===0:day.timed>=day.booked*.9&&day.timed<=day.booked+0.0001).map(day=>{
   const estimated=day.booked>day.timed+0.0001;
   // Small timestamp gaps should not discard an otherwise usable report.
   // Scale only high-coverage days; never assume a missing report is zero.
-  return {...day,estimated,byTime:estimated?Math.min(day.booked,day.byTime*day.booked/day.timed):day.byTime};
+  return {...day,estimated,byTime:estimated?Math.min(day.booked,day.byTime*day.booked/day.timed):day.byTime,remaining:estimated?day.later*day.booked/day.timed:day.later};
  });
  const diagnostics={samples,start,reportedDays:reported.length,incompleteDays:reported.length-samples.length,estimatedDays:samples.filter(day=>day.estimated).length,holidayWeeksExcluded:holidayWeeks.size};
  if(samples.length<6)return {ready:false,...diagnostics};
@@ -2954,42 +2971,44 @@ function createDayView2PaceRail(actual,baseline,total,clock){
  label('Typical '+typical.toLocaleString('en-GB')+' by '+clock,'day-view2-pace-rail-typical-label',baseline.mean);
  wrapper.append(rail);return wrapper;
 }
-function dayView2PaceBaseline(date,minute,names,holidays){
- const key=JSON.stringify([date,minute,[...names].sort(),[...excludedSlotTypes].sort()]);
+function dayView2PaceBaseline(date,minute,names,holidays,remainingMinute=minute){
+ const key=JSON.stringify([date,minute,remainingMinute,[...names].sort(),[...excludedSlotTypes].sort()]);
  if(capacityPaceCache?.key===key&&capacityPaceCache.availability===availabilityRecords&&capacityPaceCache.bookings===appointmentTimeRecords)return capacityPaceCache.result;
- const result=calculateDayView2PaceBaseline({date,minute,names,availability:availabilityRecords,bookings:appointmentTimeRecords,excluded:excludedSlotTypes,groupForSlot:capacityUrgencyCategory,holidays});
+ const result=calculateDayView2PaceBaseline({date,minute,remainingMinute,names,availability:availabilityRecords,bookings:appointmentTimeRecords,excluded:excludedSlotTypes,groupForSlot:capacityUrgencyCategory,holidays});
  capacityPaceCache={key,availability:availabilityRecords,bookings:appointmentTimeRecords,result};return result;
 }
-function createDayView2BookingPace(date,names,totals){
+
+function dayView2PaceContext(date,names,totals){
  if(date!==dayView2LocalDate())return null;
- const box=document.createElement('section');box.className='day-view2-booking-pace';box.setAttribute('aria-label','Booking pace for today');
  const now=Date.now(),hasTimestamp=Number.isFinite(capacityCSVLatestModified);
  const snapshot=hasTimestamp?new Date(Math.min(now,capacityCSVLatestModified)):null;
- const parts=snapshot?Object.fromEntries(new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/London',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(snapshot).map(p=>[p.type,p.value])):null;
- const snapshotDate=parts?parts.year+'-'+parts.month+'-'+parts.day:null;
- const clock=parts?parts.hour+':'+parts.minute:null,minute=parts?Number(parts.hour)*60+Number(parts.minute):null;
+ const snapshotClock=snapshot?dayView2LondonClock(snapshot):null;
+ const snapshotDate=snapshotClock?.date,minute=snapshotClock?Math.floor(snapshotClock.minute):null,clock=snapshotClock?dayView2Time(minute):null;
+ const remainingMinute=Math.max(minute||0,Math.floor(dayView2LondonClock(new Date(now)).minute)),remainingClock=dayView2Time(remainingMinute);
  const weekday=new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'long',timeZone:'UTC'});
  const year=Number(date.slice(0,4)),holidays=new Set([...englandWalesBankHolidays(year-1),...englandWalesBankHolidays(year)]);
  const total=Object.values(totals).reduce((sum,count)=>sum+count,0);
  let baseline=null,state='unavailable',status,description;
  if(!names.length){status='Select urgency groups';description='Choose an urgency group to compare today’s booking pace.';}
- else if(!total){status='No capacity data';description='No capacity is reported for today and the selected urgency groups.';}
- else if(!hasTimestamp){status='Snapshot time unavailable';description='Import a clinical CSV with a file timestamp to compare the same time of day.';}
- else if(snapshotDate!==date){status='Awaiting today’s data';description='The latest clinical CSV is from '+snapshot.toLocaleDateString('en-GB',{day:'numeric',month:'long',timeZone:'Europe/London'})+'. Refresh today’s report for a weekday comparison.';}
+ else if(!total){status='No Slot Report data';description='No Slot Report capacity is reported for today and the selected urgency groups.';}
+ else if(!hasTimestamp){status='Snapshot time unavailable';description='Import a Slot Report with a file timestamp to compare the same time of day.';}
+ else if(snapshotDate!==date){status='Awaiting today’s data';description='The latest Slot Report is from '+snapshot.toLocaleDateString('en-GB',{day:'numeric',month:'long',timeZone:'Europe/London'})+'. Refresh today’s report for a weekday comparison.';}
  else if([...holidays].some(holiday=>mondayOf(holiday)===mondayOf(date))){status='Bank holiday week';description='A normal '+weekday+' comparison is not shown during a bank-holiday week.';}
  else{
-  baseline=dayView2PaceBaseline(date,minute,names,holidays);state=dayView2PaceClassification(totals.booked,baseline);
-  if(!baseline.ready){status=baseline.reportedDays>=6?'Booking-time data incomplete':'Not enough history';description=baseline.reportedDays>=6?baseline.reportedDays+' non-bank-holiday '+weekday+' reports found in the last 12 months; '+baseline.samples.length+' have at least 90% booking-time coverage.':baseline.samples.length+' of 6 required comparable '+weekday+' reports available in the last 12 months.';}
-  else{
-   status={'much-below':'↘ Much lower than usual','slightly-below':'↘ Slightly lower than usual','normal-low':'≈ Lower end of usual range',normal:'≈ Within usual range','normal-high':'≈ Higher end of usual range','slightly-above':'↗ Slightly higher than usual','much-above':'↗ Much higher than usual'}[state];
-  }
+  baseline=dayView2PaceBaseline(date,minute,names,holidays,remainingMinute);state=dayView2PaceClassification(totals.booked,baseline);
+  if(!baseline.ready){status=baseline.reportedDays>=6?'Booking-time data incomplete':'Not enough history';description=baseline.reportedDays>=6?baseline.reportedDays+' non-bank-holiday '+weekday+' Slot Reports found in the last 12 months; '+baseline.samples.length+' have at least 90% booking-time coverage.':baseline.samples.length+' of 6 required comparable '+weekday+' Slot Reports available in the last 12 months.';}
+  else status={'much-below':'↘ Much lower than usual','slightly-below':'↘ Slightly lower than usual','normal-low':'≈ Lower end of usual range',normal:'≈ Within usual range','normal-high':'≈ Higher end of usual range','slightly-above':'↗ Slightly higher than usual','much-above':'↗ Much higher than usual'}[state];
  }
- box.dataset.paceState=state;
+ return {date,names,totals,total,actual:totals.booked,weekday,minute,clock,remainingMinute,remainingClock,baseline,state,status,description};
+}
+function createDayView2BookingPace(date,names,totals,context=dayView2PaceContext(date,names,totals)){
+ if(!context)return null;
+ const {clock,baseline,state,status,description,total}=context;
+ const box=document.createElement('section');box.className='day-view2-booking-pace';box.setAttribute('aria-label','Booking pace for today, Slot Reports only');box.dataset.paceState=state;
  const header=document.createElement('div');header.className='day-view2-pace-heading';
  const title=document.createElement('strong');title.textContent='Booking pace'+(clock?' · as of '+clock:'');
  const badge=document.createElement('span');badge.className='day-view2-pace-badge';badge.textContent=status;badge.setAttribute('role','status');
- header.append(title,badge);
- box.append(header);
+ header.append(title,badge);box.append(header);
  if(description){const subtitle=document.createElement('p');subtitle.className='day-view2-pace-subtitle';subtitle.textContent=description;box.append(subtitle);}
  if(baseline?.ready){
   const details=document.createElement('details');details.className='day-view2-pace-details';
@@ -2999,6 +3018,39 @@ function createDayView2BookingPace(date,names,totals){
   details.addEventListener('toggle',()=>{if(details.open)requestAnimationFrame(()=>layoutDayView2PaceRail(comparison.querySelector('.day-view2-pace-rail')));});
  }
  return box;
+}
+// Conditional remaining-day demand: favour historical days with a similar
+// booked-so-far count, then cautiously adjust for today's observed pace.
+function calculateDayView2FurtherBookings(actual,baseline){
+ if(!baseline?.ready)return {ready:false};
+ const samples=baseline.samples.filter(day=>Number.isFinite(day.remaining)&&day.remaining>=0);
+ if(samples.length<6)return {ready:false};
+ const scale=Math.max(5,baseline.mean*.2,(baseline.high-baseline.low)/2);
+ const ratio=Math.max(.5,Math.min(1.75,(actual+10)/(baseline.mean+10)));
+ const confidence=(actual+baseline.mean)/(actual+baseline.mean+30);
+ const pace=1+confidence*(ratio-1);
+ const candidates=samples.map(day=>({value:day.remaining*pace,weight:1/(1+((day.byTime-actual)/scale)**2)})).sort((a,b)=>a.value-b.value);
+ const weights=candidates.reduce((sum,item)=>sum+item.weight,0);
+ const mean=candidates.reduce((sum,item)=>sum+item.value*item.weight,0)/weights;
+ const quantile=p=>{let cumulative=0;for(const item of candidates){cumulative+=item.weight;if(cumulative>=weights*p)return item.value;}return candidates[candidates.length-1].value;};
+ const spread=Math.sqrt(mean);
+ return {ready:true,mean,low:Math.max(0,Math.floor(Math.min(quantile(.15),mean-spread))),high:Math.max(0,Math.ceil(Math.max(quantile(.85),mean+spread))),samples:samples.length};
+}
+function createDayView2FurtherBooking(context){
+ if(!context)return null;
+ const box=document.createElement('section');box.className='day-view2-further-booking';box.setAttribute('aria-label','Expected further booking from Slot Reports');
+ const header=document.createElement('div');header.className='day-view2-pace-heading';
+ const title=document.createElement('strong');title.textContent='Expected further booking';header.append(title);box.append(header);
+ const forecast=calculateDayView2FurtherBookings(context.actual,context.baseline);
+ const value=document.createElement('span');value.className='day-view2-further-range';value.setAttribute('role','status');
+ if(forecast.ready){
+  value.textContent=forecast.high===0?'No further bookings expected':forecast.low===forecast.high?forecast.low.toLocaleString('en-GB')+' more today':forecast.low.toLocaleString('en-GB')+'–'+forecast.high.toLocaleString('en-GB')+' more today';
+  box.dataset.expectedLow=String(forecast.low);box.dataset.expectedHigh=String(forecast.high);
+ }else value.textContent=context.status||'Not enough history';
+ header.append(value);
+ const note=document.createElement('p');note.className='day-view2-pace-subtitle';
+ note.textContent=forecast.ready?'Indicative demand after '+context.remainingClock+', using the '+context.clock+' Slot Report pace and similar '+context.weekday+'s. '+context.totals.available.toLocaleString('en-GB')+' Slot Report slots are still available today; Missed Empty is excluded.':'An estimate will appear when today’s Slot Report and enough comparable booking-time history are available.';
+ box.append(note);return box;
 }
 
 function renderDayView2(){
@@ -3024,11 +3076,15 @@ function renderDayView2(){
   checkbox.checked=!dayView2DisabledUrgencies.has(checkbox.dataset.filterName);
   checkbox.nextElementSibling.style.setProperty('--switch-on',urgencyGroupColour(checkbox.dataset.filterName));
  });
- const days=collectDayView2Capacity(date,names,dayView2DisabledUrgencies,availabilityRecords),selected=days.get(date),totals=selected.totals;
- const statuses=['booked','available','embargoed','blocked'];
+ const liveClock=dayView2LondonClock();
+ const days=collectDayView2Capacity(date,names,dayView2DisabledUrgencies,availabilityRecords,liveClock),selected=days.get(date),totals=selected.totals;
+ const slotTotals=collectDayView2Capacity(date,names,dayView2DisabledUrgencies,availabilityRecords.filter(isDayView2SlotReportRecord),liveClock).get(date).totals;
+ const paceContext=dayView2PaceContext(date,[...selected.groups.keys()],slotTotals);
+ const paceExpanded=$('dayView2Lanes').querySelector('.day-view2-pace-details')?.open;
+ const statuses=['missedEmpty','booked','available','embargoed','blocked'];
  const number=n=>n.toLocaleString('en-GB');
  const total=statuses.reduce((sum,status)=>sum+totals[status],0);
- $('dayView2SelectedDate').textContent=dayView2DateLabel(date);
+ $('dayView2SelectedDate').textContent=dayView2DateLabel(date)+' '+date.slice(0,4);
  updateDayView2RefreshAge();
 
  const urgencyLegend=$('dayView2UrgencyLegend');urgencyLegend.replaceChildren();
@@ -3037,7 +3093,7 @@ function renderDayView2(){
   key.append(dot,document.createTextNode(name));urgencyLegend.append(key);
  }
  $('dayView2Total').textContent=number(total)+' total slots';
- const bookable=totals.booked+totals.available;
+ const bookable=totals.booked+totals.available+totals.missedEmpty;
  $('dayView2Fill').textContent=bookable?Math.round(100*totals.booked/bookable)+'% of bookable capacity filled':'No bookable slots reported';
  $('dayView2Detail').textContent='Select a capacity segment for its count and meaning.';
  const lanes=$('dayView2Lanes');hideDayView2Tooltip();dayView2SegmentObserver?.disconnect();lanes.replaceChildren();
@@ -3057,7 +3113,7 @@ function renderDayView2(){
  const lane=document.createElement('section');lane.className='day-view2-lane';lane.dataset.date=laneDate;
  const heading=document.createElement('div');heading.className='day-view2-lane-heading';
  const title=document.createElement('h3');title.textContent=offset===0?'Capacity by urgency group':(offset===1?(!weekendGap&&date===dayView2LocalDate()?'Tomorrow':'Next working day'):'Two working days ahead')+' · '+laneDateLabel;
- const summary=document.createElement('span');summary.textContent=number(laneTotals.booked)+' booked · '+number(laneTotals.available)+' available · '+number(laneTotal)+' total';
+ const summary=document.createElement('span');summary.textContent=number(laneTotals.booked)+' booked · '+number(laneTotals.available)+' available'+(laneTotals.missedEmpty?' · '+number(laneTotals.missedEmpty)+' Missed Empty':'')+' · '+number(laneTotal)+' total';
  heading.append(title,summary);
  const bar=document.createElement('div');bar.className='day-view2-bar';bar.setAttribute('role','group');bar.setAttribute('aria-label',laneDateLabel+' capacity by urgency group, then booking status');
 
@@ -3073,23 +3129,23 @@ function renderDayView2(){
    if(!counts[status])continue;
    const segment=document.createElement('button');segment.type='button';segment.className='day-view2-segment day-view2-'+status;segment.style.flex=String(counts[status]);
    segment.dataset.count=number(counts[status]);segment.dataset.date=laneDate;segment.dataset.urgency=name;segment.dataset.status=status;
-   if(status==='booked'){
+   if(status==='booked'||status==='missedEmpty'){
     segment.style.setProperty('--day-view2-group-colour',colour);
     const hex=/^#([0-9a-f]{6})$/i.exec(colour);
-    if(hex){const rgb=[0,2,4].map(i=>parseInt(hex[1].slice(i,i+2),16)/255).map(c=>c<=0.04045?c/12.92:Math.pow((c+0.055)/1.055,2.4));segment.style.setProperty('--day-view2-booked-text',0.2126*rgb[0]+0.7152*rgb[1]+0.0722*rgb[2]>0.179?'#152b43':'#ffffff');}
+    if(hex&&status==='booked'){const rgb=[0,2,4].map(i=>parseInt(hex[1].slice(i,i+2),16)/255).map(c=>c<=0.04045?c/12.92:Math.pow((c+0.055)/1.055,2.4));segment.style.setProperty('--day-view2-booked-text',0.2126*rgb[0]+0.7152*rgb[1]+0.0722*rgb[2]>0.179?'#152b43':'#ffffff');}
    }
-   segment.setAttribute('aria-label',laneDateLabel+' · '+name+': '+number(counts[status])+' '+status+' slots');
+   segment.setAttribute('aria-label',laneDateLabel+' · '+name+': '+number(counts[status])+' '+(status==='missedEmpty'?'Missed Empty':status)+' slots');
    if(counts[status]/laneTotal>=.04)segment.textContent=number(counts[status]);
    segment.addEventListener('click',()=>{
-    const meaning={booked:'Already booked for this appointment date.',available:'Free to book in the loaded report; appointment times are not supplied, so this may include earlier slots.',embargoed:'Held from booking. The report does not supply a release time.',blocked:'Currently unavailable; these slots are not counted as free to book.'};
-    $('dayView2Detail').textContent=laneDateLabel+' · '+name+' · '+number(counts[status])+' '+status+' slots. '+meaning[status];
+    const meaning={missedEmpty:'An unbooked slot whose appointment start time has already passed.',booked:'Already booked for this appointment date.',available:'An unbooked slot whose start time has not passed in the loaded report.',embargoed:'Held from booking. The report does not supply a release time.',blocked:'Currently unavailable; these slots are not counted as free to book.'};
+    $('dayView2Detail').textContent=laneDateLabel+' · '+name+' · '+number(counts[status])+' '+(status==='missedEmpty'?'Missed Empty':status)+' slots. '+meaning[status];
    });
    groupSpan.append(segment);
   }
   bar.append(groupSpan);
  }
  lane.append(heading,bar);
- if(offset===0){const pace=createDayView2BookingPace(date,[...selected.groups.keys()],totals);if(pace)lane.append(pace);}
+ if(offset===0){const pace=createDayView2BookingPace(date,[...selected.groups.keys()],slotTotals,paceContext);if(pace){if(paceExpanded)pace.querySelector('details')?.setAttribute('open','');lane.append(pace);}const further=createDayView2FurtherBooking(paceContext);if(further)lane.append(further);}
  if(!laneTotal){
   const noData=document.createElement('p');noData.className='muted day-view2-note';
   noData.textContent=!laneDay.groups.size?'Select an urgency group to view capacity.':'No capacity reported for '+laneDateLabel+' and the selected urgency groups.';
@@ -3118,7 +3174,7 @@ function renderDayView2(){
   card.addEventListener('click',()=>{input.value=nextDate;renderDayView2();});upcoming.append(card);
  }
 }
-setInterval(()=>{if(!$('dayView2Page')?.classList.contains('hidden'))updateDayView2RefreshAge();},60000);
+setInterval(()=>{if(!$('dayView2Page')?.classList.contains('hidden'))renderDayView2();},60000);
 $('dayView2Date')?.addEventListener('change',renderDayView2);
 $('dayView2Today')?.addEventListener('click',()=>{$('dayView2Date').value=dayView2WorkingDate(dayView2LocalDate());closeDayView2Calendar();renderDayView2();});
 $('dayView2Previous')?.addEventListener('click',()=>{$('dayView2Date').value=dayView2AddWorkingDays($('dayView2Date').value||dayView2LocalDate(),-1);closeDayView2Calendar();renderDayView2();});
