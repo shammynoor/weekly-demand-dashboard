@@ -3312,7 +3312,7 @@ function renderAvailabilityChart(){
  const annotations=weekLabels.map((text,i)=>({x:weekly?buckets[i]:dates[i*7+2],xref:'x',y:1.045,yref:'paper',text,showarrow:false,font:{size:13,color:'#344b60'},xanchor:'center',yanchor:'bottom'}));
  const shapes=Array.from({length:weekCount-1},(_,i)=>({type:'line',xref:'x',yref:'paper',x0:weekly?i+0.5:i*7+5.5,x1:weekly?i+0.5:i*7+5.5,y0:0,y1:1,line:{color:'#bdcbd6',width:1,dash:'dot'}}));
  if(dateSet.has(todayLondon)){
-  const x=weekly?urgentWeeksBack-0.5+((new Date(todayLondon+'T12:00:00Z').getUTCDay()+6)%7)/7:dates.indexOf(todayLondon);
+  const x=weekly?urgentWeeksBack-0.5+(Math.min((new Date(todayLondon+'T12:00:00Z').getUTCDay()+6)%7,4)*0.2+0.05):dates.indexOf(todayLondon);
   shapes.unshift({type:'rect',xref:'x',yref:'paper',x0:-.5,x1:x,y0:0,y1:1,fillcolor:'rgba(97,112,130,0.12)',line:{width:0},layer:'above'});
   shapes.push({type:'line',xref:'x',yref:'paper',x0:x,x1:x,y0:0,y1:1,line:{color:'#257cb6',width:2.5,dash:'dot'},layer:'above'});
   annotations.push({x,xref:'x',y:1.005,yref:'paper',text:'Today',showarrow:false,font:{size:17,color:'#206ca6'},xanchor:'left',yanchor:'top',xshift:7,yshift:-8});
