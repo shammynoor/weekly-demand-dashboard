@@ -2873,10 +2873,14 @@ function collectDayView2Capacity(date,names,disabled,rows){
 // Compare appointments scheduled for today with prior matching weekdays at the
 // same report-clock time. Do not treat missing reports/timestamps as zero demand.
 function calculateDayView2PaceBaseline({date,minute,names,availability,bookings,excluded,groupForSlot,holidays}){
+ const target=new Date(date+'T12:00:00Z'),year=target.getUTCFullYear()-1,month=target.getUTCMonth();
+ const start=new Date(Date.UTC(year,month,Math.min(target.getUTCDate(),new Date(Date.UTC(year,month+1,0)).getUTCDate()),12)).toISOString().slice(0,10);
+ const weekStart=day=>{const d=new Date(day+'T12:00:00Z');d.setUTCDate(d.getUTCDate()-((d.getUTCDay()+6)%7));return d.toISOString().slice(0,10);};
+ const holidayWeeks=new Set([...holidays].map(weekStart));
  const active=new Set(names),candidates=new Map();
- for(let week=1;week<=26;week++){
-  const day=dayView2AddDays(date,-7*week);
-  if(!holidays.has(day))candidates.set(day,{date:day,total:0,booked:0,timed:0,byTime:0});
+ // Every matching weekday in the previous calendar year; no 12-sample cap.
+ for(let day=dayView2AddDays(date,-7);day>=start;day=dayView2AddDays(day,-7)){
+  if(!holidayWeeks.has(weekStart(day)))candidates.set(day,{date:day,total:0,booked:0,timed:0,byTime:0});
  }
  for(const row of availability){
   const day=candidates.get(row.date);
@@ -2889,17 +2893,25 @@ function calculateDayView2PaceBaseline({date,minute,names,availability,bookings,
   const day=candidates.get(row.date);
   if(!day||excluded.has(row.slot)||!active.has(groupForSlot(row.slot)))continue;
   const count=Number(row.count),clock=Number(row.bookedMinute);
-  if(!Number.isFinite(count)||count<=0||row.bookedMinute==null||!Number.isFinite(clock)||clock<0||clock>=1440||!/^\d{4}-\d{2}-\d{2}$/.test(row.bookedDay||'')||row.bookedDay>row.date)continue;
+  if(!Number.isFinite(count)||count<=0||row.bookedMinute==null||!Number.isFinite(clock)||clock<0||clock>=1440||!/^\d{4}-\d{2}-\d{2}$/.test(row.bookedDay||''))continue;
+  // Late-entered bookings are known timestamps, but did not exist by the
+  // comparison clock on the appointment date. They are not missing history.
   day.timed+=count;
   if(row.bookedDay<row.date||(row.bookedDay===row.date&&clock<=minute))day.byTime+=count;
  }
- const samples=[...candidates.values()].filter(day=>day.total>0&&Math.abs(day.timed-day.booked)<0.0001).slice(0,12);
- if(samples.length<6)return {ready:false,samples};
+ const reported=[...candidates.values()].filter(day=>day.total>0);
+ const samples=reported.filter(day=>day.booked===0?day.timed===0:day.timed>=day.booked*.9&&day.timed<=day.booked+0.0001).map(day=>{
+  const estimated=day.booked>day.timed+0.0001;
+  // Small timestamp gaps should not discard an otherwise usable report.
+  // Scale only high-coverage days; never assume a missing report is zero.
+  return {...day,estimated,byTime:estimated?Math.min(day.booked,day.byTime*day.booked/day.timed):day.byTime};
+ });
+ const diagnostics={samples,start,reportedDays:reported.length,incompleteDays:reported.length-samples.length,estimatedDays:samples.filter(day=>day.estimated).length,holidayWeeksExcluded:holidayWeeks.size};
+ if(samples.length<6)return {ready:false,...diagnostics};
  const values=samples.map(day=>day.byTime).sort((a,b)=>a-b),mean=values.reduce((a,b)=>a+b,0)/values.length;
  const quantile=p=>{const position=(values.length-1)*p,low=Math.floor(position),high=Math.ceil(position);return values[low]+(values[high]-values[low])*(position-low);};
- // Avoid calling a one-slot difference unusual when historical days are identical.
  const tolerance=Math.max(2,mean*.05);
- return {ready:true,samples,mean,low:Math.max(0,Math.min(quantile(.15),mean-tolerance)),high:Math.max(quantile(.85),mean+tolerance)};
+ return {ready:true,...diagnostics,mean,low:Math.max(0,Math.min(quantile(.15),mean-tolerance)),high:Math.max(quantile(.85),mean+tolerance)};
 }
 function dayView2PaceClassification(actual,baseline){
  if(!baseline.ready)return 'unavailable';
@@ -2927,10 +2939,10 @@ function createDayView2BookingPace(date,names,totals){
  else if(!total){status='No capacity data';description='No capacity is reported for today and the selected urgency groups.';}
  else if(!hasTimestamp){status='Snapshot time unavailable';description='Import a clinical CSV with a file timestamp to compare the same time of day.';}
  else if(snapshotDate!==date){status='Awaiting today’s data';description='The latest clinical CSV is from '+snapshot.toLocaleDateString('en-GB',{day:'numeric',month:'long',timeZone:'Europe/London'})+'. Refresh today’s report for a weekday comparison.';}
- else if(holidays.has(date)){status='Bank holiday';description='A normal '+weekday+' comparison is not shown on a bank holiday.';}
+ else if([...holidays].some(holiday=>mondayOf(holiday)===mondayOf(date))){status='Bank holiday week';description='A normal '+weekday+' comparison is not shown during a bank-holiday week.';}
  else{
   baseline=dayView2PaceBaseline(date,minute,names,holidays);state=dayView2PaceClassification(totals.booked,baseline);
-  if(!baseline.ready){status='Not enough history';description=baseline.samples.length+' of 6 required comparable '+weekday+' reports available.';}
+  if(!baseline.ready){status=baseline.reportedDays>=6?'Booking-time data incomplete':'Not enough history';description=baseline.reportedDays>=6?baseline.reportedDays+' non-bank-holiday '+weekday+' reports found in the last 12 months; '+baseline.samples.length+' have at least 90% booking-time coverage.':baseline.samples.length+' of 6 required comparable '+weekday+' reports available in the last 12 months.';}
   else{
    status={below:'↘ Below usual range',normal:'≈ Within usual range',above:'↗ Above usual range'}[state];
    const difference=Math.round(totals.booked-baseline.mean);
@@ -2951,9 +2963,12 @@ function createDayView2BookingPace(date,names,totals){
   const row=(label,value)=>{const line=document.createElement('div'),key=document.createElement('span'),text=document.createElement('strong');key.textContent=label;text.textContent=value;line.append(key,text);content.append(line);};
   row('Booked for today in this snapshot',totals.booked.toLocaleString('en-GB'));
   if(baseline.ready){row('Typical '+weekday+' by '+clock,Math.round(baseline.mean).toLocaleString('en-GB'));row('Usual range by '+clock,Math.ceil(baseline.low)+'–'+Math.floor(baseline.high));}
-  row('Comparison',baseline.samples.length+' most recent comparable '+weekday+'s');
+  row('Comparison',baseline.samples.length+' comparable '+weekday+'s from the last 12 months');
+  row('History window',baseline.start+' to '+dayView2AddDays(date,-1));
+  row('Reports with insufficient booking-time data',String(baseline.incompleteDays));
+  if(baseline.estimatedDays)row('Reports with small timing gaps estimated',String(baseline.estimatedDays));
   row('Urgency groups',names.join(', '));
-  const note=document.createElement('p');note.textContent='Counts appointments scheduled for the same weekday, including those booked before that day. Uses up to 12 complete matching reports from the last 26 weeks, excluding bank holidays and days with missing booking times. Historical booking times are reconstructed from the loaded exports; subsequent cancellations and rescheduling are not available.';
+  const note=document.createElement('p');note.textContent='Counts appointments scheduled for the same weekday, including those booked before that day. Uses every available matching weekday in the previous 12 months and automatically excludes entire England and Wales bank-holiday weeks. Reports need at least 90% booking-time coverage; small gaps are estimated proportionally from the timed bookings. Missing reports are not counted as zero. Historical booking times are reconstructed from the loaded exports; subsequent cancellations and rescheduling are not available.';
   content.append(note);details.append(content);box.append(details);
  }
  return box;
