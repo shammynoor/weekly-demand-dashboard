@@ -86,6 +86,7 @@ async function readSharedSettings(){
 
 let records=[],weeks=[],types=[],statuses=[],clinicianTypes=[],bookingTimeRecords=[],appointmentTimeRecords=[];
 let availabilityRecords=[];
+let capacityCSVLatestModified=null;
 let waitingTimeRecords=[],waitingTrendRecords=[];
 let waitingTrendDimensionCache=new WeakMap();
 let waitingTrendAvailableMonths=[];
@@ -1608,6 +1609,10 @@ async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;
  // Commit the new cache only after all changed files have parsed successfully.
  for(const id of csvContributionCache.keys())if(!activeIds.has(id))csvContributionCache.delete(id);
  for(const [id,contribution] of pendingCache)csvContributionCache.set(id,contribution);
+ // Date the newest contributing clinical CSV was last modified, committed only
+ // after every changed file has downloaded and parsed successfully.
+ const capacityFileDates=items.filter(file=>['slot','signposting'].includes(pendingCache.get(file.id)?.kind)).map(file=>Date.parse(file.lastModifiedDateTime||'')).filter(Number.isFinite);
+ capacityCSVLatestModified=capacityFileDates.length?Math.max(...capacityFileDates):null;
  slotTypeFileStats=newSlotTypeStats;renderSlotInclusion();
  signpostingRecords=newSignposting;signpostingFileCount=newSignpostingFiles;signpostingSlotNames=new Set(newSignposting.map(event=>event.destination));
  // Each dated signposting event is also a booked appointment for the main
@@ -2859,18 +2864,24 @@ function renderDayView2(){
  const number=n=>n.toLocaleString('en-GB');
  const total=statuses.reduce((sum,status)=>sum+totals[status],0);
  $('dayView2SelectedDate').textContent=new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric',timeZone:'UTC'});
+ $('dayView2Refreshed').textContent=capacityCSVLatestModified===null?'Clinical data last refreshed: no imported CSV timestamp available.':'Clinical data last refreshed: '+new Date(capacityCSVLatestModified).toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric',timeZone:'Europe/London'})+' at '+new Date(capacityCSVLatestModified).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'Europe/London'})+' (latest imported CSV)';
+
  for(const status of statuses)$('dayView2'+status[0].toUpperCase()+status.slice(1)).textContent=number(totals[status]);
  $('dayView2Total').textContent=number(total)+' total slots';
  const bookable=totals.booked+totals.available;
  $('dayView2Fill').textContent=bookable?Math.round(100*totals.booked/bookable)+'% of bookable capacity filled':'No bookable slots reported';
  $('dayView2Detail').textContent='Select a capacity segment for its count and meaning.';
  const lanes=$('dayView2Lanes');lanes.replaceChildren();
- const lane=document.createElement('section');lane.className='day-view2-lane';
+ for(let offset=0;offset<=2;offset++){
+ const laneDate=dayView2AddDays(date,offset),laneDay=days.get(laneDate),laneTotals=laneDay.totals;
+ const laneTotal=statuses.reduce((sum,status)=>sum+laneTotals[status],0);
+ const laneDateLabel=new Date(laneDate+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',timeZone:'UTC'});
+ const lane=document.createElement('section');lane.className='day-view2-lane';lane.dataset.date=laneDate;
  const heading=document.createElement('div');heading.className='day-view2-lane-heading';
- const title=document.createElement('h3');title.textContent='Capacity by urgency group';
- const summary=document.createElement('span');summary.textContent=number(totals.booked)+' booked · '+number(totals.available)+' available';
+ const title=document.createElement('h3');title.textContent=offset===0?'Capacity by urgency group':(offset===1?(date===dayView2LocalDate()?'Tomorrow':'Next day'):'Two days ahead')+' · '+laneDateLabel;
+ const summary=document.createElement('span');summary.textContent=number(laneTotals.booked)+' booked · '+number(laneTotals.available)+' available · '+number(laneTotal)+' total';
  heading.append(title,summary);
- const bar=document.createElement('div');bar.className='day-view2-bar';bar.setAttribute('role','group');bar.setAttribute('aria-label','Combined capacity by urgency group, then booking status');
+ const bar=document.createElement('div');bar.className='day-view2-bar';bar.setAttribute('role','group');bar.setAttribute('aria-label',laneDateLabel+' capacity by urgency group, then booking status');
  const groupLegend=document.createElement('div');groupLegend.className='day-view2-group-legend';
  const groupOrder=name=>{
   const key=name.toLowerCase().replace(/[^a-z0-9]/g,'');
@@ -2879,24 +2890,24 @@ function renderDayView2(){
   if(key.includes('urgent')&&key.includes('extra'))return 3;
   return 2;
  };
- const orderedGroups=[...selected.groups].sort((a,b)=>groupOrder(a[0])-groupOrder(b[0]));
+ const orderedGroups=[...laneDay.groups].sort((a,b)=>groupOrder(a[0])-groupOrder(b[0]));
  for(const [name,counts] of orderedGroups){
   const colour=urgencyGroupColour(name);
   for(const status of statuses){
    if(!counts[status])continue;
    const segment=document.createElement('button');segment.type='button';segment.className='day-view2-segment day-view2-'+status;segment.style.flex=String(counts[status]);
-   segment.dataset.urgency=name;segment.dataset.status=status;
+   segment.dataset.date=laneDate;segment.dataset.urgency=name;segment.dataset.status=status;
    if(status==='booked'){
     segment.style.setProperty('--day-view2-group-colour',colour);
     const hex=/^#([0-9a-f]{6})$/i.exec(colour);
     if(hex){const rgb=[0,2,4].map(i=>parseInt(hex[1].slice(i,i+2),16)/255).map(c=>c<=0.04045?c/12.92:Math.pow((c+0.055)/1.055,2.4));segment.style.setProperty('--day-view2-booked-text',0.2126*rgb[0]+0.7152*rgb[1]+0.0722*rgb[2]>0.179?'#152b43':'#ffffff');}
    }
-   segment.setAttribute('aria-label',name+': '+number(counts[status])+' '+status+' slots');
-   segment.title=name+': '+number(counts[status])+' '+status+' slots';
-   if(counts[status]/total>=.04)segment.textContent=number(counts[status]);
+   segment.setAttribute('aria-label',laneDateLabel+' · '+name+': '+number(counts[status])+' '+status+' slots');
+   segment.title=laneDateLabel+' · '+name+': '+number(counts[status])+' '+status+' slots';
+   if(counts[status]/laneTotal>=.04)segment.textContent=number(counts[status]);
    segment.addEventListener('click',()=>{
     const meaning={booked:'Already booked for this appointment date.',available:'Free to book in the loaded report; appointment times are not supplied, so this may include earlier slots.',embargoed:'Held from booking. The report does not supply a release time.',blocked:'Currently unavailable; these slots are not counted as free to book.'};
-    $('dayView2Detail').textContent=name+' · '+number(counts[status])+' '+status+' slots. '+meaning[status];
+    $('dayView2Detail').textContent=laneDateLabel+' · '+name+' · '+number(counts[status])+' '+status+' slots. '+meaning[status];
    });
    bar.append(segment);
   }
@@ -2905,7 +2916,16 @@ function renderDayView2(){
   const values=document.createElement('span');values.textContent=statuses.map(status=>number(counts[status])+' '+status).join(' · ');
   item.append(nameLabel,values);groupLegend.append(item);
  }
- lane.append(heading,bar,groupLegend);lanes.append(lane);
+ lane.append(heading,bar);
+ if(laneTotal){lane.append(groupLegend);}else{
+  const noData=document.createElement('p');noData.className='muted day-view2-note';
+  noData.textContent=!laneDay.groups.size?'Select an urgency group to view capacity.':'No capacity reported for '+laneDateLabel+' and the selected urgency groups.';
+  lane.append(noData);
+ }
+ if(laneDay.unknown&&offset>0){const unknownNote=document.createElement('p');unknownNote.className='muted day-view2-note';unknownNote.textContent=number(laneDay.unknown)+' slots with unrecognised statuses are excluded from this day’s totals.';lane.append(unknownNote);}
+ lanes.append(lane);
+ }
+
  const empty=$('dayView2Empty');
  empty.classList.toggle('hidden',total>0);
  empty.textContent=!selected.groups.size?'Select an urgency group to view capacity.':!availabilityRecords.length?'Load your Slot Reports to view daily capacity.':selected.unknown?'No recognised capacity statuses for this date and selection.':'No capacity reported for this date and selection.';
