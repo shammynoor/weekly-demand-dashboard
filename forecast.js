@@ -115,7 +115,7 @@ function renderUrgencyPlanningModes(){
  root.replaceChildren();
  for(const name of forecastUrgencyNames().filter(forecastUrgencyEnabled)){
   const row=document.createElement('label');row.className='forecast-mode-row';
-  const heading=document.createElement('span');heading.className='forecast-mode-name';heading.textContent=name;
+  const heading=document.createElement('span');heading.className='forecast-mode-name';heading.textContent=name;heading.style.color=urgencyGroupColour(name);
   const switchLabel=document.createElement('span');switchLabel.className='forecast-basis-switch';
   const daily=document.createElement('span');daily.textContent='Daily';
   const control=document.createElement('span');control.className='switch';
