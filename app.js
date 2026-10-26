@@ -2144,7 +2144,7 @@ function renderDemandUrgencyToggles(){
  const root=$('demandUrgencyToggles');if(!root)return;
  const names=groupUrgencyNames.filter(isDashboardToggleOption);
  if(names.length===lastDemandUrgencyGroupNames.length&&names.every((n,i)=>n===lastDemandUrgencyGroupNames[i])){
-  root.querySelectorAll('input[data-Appointment Types]').forEach(input=>{input.checked=!disabledDemandUrgencyGroups.has(input.dataset.urgencyGroup);input.nextElementSibling?.style.setProperty('--switch-on',urgencyGroupColour(input.dataset.urgencyGroup));});
+  root.querySelectorAll('input[data-urgency-group]').forEach(input=>{input.checked=!disabledDemandUrgencyGroups.has(input.dataset.urgencyGroup);input.nextElementSibling?.style.setProperty('--switch-on',urgencyGroupColour(input.dataset.urgencyGroup));});
   return;
  }
  if(!demandUrgencyDefaultsApplied&&names.length){
@@ -3392,7 +3392,7 @@ function changeAvailabilityFilter(page,disabled,name,checked,checkbox){
  (page==='urgent'?renderAvailabilityChart:page==='planned'?renderPlannedAvailabilityChart:renderRoutineAvailabilityChart)();
 }
 function removeInvalidDashboardToggles(){
- document.querySelectorAll('input[data-filter-name],input[data-classification],input[data-Appointment Types]').forEach(input=>{
+ document.querySelectorAll('input[data-filter-name],input[data-classification],input[data-urgency-group]').forEach(input=>{
   const name=input.dataset.filterName||input.dataset.classification||input.dataset.urgencyGroup;
   if(!isDashboardToggleOption(name)){
    input.checked=false;
