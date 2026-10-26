@@ -126,6 +126,7 @@ function renderUrgencyPlanningModes(){
   const daily=document.createElement('span');daily.textContent='Daily';
   const control=document.createElement('span');control.className='switch';
   const input=document.createElement('input');input.type='checkbox';
+  input.setAttribute('role','switch');
   input.checked=urgencyPlanningMode.get(name)==='weekly';
   input.setAttribute('aria-label',name+': weekly totals when on, daily totals when off');
   const track=document.createElement('span');track.className='switch-track';
@@ -192,7 +193,8 @@ function renderHistoricalWeekday(){
  const sd=Math.sqrt(values.reduce((a,b)=>a+(b-average)**2,0)/values.length);
  const n=days.length, origin=Date.parse(days[0]+'T12:00:00Z');
  const tOf=d=>(Date.parse(d+'T12:00:00Z')-origin)/86400000/365.2425;
- const features=(d,harmonic)=>{const t=tOf(d),v=[1,t];if(harmonic)v.push(Math.cos(2*Math.PI*t),Math.sin(2*Math.PI*t));return v};
+ const featureCache=new Map();
+ const features=(d,harmonic)=>{const key=d+':'+harmonic;if(featureCache.has(key))return featureCache.get(key);const t=tOf(d),v=[1,t];if(harmonic)v.push(Math.cos(2*Math.PI*t),Math.sin(2*Math.PI*t));featureCache.set(key,v);return v};
  // Fit an annual harmonic plus linear trend where at least one year of observations is available.
  // Shorter windows use a trend-only model, avoiding a poorly identified seasonal cycle.
  function fitModel(xDays,y){
@@ -229,16 +231,17 @@ function renderHistoricalWeekday(){
   }
   head.append(heading);table.append(head);
   const body=document.createElement('tbody');
+  // Build the fitting calendar once, shared by every urgency and error calculation.
+  const fittingDays=new Map(Array.from({length:5},(_,i)=>[i+1,[]]));
+  for(let d=start;d<=end;d=shift(d,1)){
+   const dow=new Date(d+'T12:00:00Z').getUTCDay();
+   if(fittingDays.has(dow)&&!(excludeHolidayWeeks&&holidayWeeks.has(monday(d))))fittingDays.get(dow).push(d);
+  }
   const forecasts=new Map();
   for(const name of groups){
    const byWeekday=new Map();
    for(let dow=1;dow<=5;dow++){
-    const sampleDays=[];
-    for(let d=start;d<=end;d=shift(d,1)){
-     if(new Date(d+'T12:00:00Z').getUTCDay()!==dow)continue;
-     if(excludeHolidayWeeks&&holidayWeeks.has(monday(d)))continue;
-     sampleDays.push(d);
-    }
+    const sampleDays=fittingDays.get(dow);
     const sampleValues=sampleDays.map(d=>normalise(d,(parts.get(d)||new Map()).get(name)||0));
     byWeekday.set(dow,sampleDays.length>=12?fitModel(sampleDays,sampleValues):null);
    }
@@ -278,8 +281,7 @@ function renderHistoricalWeekday(){
   const dailyErrors=new Map();
   for(let dow=1;dow<=5;dow++){
    const errors=[];
-   for(let d=start;d<=end;d=shift(d,1)){
-    if(new Date(d+'T12:00:00Z').getUTCDay()!==dow||(excludeHolidayWeeks&&holidayWeeks.has(monday(d))))continue;
+   for(const d of fittingDays.get(dow)){
     const estimates=dailyGroups.map(name=>forecasts.get(name)?.get(dow)?.(d));
     if(estimates.some(v=>v===undefined))continue;
     const observed=dailyGroups.reduce((sum,name)=>sum+normalise(d,(parts.get(d)||new Map()).get(name)||0),0);
