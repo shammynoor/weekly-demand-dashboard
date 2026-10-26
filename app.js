@@ -2815,17 +2815,18 @@ let dayView2GroupLabelObserver=null;
 function layoutDayView2GroupLabels(root){
  for(const segment of root.querySelectorAll('.day-view2-segment')){const text=segment.dataset.count||'';segment.textContent=segment.clientWidth>=text.length*8+12?text:'';}
  for(const legend of root.querySelectorAll('.day-view2-group-legend')){
-  const bounds=legend.getBoundingClientRect(),rows=[];
+  const bounds=legend.getBoundingClientRect(),placed=[];
+  let bottom=0;
   for(const item of legend.children){
    const label=item.querySelector('strong'),span=item.getBoundingClientRect();
-   const width=Math.min(label.getBoundingClientRect().width,bounds.width);
+   const box=label.getBoundingClientRect(),width=Math.min(box.width,bounds.width),height=box.height;
    const left=Math.max(0,Math.min(bounds.width-width,span.left-bounds.left+span.width/2-width/2));
-   let row=0;
-   while(rows[row]?.some(range=>left<range[1]+8&&left+width>range[0]-8))row++;
-   (rows[row]||(rows[row]=[])).push([left,left+width]);
-   label.style.left=left+'px';label.style.top=(9+row*25)+'px';
+   let top=9,collisions;
+   do{collisions=placed.filter(r=>left<r.right+8&&left+width>r.left-8&&top<r.bottom+7&&top+height>r.top-7);if(collisions.length)top=Math.max(...collisions.map(r=>r.bottom))+7;}while(collisions.length);
+   placed.push({left,right:left+width,top,bottom:top+height});
+   label.style.left=left+'px';label.style.top=top+'px';bottom=Math.max(bottom,top+height);
   }
-  legend.style.height=(rows.length?9+rows.length*25:0)+'px';
+  legend.style.height=(placed.length?bottom+7:0)+'px';
  }
 }
 
@@ -2890,6 +2891,12 @@ function renderDayView2(){
  $('dayView2Fill').textContent=bookable?Math.round(100*totals.booked/bookable)+'% of bookable capacity filled':'No bookable slots reported';
  $('dayView2Detail').textContent='Select a capacity segment for its count and meaning.';
  const lanes=$('dayView2Lanes');dayView2GroupLabelObserver?.disconnect();lanes.replaceChildren();
+ // One slot-to-pixel scale for all three days, including identical group-gap allowance.
+ const visibleDays=Array.from({length:3},(_,i)=>days.get(dayView2AddDays(date,i)));
+ const scaleMax=Math.max(1,...visibleDays.map(day=>statuses.reduce((sum,status)=>sum+day.totals[status],0)));
+ const maxGroups=Math.max(1,...visibleDays.map(day=>[...day.groups.values()].filter(counts=>statuses.some(status=>counts[status]>0)).length));
+ lanes.style.setProperty('--day-view2-gap-budget',((maxGroups-1)*12)+'px');
+
  for(let offset=0;offset<=2;offset++){
  const laneDate=dayView2AddDays(date,offset),laneDay=days.get(laneDate),laneTotals=laneDay.totals;
  const laneTotal=statuses.reduce((sum,status)=>sum+laneTotals[status],0);
@@ -2913,7 +2920,7 @@ function renderDayView2(){
   const groupTotal=statuses.reduce((sum,status)=>sum+counts[status],0);
   if(!groupTotal)continue;
   const colour=urgencyGroupColour(name);
-  const groupSpan=document.createElement('div');groupSpan.className='day-view2-urgency-span';groupSpan.style.flex=String(groupTotal);groupSpan.setAttribute('role','group');groupSpan.setAttribute('aria-label',name);
+  const groupSpan=document.createElement('div');groupSpan.className='day-view2-urgency-span';groupSpan.style.flex='0 0 calc((100% - var(--day-view2-gap-budget)) * '+(groupTotal/scaleMax)+')';groupSpan.setAttribute('role','group');groupSpan.setAttribute('aria-label',name);
 
   for(const status of statuses){
    if(!counts[status])continue;
@@ -2934,9 +2941,12 @@ function renderDayView2(){
    groupSpan.append(segment);
   }
   bar.append(groupSpan);
-  const item=document.createElement('div');item.className='day-view2-group-legend-item';item.style.flex=String(groupTotal);
+  const item=document.createElement('div');item.className='day-view2-group-legend-item';item.style.flex='0 0 calc((100% - var(--day-view2-gap-budget)) * '+(groupTotal/scaleMax)+')';
   const line=document.createElement('span');line.className='day-view2-group-line';line.style.borderColor=colour;line.setAttribute('aria-hidden','true');
   const nameLabel=document.createElement('strong');nameLabel.textContent=name;nameLabel.title=name;
+  const extraLabel=/^(urgent)\s+(extras?)$/i.exec(name.trim());
+  if(extraLabel){nameLabel.classList.add('day-view2-urgent-extra-label');nameLabel.setAttribute('aria-label',name);nameLabel.replaceChildren(document.createTextNode(extraLabel[1]),document.createElement('br'),document.createTextNode(extraLabel[2]));}
+
   item.append(line,nameLabel);groupLegend.append(item);
  }
  lane.append(heading,bar);
