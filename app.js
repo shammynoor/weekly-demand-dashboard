@@ -2811,25 +2811,31 @@ $('dayViewToday')?.addEventListener('click',()=>{$('dayViewDate').value=dayViewL
 
 // Day View 2 uses appointment-date availability snapshots, independently of booking-date Day View.
 const dayView2DisabledUrgencies=new Set();
-let dayView2GroupLabelObserver=null;
-function layoutDayView2GroupLabels(root){
+let dayView2SegmentObserver=null;
+function layoutDayView2SegmentCounts(root){
  for(const segment of root.querySelectorAll('.day-view2-segment')){const text=segment.dataset.count||'';segment.textContent=segment.clientWidth>=text.length*8+12?text:'';}
- for(const legend of root.querySelectorAll('.day-view2-group-legend')){
-  const bounds=legend.getBoundingClientRect(),placed=[];
-  let bottom=0;
-  for(const item of legend.children){
-   const label=item.querySelector('strong'),span=item.getBoundingClientRect();
-   const box=label.getBoundingClientRect(),width=Math.min(box.width,bounds.width),height=box.height;
-   const left=Math.max(0,Math.min(bounds.width-width,span.left-bounds.left+span.width/2-width/2));
-   let top=9,collisions;
-   do{collisions=placed.filter(r=>left<r.right+8&&left+width>r.left-8&&top<r.bottom+7&&top+height>r.top-7);if(collisions.length)top=Math.max(...collisions.map(r=>r.bottom))+7;}while(collisions.length);
-   placed.push({left,right:left+width,top,bottom:top+height});
-   label.style.left=left+'px';label.style.top=top+'px';bottom=Math.max(bottom,top+height);
-  }
-  legend.style.height=(placed.length?bottom+7:0)+'px';
- }
 }
-
+function dayView2RefreshAge(timestamp,now=Date.now()){
+ if(timestamp===null||!Number.isFinite(timestamp))return 'Data refreshed: timestamp unavailable';
+ const minutes=Math.floor(Math.max(0,now-timestamp)/60000);
+ if(minutes===0)return 'Data refreshed just now';
+ if(minutes<60)return 'Data refreshed '+minutes+' minute'+(minutes===1?'':'s')+' ago';
+ const hours=Math.floor(minutes/60);
+ if(hours<24)return 'Data refreshed '+hours+' hour'+(hours===1?'':'s')+' ago';
+ const days=Math.floor(hours/24);return 'Data refreshed '+days+' day'+(days===1?'':'s')+' ago';
+}
+function updateDayView2RefreshAge(){
+ const label=$('dayView2Refreshed');if(!label)return;
+ label.textContent=dayView2RefreshAge(capacityCSVLatestModified);
+ label.title=capacityCSVLatestModified===null?'No imported clinical CSV timestamp is available.':'Latest imported clinical CSV: '+new Date(capacityCSVLatestModified).toLocaleString('en-GB',{day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'Europe/London'});
+}
+function dayView2UrgencyOrder(name){
+ const key=name.toLowerCase().replace(/[^a-z0-9]/g,'');
+ if(key==='sameday')return 0;
+ if(key==='within3days'||key==='withinthreedays')return 1;
+ if(key.includes('urgent')&&key.includes('extra'))return 3;
+ return 2;
+}
 function dayView2LocalDate(){
  const parts=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/London',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
  const p=Object.fromEntries(parts.map(part=>[part.type,part.value]));
@@ -2883,14 +2889,18 @@ function renderDayView2(){
  const number=n=>n.toLocaleString('en-GB');
  const total=statuses.reduce((sum,status)=>sum+totals[status],0);
  $('dayView2SelectedDate').textContent=new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric',timeZone:'UTC'});
- $('dayView2Refreshed').textContent=capacityCSVLatestModified===null?'Clinical data last refreshed: no imported CSV timestamp available.':'Clinical data last refreshed: '+new Date(capacityCSVLatestModified).toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric',timeZone:'Europe/London'})+' at '+new Date(capacityCSVLatestModified).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'Europe/London'})+' (latest imported CSV)';
+ updateDayView2RefreshAge();
 
- for(const status of statuses)$('dayView2'+status[0].toUpperCase()+status.slice(1)).textContent=number(totals[status]);
+ const urgencyLegend=$('dayView2UrgencyLegend');urgencyLegend.replaceChildren();
+ for(const name of [...selected.groups.keys()].sort((a,b)=>dayView2UrgencyOrder(a)-dayView2UrgencyOrder(b))){
+  const key=document.createElement('span');const dot=document.createElement('i');dot.className='day-view2-urgency-key';dot.style.backgroundColor=urgencyGroupColour(name);dot.setAttribute('aria-hidden','true');
+  key.append(dot,document.createTextNode(name));urgencyLegend.append(key);
+ }
  $('dayView2Total').textContent=number(total)+' total slots';
  const bookable=totals.booked+totals.available;
  $('dayView2Fill').textContent=bookable?Math.round(100*totals.booked/bookable)+'% of bookable capacity filled':'No bookable slots reported';
  $('dayView2Detail').textContent='Select a capacity segment for its count and meaning.';
- const lanes=$('dayView2Lanes');dayView2GroupLabelObserver?.disconnect();lanes.replaceChildren();
+ const lanes=$('dayView2Lanes');dayView2SegmentObserver?.disconnect();lanes.replaceChildren();
  // One slot-to-pixel scale for all three days, including identical group-gap allowance.
  const visibleDays=Array.from({length:3},(_,i)=>days.get(dayView2AddDays(date,i)));
  const scaleMax=Math.max(1,...visibleDays.map(day=>statuses.reduce((sum,status)=>sum+day.totals[status],0)));
@@ -2907,15 +2917,8 @@ function renderDayView2(){
  const summary=document.createElement('span');summary.textContent=number(laneTotals.booked)+' booked · '+number(laneTotals.available)+' available · '+number(laneTotal)+' total';
  heading.append(title,summary);
  const bar=document.createElement('div');bar.className='day-view2-bar';bar.setAttribute('role','group');bar.setAttribute('aria-label',laneDateLabel+' capacity by urgency group, then booking status');
- const groupLegend=document.createElement('div');groupLegend.className='day-view2-group-legend';
- const groupOrder=name=>{
-  const key=name.toLowerCase().replace(/[^a-z0-9]/g,'');
-  if(key==='sameday')return 0;
-  if(key==='within3days'||key==='withinthreedays')return 1;
-  if(key.includes('urgent')&&key.includes('extra'))return 3;
-  return 2;
- };
- const orderedGroups=[...laneDay.groups].sort((a,b)=>groupOrder(a[0])-groupOrder(b[0]));
+
+ const orderedGroups=[...laneDay.groups].sort((a,b)=>dayView2UrgencyOrder(a[0])-dayView2UrgencyOrder(b[0]));
  for(const [name,counts] of orderedGroups){
   const groupTotal=statuses.reduce((sum,status)=>sum+counts[status],0);
   if(!groupTotal)continue;
@@ -2941,16 +2944,9 @@ function renderDayView2(){
    groupSpan.append(segment);
   }
   bar.append(groupSpan);
-  const item=document.createElement('div');item.className='day-view2-group-legend-item';item.style.flex='0 0 calc((100% - var(--day-view2-gap-budget)) * '+(groupTotal/scaleMax)+')';
-  const line=document.createElement('span');line.className='day-view2-group-line';line.style.borderColor=colour;line.setAttribute('aria-hidden','true');
-  const nameLabel=document.createElement('strong');nameLabel.textContent=name;nameLabel.title=name;
-  const extraLabel=/^(urgent)\s+(extras?)$/i.exec(name.trim());
-  if(extraLabel){nameLabel.classList.add('day-view2-urgent-extra-label');nameLabel.setAttribute('aria-label',name);nameLabel.replaceChildren(document.createTextNode(extraLabel[1]),document.createElement('br'),document.createTextNode(extraLabel[2]));}
-
-  item.append(line,nameLabel);groupLegend.append(item);
  }
  lane.append(heading,bar);
- if(laneTotal){lane.append(groupLegend);}else{
+ if(!laneTotal){
   const noData=document.createElement('p');noData.className='muted day-view2-note';
   noData.textContent=!laneDay.groups.size?'Select an urgency group to view capacity.':'No capacity reported for '+laneDateLabel+' and the selected urgency groups.';
   lane.append(noData);
@@ -2959,8 +2955,8 @@ function renderDayView2(){
  lanes.append(lane);
  }
 
- requestAnimationFrame(()=>layoutDayView2GroupLabels(lanes));
- if(typeof ResizeObserver!=='undefined'){dayView2GroupLabelObserver=new ResizeObserver(()=>layoutDayView2GroupLabels(lanes));dayView2GroupLabelObserver.observe(lanes);}
+ requestAnimationFrame(()=>layoutDayView2SegmentCounts(lanes));
+ if(typeof ResizeObserver!=='undefined'){dayView2SegmentObserver=new ResizeObserver(()=>layoutDayView2SegmentCounts(lanes));dayView2SegmentObserver.observe(lanes);}
  const empty=$('dayView2Empty');
  empty.classList.toggle('hidden',total>0);
  empty.textContent=!selected.groups.size?'Select an urgency group to view capacity.':!availabilityRecords.length?'Load your Slot Reports to view daily capacity.':selected.unknown?'No recognised capacity statuses for this date and selection.':'No capacity reported for this date and selection.';
@@ -2978,6 +2974,7 @@ function renderDayView2(){
   card.addEventListener('click',()=>{input.value=nextDate;renderDayView2();});upcoming.append(card);
  }
 }
+setInterval(()=>{if(!$('dayView2Page')?.classList.contains('hidden'))updateDayView2RefreshAge();},60000);
 $('dayView2Date')?.addEventListener('change',renderDayView2);
 $('dayView2Today')?.addEventListener('click',()=>{$('dayView2Date').value=dayView2LocalDate();renderDayView2();});
 $('dayView2Previous')?.addEventListener('click',()=>{$('dayView2Date').value=dayView2AddDays($('dayView2Date').value||dayView2LocalDate(),-1);renderDayView2();});
