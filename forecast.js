@@ -135,7 +135,13 @@ function renderHistoricalWeekday(){
  const root=$('dailyForecastHistoryChart'),summary=$('dailyForecastHistorySummary'),select=$('dailyForecastWeekday');
  if(!root||!summary||!select)return;
  root.replaceChildren();renderDailyUrgencyFilters();renderUrgencyPlanningModes();
- const weekday=Number(select.value),today=dayViewLocalDate(),end=shift(today,-1),start=shift(end,1-7*Number($('dailyForecastHistory')?.value||52));
+ const weekday=Number(select.value),special=weekday===6||weekday===7,today=dayViewLocalDate(),end=shift(today,-1);
+ const earliestBooking=records.reduce((min,r)=>r.bookedDay&&(!min||r.bookedDay<min)?r.bookedDay:min,null);
+ const start=special?(earliestBooking||shift(end,-365)):shift(end,1-7*Number($('dailyForecastHistory')?.value||52));
+ const holidayDates=new Set();for(let year=Number(start.slice(0,4))-1;year<=Number(end.slice(0,4))+6;year++)for(const holiday of englandWalesBankHolidays(year))holidayDates.add(holiday);
+ const workingDay=d=>{const dow=new Date(d+'T12:00:00Z').getUTCDay();return dow>=1&&dow<=5&&!holidayDates.has(d)};
+ const adjacentWorkingDay=(holiday,direction)=>{let d=shift(holiday,direction);while(!workingDay(d))d=shift(d,direction);return d};
+ const eventDates=direction=>[...new Set([...holidayDates].map(h=>adjacentWorkingDay(h,direction)))].sort();
  const groups=forecastUrgencyNames().filter(forecastUrgencyEnabled);
  const adjust=$('dailyForecastAdjustListSize')?.checked===true;const populationMonths=adjust?practiceMonths():[];const referencePopulation=populationMonths.length?listSizeAtMonth(populationMonths[populationMonths.length-1]):null;
  const populationCache=new Map();const normalise=(day,count)=>{if(!adjust||!referencePopulation)return count;const month=day.slice(0,7);if(!populationCache.has(month))populationCache.set(month,listSizeAtMonth(month));return count*referencePopulation/Math.max(1,populationCache.get(month))};
@@ -152,7 +158,9 @@ function renderHistoricalWeekday(){
  }
  const excludeHolidayWeeks=$('dailyForecastExcludeBankHolidayWeeks')?.checked!==false;
  const holidayWeeks=new Set();if(excludeHolidayWeeks){for(let year=Number(start.slice(0,4))-1;year<=Number(end.slice(0,4))+1;year++)for(const holiday of englandWalesBankHolidays(year))holidayWeeks.add(monday(holiday))}
- const days=[];let skippedHolidayDays=0;for(let d=start;d<=end;d=shift(d,1))if(new Date(d+'T12:00:00Z').getUTCDay()===weekday){if(excludeHolidayWeeks&&holidayWeeks.has(monday(d))){skippedHolidayDays++;continue}days.push(d)}
+ const days=[];let skippedHolidayDays=0;
+ if(special){for(const d of eventDates(weekday===6?-1:1))if(d>=start&&d<=end)days.push(d)}
+ else for(let d=start;d<=end;d=shift(d,1))if(new Date(d+'T12:00:00Z').getUTCDay()===weekday){if(excludeHolidayWeeks&&holidayWeeks.has(monday(d))){skippedHolidayDays++;continue}days.push(d)}
  if(!records.length||!groups.length||!days.length){summary.textContent=!days.length?'No matching weekdays remain after excluding bank holiday weeks.':'No historical booking data or matching urgency categories are available.';return}
  const values=days.map(d=>normalise(d,totals.get(d)||0));
  const average=values.reduce((a,b)=>a+b,0)/values.length;
@@ -163,7 +171,7 @@ function renderHistoricalWeekday(){
  // Fit an annual harmonic plus linear trend where at least one year of observations is available.
  // Shorter windows use a trend-only model, avoiding a poorly identified seasonal cycle.
  function fitModel(xDays,y){
-  const harmonic=xDays.length>=42,degree=harmonic?4:2;
+  const harmonic=!special&&xDays.length>=42,degree=harmonic?4:2;
   const m=Array.from({length:degree},()=>Array(degree+1).fill(0));
   for(let i=0;i<xDays.length;i++){const x=features(xDays[i],harmonic);for(let j=0;j<degree;j++){for(let k=0;k<degree;k++)m[j][k]+=x[j]*x[k];m[j][degree]+=x[j]*y[i]}}
   // Small ridge on the trend and harmonic coefficients stabilises short/noisy samples.
@@ -317,8 +325,8 @@ function renderHistoricalWeekday(){
   table.append(body);needsRoot.append(table);
 
  }
- const fittedModel=n>=12?fitModel(days,values):null;
- const future=[];for(let i=1;i<=13;i++)future.push(shift(days[days.length-1],7*i));
+ const fittedModel=n>=(special?4:12)?fitModel(days,values):null;
+ const future=special?eventDates(weekday===6?-1:1).filter(d=>d>today).slice(0,13):Array.from({length:13},(_,i)=>shift(days[days.length-1],7*(i+1)));
  const historicalFit=fittedModel?days.map(d=>fittedModel(d)):[];
  const projected=fittedModel?future.map(d=>fittedModel(d)):[];
  // Expanding-window, forward-looking back-tests measure actual prediction errors.
@@ -345,7 +353,7 @@ function renderHistoricalWeekday(){
  });
  // Shared scale across weekdays: inspect every weekday in the selected historical window.
  // Keep the same ceiling when changing Monday to Friday; do not rescale to the selected day's maximum.
- if(excludeHolidayWeeks)for(const d of allWeekdayTotals.keys())if(holidayWeeks.has(monday(d)))allWeekdayTotals.delete(d);
+ if(excludeHolidayWeeks&&!special)for(const d of allWeekdayTotals.keys())if(holidayWeeks.has(monday(d)))allWeekdayTotals.delete(d);
  const commonMaximum=Math.max(1,...Array.from(allWeekdayTotals,( [d,v] )=>normalise(d,v)));
  const dataMaximum=Math.max(commonMaximum,...values,...historicalFit,...projected,...intervals.map(v=>v.high));
  const step=Math.pow(10,Math.floor(Math.log10(dataMaximum/4||1)));
@@ -404,7 +412,7 @@ function renderHistoricalWeekday(){
   const band=document.createElementNS(ns,'polygon');band.setAttribute('class','forecast-prediction-band');band.setAttribute('points',upperPoints.concat(lowerPoints).map(p=>p.map(v=>v.toFixed(1)).join(',')).join(' '));svg.insertBefore(band,svg.firstChild);
   root.append(svg);
  }
- summary.textContent=n+' observed '+select.options[select.selectedIndex].text+'s · '+start+' to '+end+' · Mean '+average.toFixed(1)+' · SD '+sd.toFixed(1)+'. Bars show actual demand; solid pink line is fitted '+(n>=42?'annual seasonal regression plus trend':'linear trend (insufficient observations for annual seasonality)')+'. Dashed pink line projects 13 weeks; shaded area is an indicative 70% prediction interval based on '+(empirical?'expanding-window historical back-testing':'historical residuals (limited data for back-testing)')+'.'+(excludeHolidayWeeks?' Bank holiday weeks excluded from fitting.':' Bank holiday weeks included.')+(adjust?(referencePopulation?' Historical counts adjusted to latest recorded list size.':' No list-size data available; showing raw counts.'):'')+' Future bank holidays and service changes are not separately modelled.';
+ summary.textContent=n+' observed '+select.options[select.selectedIndex].text+'s · '+start+' to '+end+' · Mean '+average.toFixed(1)+' · SD '+sd.toFixed(1)+'. Bars show actual demand; solid pink line is fitted '+(n>=42?'annual seasonal regression plus trend':'linear trend (insufficient observations for annual seasonality)')+'. Dashed pink line projects 13 weeks; shaded area is an indicative 70% prediction interval based on '+(empirical?'expanding-window historical back-testing':'historical residuals (limited data for back-testing)')+'.'+(special?' All available historical working days adjacent to England and Wales bank holidays are included, regardless of the Ignore bank holiday weeks setting.':(excludeHolidayWeeks?' Bank holiday weeks excluded from fitting.':' Bank holiday weeks included.'))+(adjust?(referencePopulation?' Historical counts adjusted to latest recorded list size.':' No list-size data available; showing raw counts.'):'')+(special?' Projection dates correspond to upcoming working days adjacent to bank holidays; service changes are not modelled.':' Future bank holidays and service changes are not separately modelled.');
 
 }
 function selectForecastTab(tab){
