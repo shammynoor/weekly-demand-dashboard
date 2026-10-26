@@ -231,7 +231,12 @@ function renderHistoricalWeekday(){
    const byGroup=new Map();
    for(const name of groups){
     const vals=sampleDays.map(d=>normalise(d,(parts.get(d)||new Map()).get(name)||0));
-    byGroup.set(name,sampleDays.length>=4?fitModel(sampleDays,vals):null);
+    // Sparse annual holiday events do not support reliable extrapolated linear trends.
+    // Use a recency-weighted historical level instead; avoid unstable near-zero forecasts.
+    const weights=sampleDays.map(d=>Math.exp(-Math.max(0,(Date.parse(end+'T12:00:00Z')-Date.parse(d+'T12:00:00Z'))/86400000)/(365.2425*3)));
+    const weightSum=weights.reduce((a,b)=>a+b,0);
+    const level=weightSum?vals.reduce((sum,v,i)=>sum+v*weights[i],0)/weightSum:undefined;
+    byGroup.set(name,level===undefined?null:()=>Math.max(0,level));
    }
    specialForecasts.set(type,byGroup);
    const errors=[];
@@ -250,7 +255,7 @@ function renderHistoricalWeekday(){
    const errors=[];
    for(let d=start;d<=end;d=shift(d,1)){
     if(new Date(d+'T12:00:00Z').getUTCDay()!==dow||(excludeHolidayWeeks&&holidayWeeks.has(monday(d))))continue;
-    const estimates=dailyGroups.map(name=>predict(name,dow,d));
+    const estimates=dailyGroups.map(name=>forecasts.get(name)?.get(dow)?.(d));
     if(estimates.some(v=>v===undefined))continue;
     const observed=dailyGroups.reduce((sum,name)=>sum+normalise(d,(parts.get(d)||new Map()).get(name)||0),0);
     errors.push(observed-estimates.reduce((sum,v)=>sum+v,0));
@@ -265,7 +270,7 @@ function renderHistoricalWeekday(){
     for(let dow=1;dow<=5;dow++){
      const d=shift(w,dow-1);
      for(const name of weeklyGroups){
-      const p=predict(name,dow,d);if(p===undefined){valid=false;break}
+      const p=forecasts.get(name)?.get(dow)?.(d);if(p===undefined){valid=false;break}
       estimated+=p;observed+=normalise(d,(parts.get(d)||new Map()).get(name)||0);
      }
      if(!valid)break;
@@ -350,7 +355,7 @@ function renderHistoricalWeekday(){
   table.append(body);needsRoot.append(table);
 
  }
- const fittedModel=n>=(special?4:12)?fitModel(days,values):null;
+ const fittedModel=special?(n?(()=>{const weights=days.map(d=>Math.exp(-Math.max(0,(Date.parse(end+'T12:00:00Z')-Date.parse(d+'T12:00:00Z'))/86400000)/(365.2425*3)));const total=weights.reduce((a,b)=>a+b,0);const level=total?values.reduce((a,v,i)=>a+v*weights[i],0)/total:0;return ()=>Math.max(0,level)})():null):(n>=12?fitModel(days,values):null);
  const future=special?eventDates(weekday===6?-1:1).filter(d=>d>today).slice(0,13):Array.from({length:13},(_,i)=>shift(days[days.length-1],7*(i+1)));
  const historicalFit=fittedModel?days.map(d=>fittedModel(d)):[];
  const projected=fittedModel?future.map(d=>fittedModel(d)):[];
