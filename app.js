@@ -3531,6 +3531,9 @@ function setupUrgentRangeControls(){
  if(!back||!forward)return;
  back.value=-urgentWeeksBack;forward.value=urgentWeeksForward;
  const label=offset=>offset===0?'This week':offset===-1?'Last week':offset<0?Math.abs(offset)+' weeks ago':offset===1?'Next week':offset+' weeks ahead';
+ let renderTimer=null;
+ const redraw=()=>{clearTimeout(renderTimer);renderTimer=null;renderAvailabilityChart();};
+ const scheduleRedraw=()=>{clearTimeout(renderTimer);renderTimer=setTimeout(redraw,160);};
  const update=(moved)=>{
   let start=Number(back.value),end=Number(forward.value);
   // Always include this week and prevent handles crossing.
@@ -3542,11 +3545,14 @@ function setupUrgentRangeControls(){
   $('urgentWeeksForwardValue').textContent=label(end);
   const rail=$('urgentRangeActive');
   if(rail){rail.style.setProperty('--range-start',String((start+3)/7));rail.style.setProperty('--range-span',String((end-start)/7))}
-  renderAvailabilityChart();
+  scheduleRedraw();
  };
  back.addEventListener('input',()=>update('start'));
  forward.addEventListener('input',()=>update('end'));
+ back.addEventListener('change',redraw);
+ forward.addEventListener('change',redraw);
  update();
+ redraw();
 }
 function urgentCategoryNames(){
  // The capacity chart uses the configured urgency category list, not a legacy "Urgent" group.
@@ -3586,7 +3592,7 @@ function urgentGradientStops(hex){
 // SVG gradient is a visual finish only. It does not alter Plotly data, bar
 // positions, totals, tooltip targets, Today marker or historical shading.
 // Shared flat visual treatment; saved type colours remain the source of truth.
-function applyFlatAvailabilityBars(target,isDaily=false){
+function applyFlatAvailabilityBars(target,isDaily=false,separateGroups=false){
  // Apply one medium bottom-right shadow to the composited stacked bars,
  // rather than to each coloured segment (which would create internal seams).
  const barLayer=target.querySelector('.barlayer');
@@ -3595,10 +3601,24 @@ function applyFlatAvailabilityBars(target,isDaily=false){
  // Read each bar trace's actual marker colour, including custom colours from Slot settings.
  const barTraces=(target.data||[]).filter(trace=>trace.type==='bar');
  const rendered=target.querySelectorAll('.barlayer .trace.bars');
+ // Shift each whole urgency block upward by a fixed visual gap. Counts and
+ // segment heights stay untouched; empty groups do not create blank space.
+ const groups=[...new Set(barTraces.map(trace=>trace.meta?.capacityGroup).filter(Boolean))];
+ const offsets=new Map();
+ if(separateGroups){
+  const preceding=Array.from({length:barTraces[0]?.y?.length||0},()=>0);
+  for(const group of groups){
+   const members=barTraces.filter(trace=>trace.meta?.capacityGroup===group);
+   offsets.set(group,preceding.map(n=>n*5));
+   preceding.forEach((_,j)=>{if(members.some(trace=>Number(trace.y[j])>0))preceding[j]++;});
+  }
+ }
  rendered.forEach((traceElement,i)=>{
   const marker=barTraces[i]?.marker||{};
+  const gaps=offsets.get(barTraces[i]?.meta?.capacityGroup);
   const baseColour=typeof marker.color==='string'?marker.color:'#c2cdd5';
   traceElement.querySelectorAll('.point path').forEach((path,j)=>{
+   if(separateGroups&&gaps)path.setAttribute('transform','translate(0,'+(-gaps[j])+')');
    let height=0;
    try{height=path.getBBox().height}catch(_){}
    if(height<0.6){
@@ -3662,13 +3682,13 @@ function capacityGroupedSeries(dates,names,counts,held,heading,extras=[]){
  for(const group of names){
   const colour=group.endsWith(' · Extra')?(capacityColours.Extra||'#8aa6bd'):urgencyGroupColour(group);
   const summaries=dates.map(date=>simpleAvailabilityHover(heading(date)+' · '+group,statuses,statuses.map(status=>value(date,group,status)),statuses.reduce((n,status)=>n+value(date,group,status),0)));
-  for(const status of statuses)traces.push({type:'bar',name:group+' · '+status,showlegend:false,x:dates,y:dates.map(date=>value(date,group,status)),marker:{color:status==='Booked'?colour:status==='Missed Empty'?'#ffffff':colours[status],line:{width:0},...(status==='Missed Empty'?{pattern:{shape:'/',fgcolor:colour,bgcolor:'#ffffff',fillmode:'replace',size:6,solidity:0.17}}:{})},customdata:summaries,hovertemplate:'%{customdata}<extra></extra>'});
+  for(const status of statuses)traces.push({type:'bar',name:group+' · '+status,meta:{capacityGroup:group},showlegend:false,x:dates,y:dates.map(date=>value(date,group,status)),marker:{color:status==='Booked'?colour:status==='Missed Empty'?'#ffffff':colours[status],line:{width:0},...(status==='Missed Empty'?{pattern:{shape:'/',fgcolor:colour,bgcolor:'#ffffff',fillmode:'replace',size:6,solidity:0.17}}:{})},customdata:summaries,hovertemplate:'%{customdata}<extra></extra>'});
  }
  for(const group of names)traces.push({type:'scatter',mode:'markers',name:group,x:[null],y:[null],marker:{symbol:'circle',size:14,color:group.endsWith(' · Extra')?(capacityColours.Extra||'#8aa6bd'):urgencyGroupColour(group)},showlegend:true,hoverinfo:'skip'});
  // A patterned bar trace supplies an accurate striped legend swatch.
  traces.push({type:'bar',name:'Missed Empty',x:[null],y:[null],showlegend:true,marker:{color:'#ffffff',pattern:{shape:'/',fgcolor:'#586674',bgcolor:'#ffffff',fillmode:'replace',size:6,solidity:0.17}},hoverinfo:'skip'});
  for(const status of statuses.filter(s=>!['Booked','Missed Empty'].includes(s)))traces.push({type:'scatter',mode:'markers',name:status,x:[null],y:[null],marker:{symbol:'circle',size:14,color:colours[status],line:{color:status==='Available'?'#a7b8c6':colours[status],width:status==='Available'?1.5:0}},showlegend:true,hoverinfo:'skip'});
- for(const item of extras)traces.push({type:'bar',name:item.name,x:dates,y:dates.map(date=>counts.get(JSON.stringify([date,item.name]))||0),marker:{color:item.colour},showlegend:true,customdata:dates.map(date=>simpleAvailabilityHover(heading(date),[item.name],[counts.get(JSON.stringify([date,item.name]))||0],counts.get(JSON.stringify([date,item.name]))||0)),hovertemplate:'%{customdata}<extra></extra>'});
+ for(const item of extras)traces.push({type:'bar',name:item.name,meta:{capacityGroup:item.name},x:dates,y:dates.map(date=>counts.get(JSON.stringify([date,item.name]))||0),marker:{color:item.colour},showlegend:true,customdata:dates.map(date=>simpleAvailabilityHover(heading(date),[item.name],[counts.get(JSON.stringify([date,item.name]))||0],counts.get(JSON.stringify([date,item.name]))||0)),hovertemplate:'%{customdata}<extra></extra>'});
  return {traces,totals};
 }
 function renderAvailabilityChart(){
@@ -3729,14 +3749,14 @@ function renderAvailabilityChart(){
   shapes.push({type:'line',xref:'x',yref:'paper',x0:x,x1:x,y0:0,y1:1,line:{color:'#257cb6',width:2.5,dash:'dot'},layer:'above'});
   annotations.push({x,xref:'x',y:1.005,yref:'paper',text:capacityTodayLabel(),align:'left',showarrow:false,font:{size:17,color:'#206ca6'},xanchor:'left',yanchor:'top',xshift:7,yshift:-8});
  }
- buckets.forEach((date,i)=>{if((weekly||weekdays.has(date))&&totals[i])annotations.push({x:date,xref:'x',y:totals[i],yref:'y',text:String(totals[i]),showarrow:false,font:{size:weekly?13:10,color:'#425b70'},yshift:15,yanchor:'bottom'})});
+ buckets.forEach((date,i)=>{if((weekly||weekdays.has(date))&&totals[i])annotations.push({x:date,xref:'x',y:totals[i],yref:'y',text:String(totals[i]),showarrow:false,font:{size:weekly?13:10,color:'#425b70'},yshift:15+Math.max(0,names.length-1)*5,yanchor:'bottom'})});
  const note=$('availabilityNote');if(note)note.textContent=names.length?'':'Select an Urgent detailed urgency category to display appointments.';
  Plotly.react(target,traces,{dragmode:false,
   autosize:true,height:640,barmode:'stack',barcornerradius:weekly?3:5,bargap:weekly?0.11:0.07,margin:{l:62,r:18,t:85,b:100},paper_bgcolor:'white',plot_bgcolor:'#e1eaf1',
   legend:{orientation:'h',x:0.5,y:-0.23,xanchor:'center',yanchor:'top',font:{size:13,color:'#42576a'},bgcolor:'rgba(255,255,255,0)'},
   xaxis:{type:'category',categoryorder:'array',categoryarray:buckets,tickmode:'array',tickvals:buckets,ticktext:buckets.map(date=>weekly?'':weekdays.has(date)?new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'short',timeZone:'UTC'}):''),tickangle:-90,tickfont:{size:12,color:'#444444'},showgrid:false,range:[-.5,buckets.length-.5],fixedrange:true},
   yaxis:{title:{text:'Appointment slots',font:{size:12,color:'#708397'}},tickfont:{size:12,color:'#52677b'},range:[0,max],gridcolor:'#e0e8ef',gridwidth:1,zeroline:false,showline:false},annotations,shapes,hovermode:'closest',hoverlabel:{bgcolor:'#ffffff',bordercolor:'#dce5ed',font:{family:'Arial',size:12,color:'#182b3b'},align:'left',namelength:0}
- },{responsive:true,displaylogo:false,displayModeBar:false,scrollZoom:false,doubleClick:false}).then(()=>{applyFlatAvailabilityBars(target,!weekly);installAvailabilityCardTooltip(target)});
+ },{responsive:true,displaylogo:false,displayModeBar:false,scrollZoom:false,doubleClick:false}).then(()=>{applyFlatAvailabilityBars(target,!weekly,true);installAvailabilityCardTooltip(target)});
 }
 window.addEventListener('resize',()=>{if(!$('availabilityPage').classList.contains('hidden'))renderAvailabilityChart()});
 setupUrgentRangeControls();
@@ -3881,7 +3901,7 @@ function renderRoutineAvailabilityChart(){
  const types=routineDetailedTypes().filter(name=>!routineDisabledTypes.has(name));
  const {traces,totals}=capacityGroupedSeries(dates,types,byBucket,routineGroupWithheld,heading);
  const max=Math.max(1,...totals);
- const annotations=totals.flatMap((total,i)=>total?[{xref:'x',x:i,y:total,text:total.toLocaleString('en-GB'),showarrow:false,yshift:15,font:{size:isDaily?10:13,color:'#425b70'}}]:[]);
+ const annotations=totals.flatMap((total,i)=>total?[{xref:'x',x:i,y:total,text:total.toLocaleString('en-GB'),showarrow:false,yshift:15+Math.max(0,types.length-1)*5,font:{size:isDaily?10:13,color:'#425b70'}}]:[]);
  const weekTitles=weeks.map((_,i)=>{const offset=routineStartWeek+i;return offset===0?'This Week':offset===-1?'Last Week':offset<0?Math.abs(offset)+' weeks ago':offset===1?'Next Week':offset+' weeks'});
  for(let i=0;i<weeks.length;i++)annotations.push({xref:'x',yref:'paper',x:isDaily?i*7+3:i,y:1.105,text:weekTitles[i],showarrow:false,font:{family:'Arial',size:13,color:'#344b60'}});
  const dayIndex=(new Date(todayLondon+'T12:00:00Z').getUTCDay()+6)%7;
@@ -3902,7 +3922,7 @@ function renderRoutineAvailabilityChart(){
   xaxis:{type:'category',categoryorder:'array',categoryarray:dates,range:[-0.5,dates.length-0.5],tickmode:'array',tickvals:dates,ticktext:isDaily?dates.map(date=>new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'short',timeZone:'UTC'})):dates.map(()=>''),tickangle:-90,tickfont:{size:10},showticklabels:isDaily,showgrid:false,showline:true,linecolor:'#a9b9c7',linewidth:1.5,zeroline:false,fixedrange:true},
   yaxis:{title:{text:'Appointment slots',font:{size:12,color:'#708397'}},tickfont:{size:12,color:'#52677b'},range:[0,Math.ceil(max*1.18/10)*10],gridcolor:'#e0e8ef',gridwidth:1,zeroline:false,showline:false},
   annotations,shapes,hovermode:'closest',hoverlabel:{bgcolor:'#ffffff',bordercolor:'#dce5ed',font:{family:'Arial',size:12,color:'#182b3b'},align:'left',namelength:0}
- },{responsive:true,displaylogo:false,displayModeBar:false,scrollZoom:false,doubleClick:false}).then(()=>{applyFlatAvailabilityBars(target,isDaily);installAvailabilityCardTooltip(target)});
+ },{responsive:true,displaylogo:false,displayModeBar:false,scrollZoom:false,doubleClick:false}).then(()=>{applyFlatAvailabilityBars(target,isDaily,true);installAvailabilityCardTooltip(target)});
 }
 window.addEventListener('resize',()=>{if(!$('routineAvailabilityPage').classList.contains('hidden'))renderRoutineAvailabilityChart()});
 setupRoutineRangeControls();
