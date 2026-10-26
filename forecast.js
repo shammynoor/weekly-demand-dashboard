@@ -417,11 +417,14 @@ function renderHistoricalWeekday(){
  const tickStep=([1,2,2.5,5,10].map(v=>v*magnitude).find(v=>v>=targetMaximum/5)||10*magnitude);
  const max=Math.ceil(targetMaximum/tickStep)*tickStep;
  const tickCount=Math.round(max/tickStep);
+ let frame=root.parentElement;
+ if(!frame.classList.contains('forecast-chart-frame')){frame=document.createElement('div');frame.className='forecast-chart-frame';root.before(frame);frame.append(root);}
+ frame.querySelector(':scope > .forecast-y-axis')?.remove();
  const allDays=days.concat(future),columns=[],fragment=document.createDocumentFragment();
  const selectedWeeks=Number($('dailyForecastHistory')?.value||52);
  const widthRatio=special?Math.max(1,n/104):Math.max(1,selectedWeeks/104);
- const availableWidth=Math.max(40,root.clientWidth-64);
- const columnGap=Math.min(3,availableWidth/(allDays.length*2));
+ const availableWidth=Math.max(40,root.clientWidth-8);
+ const columnGap=0;
  const columnWidth=Math.max(.1,(availableWidth*widthRatio-(allDays.length-1)*columnGap)/allDays.length);
  root.style.columnGap=columnGap+'px';
  root.style.setProperty('--forecast-column-width',columnWidth+'px');
@@ -441,7 +444,7 @@ function renderHistoricalWeekday(){
     segment.title=name+': '+raw+' bookings';bar.append(segment);
    }
   }
-  const date=document.createElement('div');date.className='forecast-history-date';date.textContent=new Date(d+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',timeZone:'UTC'});
+  const date=document.createElement('div');date.className='forecast-history-date';date.setAttribute('aria-hidden','true');
   if(isFuture){const j=i-n;col.title=d+': projected '+projected[j].toFixed(1)+' bookings (70% prediction interval '+intervals[j].low.toFixed(1)+'–'+intervals[j].high.toFixed(1)+')'}
   else {const detail=parts.get(d)||new Map();col.title=d+': '+value.toFixed(1)+(adjust?' list-size adjusted':'')+' bookings'+groups.map(name=>'\\n'+name+': '+(detail.get(name)||0)).join('')}
   col.append(bar,date);fragment.append(col);columns.push(col);
@@ -453,17 +456,32 @@ function renderHistoricalWeekday(){
  for(let i=0;i<=tickCount;i++){
   const label=document.createElement('span');label.className='forecast-y-tick';
   label.textContent=String(Math.round(i*tickStep*100)/100);
-  label.style.top=(343-i*tickStep/max*340)+'px';
+  label.style.top=(baselineY-i*tickStep/max*340)+'px';
   axis.append(label);
  }
- const axisTitle=document.createElement('span');axisTitle.className='forecast-y-title';axisTitle.textContent=adjust?'Appointments (adjusted)':'Appointments';axis.append(axisTitle);root.prepend(axis);
+ const axisTitle=document.createElement('span');axisTitle.className='forecast-y-title';axisTitle.textContent=adjust?'Appointments (adjusted)':'Appointments';axis.append(axisTitle);frame.prepend(axis);
+ // Month labels use actual month boundaries and thin out to avoid collisions.
+ const monthRuns=[];
+ for(let i=0;i<allDays.length;i++){
+  const month=allDays[i].slice(0,7),last=monthRuns.at(-1);
+  if(last?.month===month)last.end=i;else monthRuns.push({month,start:i,end:i});
+ }
+ let previousLabel=-Infinity;
+ for(const run of monthRuns){
+  const first=columns[run.start],last=columns[run.end];
+  const centre=(first.offsetLeft+last.offsetLeft+last.offsetWidth)/2;
+  if(centre-previousLabel<48)continue;
+  const label=document.createElement('span');label.className='forecast-month-tick';
+  label.textContent=new Date(run.month+'-01T12:00:00Z').toLocaleDateString('en-GB',{month:'short',timeZone:'UTC'});
+  label.style.left=centre+'px';label.style.top=(baselineY+9)+'px';root.append(label);previousLabel=centre;
+ }
  // Alternating calendar-year bands use real year boundaries, including the projected weeks.
  const yearRuns=[];for(let i=0;i<allDays.length;i++){const year=allDays[i].slice(0,4);if(!yearRuns.length||yearRuns[yearRuns.length-1].year!==year)yearRuns.push({year,start:i,end:i});else yearRuns[yearRuns.length-1].end=i}
  for(let j=0;j<yearRuns.length;j++){
   const run=yearRuns[j],first=columns[run.start],last=columns[run.end];
   const band=document.createElement('div');band.className='forecast-year-band'+(j%2?' forecast-year-alt':'');
   band.style.left=first.offsetLeft+'px';band.style.width=(last.offsetLeft+last.offsetWidth-first.offsetLeft)+'px';
-  const tag=document.createElement('span');tag.textContent=run.year;band.append(tag);root.append(band);
+  const tag=document.createElement('span');tag.textContent=run.year;if(parseFloat(band.style.width)<40)tag.hidden=true;band.append(tag);root.append(band);
  }
  if(fittedModel){
   const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('class','forecast-season-line');svg.setAttribute('aria-label','Seasonal regression, thirteen-week projection and 70 percent prediction interval');
