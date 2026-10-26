@@ -147,7 +147,7 @@ function renderHistoricalWeekday(){
  const populationCache=new Map();const normalise=(day,count)=>{if(!adjust||!referencePopulation)return count;const month=day.slice(0,7);if(!populationCache.has(month))populationCache.set(month,listSizeAtMonth(month));return count*referencePopulation/Math.max(1,populationCache.get(month))};
  const totals=new Map(),parts=new Map(),allWeekdayTotals=new Map();
  for(const r of records){
-  if(!r.bookedDay||r.bookedDay<start||r.bookedDay>end||excludedSlotTypes.has(r.slot))continue;
+  if(!r.bookedDay||r.bookedDay<(earliestBooking||start)||r.bookedDay>end||excludedSlotTypes.has(r.slot))continue;
   const urgency=capacityUrgencyCategory(r.slot);
   if(!groups.includes(urgency))continue;
   const dow=new Date(r.bookedDay+'T12:00:00Z').getUTCDay();if(dow>=1&&dow<=5)allWeekdayTotals.set(r.bookedDay,(allWeekdayTotals.get(r.bookedDay)||0)+(Number(r.count)||0));
@@ -227,7 +227,7 @@ function renderHistoricalWeekday(){
   const specialForecasts=new Map(),specialErrors=new Map();
   const quantileNeeds=(numbers,p)=>{if(!numbers.length)return 0;const sorted=[...numbers].sort((a,b)=>a-b),pos=(sorted.length-1)*p,lo=Math.floor(pos),hi=Math.ceil(pos);return sorted[lo]+(sorted[hi]-sorted[lo])*(pos-lo)};
   for(const type of ['before','after']){
-   const sampleDays=[...adjacentTypes].filter(([d,t])=>t===type&&d>=start&&d<=end).map(([d])=>d);
+   const sampleDays=[...adjacentTypes].filter(([d,t])=>t===type&&d>=(earliestBooking||start)&&d<=end).map(([d])=>d);
    const byGroup=new Map();
    for(const name of groups){
     const vals=sampleDays.map(d=>normalise(d,(parts.get(d)||new Map()).get(name)||0));
