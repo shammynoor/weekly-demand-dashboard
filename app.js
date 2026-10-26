@@ -102,6 +102,7 @@ async function readSharedSettings(){
 let records=[],weeks=[],types=[],statuses=[],clinicianTypes=[],bookingTimeRecords=[],appointmentTimeRecords=[];
 let availabilityRecords=[];
 let capacityCSVLatestModified=null;
+let capacityPaceCache=null;
 let waitingTimeRecords=[],waitingTrendRecords=[];
 let waitingTrendDimensionCache=new WeakMap();
 let waitingTrendAvailableMonths=[];
@@ -1644,11 +1645,13 @@ async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;
   {
    const key=JSON.stringify([date,slot,signpostingClinician,'']);
    aggregate.set(key,(aggregate.get(key)||0)+1);
-   const tm=/^(\\d{1,2}):(\\d{2})/.exec(event.time||'');
+   const tm=/^(\d{1,2}):(\d{2})/.exec(event.time||'');
    if(tm&&Number(tm[1])<24&&Number(tm[2])<60){
     const minute=Number(tm[1])*60+Number(tm[2]);
     const timeKey=JSON.stringify([date,minute,slot,signpostingClinician,'']);
     bookingTimeAggregate.set(timeKey,(bookingTimeAggregate.get(timeKey)||0)+1);
+    const scheduledKey=JSON.stringify([date,date,minute,slot,signpostingClinician,'']);
+    appointmentTimeAggregate.set(scheduledKey,(appointmentTimeAggregate.get(scheduledKey)||0)+1);
    }
   }
  }
@@ -2323,7 +2326,7 @@ function setupTogglePriority(){
  refreshPriorityToggles();
 }
 
-function ensureFollowUpCategory(){if(!categoryNames.some(c=>c.toLowerCase().replace(/[\s-]+/g,'')==='followup'))categoryNames.push('Follow up')}ensureFollowUpCategory();function guessCategory(t){return /RED|YELLOW|AMBER|URGENT|SAME DAY|ACUTE/i.test(t)?'Urgent':/GREEN|FOLLOW UP|ROUTINE/i.test(t)?'Routine':null}function saveCategories(sync=true){lastConsultFilterNames=[];try{localStorage.setItem(STORAGE_KEY,JSON.stringify({categories:categoryNames,assignments,clinicianCategories:clinicianCategoryNames,clinicianAssignments,consultCategories:consultCategoryNames,consultAssignments,groupUrgencyCategories:groupUrgencyNames,groupUrgencyAssignments,urgencyGroupColours,clinicianGroupCategories:clinicianGroupNames,clinicianGroupAssignments,peopleLocum,peopleClinicianType,clinicianGroupColours,clinicianTypeColours,urgencyTypeColours,purposeCategories:purposeCategoryNames,purposeColours,purposeAssignments,capacityCategories:capacityCategoryNames,capacityColours,capacityAssignments,consultModeColours,togglePriority:{...togglePriority},excludedSlotTypes:[...excludedSlotTypes]}));}catch(e){alert('Could not save settings in this browser. Please try again.')}if(sync)markCategoryDirty()}function allCategories(){return [...categoryNames,'Uncategorised']}function rebuildCategoryFilter(){const old=new Set([...slots.selectedOptions].map(o=>o.value));slots.replaceChildren();for(const c of allCategories()){const o=document.createElement('option');o.value=c;o.textContent=c;o.selected=old.has(c);slots.append(o)}}function renderEditor(){renderDropEditor('urgency');updateAvailabilityUrgencyFilter()}
+function ensureFollowUpCategory(){if(!categoryNames.some(c=>c.toLowerCase().replace(/[\s-]+/g,'')==='followup'))categoryNames.push('Follow up')}ensureFollowUpCategory();function guessCategory(t){return /RED|YELLOW|AMBER|URGENT|SAME DAY|ACUTE/i.test(t)?'Urgent':/GREEN|FOLLOW UP|ROUTINE/i.test(t)?'Routine':null}function saveCategories(sync=true){capacityPaceCache=null;lastConsultFilterNames=[];try{localStorage.setItem(STORAGE_KEY,JSON.stringify({categories:categoryNames,assignments,clinicianCategories:clinicianCategoryNames,clinicianAssignments,consultCategories:consultCategoryNames,consultAssignments,groupUrgencyCategories:groupUrgencyNames,groupUrgencyAssignments,urgencyGroupColours,clinicianGroupCategories:clinicianGroupNames,clinicianGroupAssignments,peopleLocum,peopleClinicianType,clinicianGroupColours,clinicianTypeColours,urgencyTypeColours,purposeCategories:purposeCategoryNames,purposeColours,purposeAssignments,capacityCategories:capacityCategoryNames,capacityColours,capacityAssignments,consultModeColours,togglePriority:{...togglePriority},excludedSlotTypes:[...excludedSlotTypes]}));}catch(e){alert('Could not save settings in this browser. Please try again.')}if(sync)markCategoryDirty()}function allCategories(){return [...categoryNames,'Uncategorised']}function rebuildCategoryFilter(){const old=new Set([...slots.selectedOptions].map(o=>o.value));slots.replaceChildren();for(const c of allCategories()){const o=document.createElement('option');o.value=c;o.textContent=c;o.selected=old.has(c);slots.append(o)}}function renderEditor(){renderDropEditor('urgency');updateAvailabilityUrgencyFilter()}
 function renderGroupUrgencyEditor(){renderDropEditor('groupUrgency');updateAvailabilityUrgencyFilter()}document.getElementById('addCategory').onclick=()=>{const el=document.getElementById('newCategory');const c=el.value.trim();if(!c)return;if(c.toLowerCase()==='uncategorised'||categoryNames.some(x=>x.toLowerCase()===c.toLowerCase())){alert('This category name already exists or is reserved.');return}categoryNames.push(c);el.value='';saveCategories();rebuildCategoryFilter();renderEditor();renderGroupUrgencyEditor()};document.getElementById('newCategory').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('addCategory').click()});document.getElementById('slotSearch').addEventListener('input',renderEditor);
 const PRACTICE_SETTINGS_KEY='demand-iq-practice-settings-v1';
 let practiceSettings={name:'',anchors:{}},practiceSelectedMonth='';
@@ -2866,6 +2869,96 @@ function collectDayView2Capacity(date,names,disabled,rows){
  }
  return days;
 }
+
+// Compare appointments scheduled for today with prior matching weekdays at the
+// same report-clock time. Do not treat missing reports/timestamps as zero demand.
+function calculateDayView2PaceBaseline({date,minute,names,availability,bookings,excluded,groupForSlot,holidays}){
+ const active=new Set(names),candidates=new Map();
+ for(let week=1;week<=26;week++){
+  const day=dayView2AddDays(date,-7*week);
+  if(!holidays.has(day))candidates.set(day,{date:day,total:0,booked:0,timed:0,byTime:0});
+ }
+ for(const row of availability){
+  const day=candidates.get(row.date);
+  if(!day||excluded.has(row.slot)||!active.has(groupForSlot(row.slot)))continue;
+  const status=String(row.availability||'').trim().toLowerCase(),count=Number(row.count);
+  if(!['booked','available','embargoed','blocked'].includes(status)||!Number.isFinite(count)||count<=0)continue;
+  day.total+=count;if(status==='booked')day.booked+=count;
+ }
+ for(const row of bookings){
+  const day=candidates.get(row.date);
+  if(!day||excluded.has(row.slot)||!active.has(groupForSlot(row.slot)))continue;
+  const count=Number(row.count),clock=Number(row.bookedMinute);
+  if(!Number.isFinite(count)||count<=0||row.bookedMinute==null||!Number.isFinite(clock)||clock<0||clock>=1440||!/^\d{4}-\d{2}-\d{2}$/.test(row.bookedDay||'')||row.bookedDay>row.date)continue;
+  day.timed+=count;
+  if(row.bookedDay<row.date||(row.bookedDay===row.date&&clock<=minute))day.byTime+=count;
+ }
+ const samples=[...candidates.values()].filter(day=>day.total>0&&Math.abs(day.timed-day.booked)<0.0001).slice(0,12);
+ if(samples.length<6)return {ready:false,samples};
+ const values=samples.map(day=>day.byTime).sort((a,b)=>a-b),mean=values.reduce((a,b)=>a+b,0)/values.length;
+ const quantile=p=>{const position=(values.length-1)*p,low=Math.floor(position),high=Math.ceil(position);return values[low]+(values[high]-values[low])*(position-low);};
+ // Avoid calling a one-slot difference unusual when historical days are identical.
+ const tolerance=Math.max(2,mean*.05);
+ return {ready:true,samples,mean,low:Math.max(0,Math.min(quantile(.15),mean-tolerance)),high:Math.max(quantile(.85),mean+tolerance)};
+}
+function dayView2PaceClassification(actual,baseline){
+ if(!baseline.ready)return 'unavailable';
+ return actual<baseline.low?'below':actual>baseline.high?'above':'normal';
+}
+function dayView2PaceBaseline(date,minute,names,holidays){
+ const key=JSON.stringify([date,minute,[...names].sort(),[...excludedSlotTypes].sort()]);
+ if(capacityPaceCache?.key===key&&capacityPaceCache.availability===availabilityRecords&&capacityPaceCache.bookings===appointmentTimeRecords)return capacityPaceCache.result;
+ const result=calculateDayView2PaceBaseline({date,minute,names,availability:availabilityRecords,bookings:appointmentTimeRecords,excluded:excludedSlotTypes,groupForSlot:capacityUrgencyCategory,holidays});
+ capacityPaceCache={key,availability:availabilityRecords,bookings:appointmentTimeRecords,result};return result;
+}
+function createDayView2BookingPace(date,names,totals){
+ if(date!==dayView2LocalDate())return null;
+ const box=document.createElement('section');box.className='day-view2-booking-pace';box.setAttribute('aria-label','Booking pace for today');
+ const now=Date.now(),hasTimestamp=Number.isFinite(capacityCSVLatestModified);
+ const snapshot=hasTimestamp?new Date(Math.min(now,capacityCSVLatestModified)):null;
+ const parts=snapshot?Object.fromEntries(new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/London',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(snapshot).map(p=>[p.type,p.value])):null;
+ const snapshotDate=parts?parts.year+'-'+parts.month+'-'+parts.day:null;
+ const clock=parts?parts.hour+':'+parts.minute:null,minute=parts?Number(parts.hour)*60+Number(parts.minute):null;
+ const weekday=new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'long',timeZone:'UTC'});
+ const year=Number(date.slice(0,4)),holidays=new Set([...englandWalesBankHolidays(year-1),...englandWalesBankHolidays(year)]);
+ const total=Object.values(totals).reduce((sum,count)=>sum+count,0);
+ let baseline=null,state='unavailable',status,description;
+ if(!names.length){status='Select urgency groups';description='Choose an urgency group to compare today’s booking pace.';}
+ else if(!total){status='No capacity data';description='No capacity is reported for today and the selected urgency groups.';}
+ else if(!hasTimestamp){status='Snapshot time unavailable';description='Import a clinical CSV with a file timestamp to compare the same time of day.';}
+ else if(snapshotDate!==date){status='Awaiting today’s data';description='The latest clinical CSV is from '+snapshot.toLocaleDateString('en-GB',{day:'numeric',month:'long',timeZone:'Europe/London'})+'. Refresh today’s report for a weekday comparison.';}
+ else if(holidays.has(date)){status='Bank holiday';description='A normal '+weekday+' comparison is not shown on a bank holiday.';}
+ else{
+  baseline=dayView2PaceBaseline(date,minute,names,holidays);state=dayView2PaceClassification(totals.booked,baseline);
+  if(!baseline.ready){status='Not enough history';description=baseline.samples.length+' of 6 required comparable '+weekday+' reports available.';}
+  else{
+   status={below:'↘ Below usual range',normal:'≈ Within usual range',above:'↗ Above usual range'}[state];
+   const difference=Math.round(totals.booked-baseline.mean);
+   description=difference===0?'In line with a typical '+weekday+' by '+clock:Math.abs(difference).toLocaleString('en-GB')+(difference<0?' fewer':' more')+' booked than a typical '+weekday+' by '+clock;
+  }
+ }
+ box.dataset.paceState=state;
+ const header=document.createElement('div');header.className='day-view2-pace-heading';
+ const title=document.createElement('strong');title.textContent='Booking pace'+(clock?' · as of '+clock:'');
+ const badge=document.createElement('span');badge.className='day-view2-pace-badge';badge.textContent=status;badge.setAttribute('role','status');
+ header.append(title,badge);
+ const subtitle=document.createElement('p');subtitle.className='day-view2-pace-subtitle';subtitle.textContent=description;
+ box.append(header,subtitle);
+ if(baseline){
+  const details=document.createElement('details');details.className='day-view2-pace-details';
+  const summary=document.createElement('summary');summary.textContent='How does this compare?';details.append(summary);
+  const content=document.createElement('div');content.className='day-view2-pace-comparison';
+  const row=(label,value)=>{const line=document.createElement('div'),key=document.createElement('span'),text=document.createElement('strong');key.textContent=label;text.textContent=value;line.append(key,text);content.append(line);};
+  row('Booked for today in this snapshot',totals.booked.toLocaleString('en-GB'));
+  if(baseline.ready){row('Typical '+weekday+' by '+clock,Math.round(baseline.mean).toLocaleString('en-GB'));row('Usual range by '+clock,Math.ceil(baseline.low)+'–'+Math.floor(baseline.high));}
+  row('Comparison',baseline.samples.length+' most recent comparable '+weekday+'s');
+  row('Urgency groups',names.join(', '));
+  const note=document.createElement('p');note.textContent='Counts appointments scheduled for the same weekday, including those booked before that day. Uses up to 12 complete matching reports from the last 26 weeks, excluding bank holidays and days with missing booking times. Historical booking times are reconstructed from the loaded exports; subsequent cancellations and rescheduling are not available.';
+  content.append(note);details.append(content);box.append(details);
+ }
+ return box;
+}
+
 function renderDayView2(){
  const page=$('dayView2Page'),input=$('dayView2Date'),filters=$('dayView2UrgencyToggles');
  if(!page||page.classList.contains('hidden')||!input||!filters)return;
@@ -2954,6 +3047,7 @@ function renderDayView2(){
   bar.append(groupSpan);
  }
  lane.append(heading,bar);
+ if(offset===0){const pace=createDayView2BookingPace(date,[...selected.groups.keys()],totals);if(pace)lane.append(pace);}
  if(!laneTotal){
   const noData=document.createElement('p');noData.className='muted day-view2-note';
   noData.textContent=!laneDay.groups.size?'Select an urgency group to view capacity.':'No capacity reported for '+laneDateLabel+' and the selected urgency groups.';
