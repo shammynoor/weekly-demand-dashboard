@@ -3609,7 +3609,7 @@ function applyFlatAvailabilityBars(target,isDaily=false,separateGroups=false){
   const preceding=Array.from({length:barTraces[0]?.y?.length||0},()=>0);
   for(const group of groups){
    const members=barTraces.filter(trace=>trace.meta?.capacityGroup===group);
-   offsets.set(group,preceding.map(n=>n*5));
+   offsets.set(group,preceding.map(n=>n*2));
    preceding.forEach((_,j)=>{if(members.some(trace=>Number(trace.y[j])>0))preceding[j]++;});
   }
  }
@@ -3720,9 +3720,9 @@ function renderAvailabilityChart(){
    continue; // Never count these records twice in the main capacity series.
   }
   if(excludedSlotTypes.has(r.slot))continue;
-  if(!names.includes(capacityUrgencyCategory(r.slot))||!urgentClinicianMatches(r.clinician,r.person)||!urgentConsultMatches(r.slot)||!urgentPurposeMatches(r.slot))continue;
+  if(!selectedNames.has(capacityUrgencyCategory(r.slot))||(!referral&&!urgentClinicianMatches(r.clinician,r.person))||(!referral&&!urgentConsultMatches(r.slot))||(!referral&&!urgentPurposeMatches(r.slot)))continue;
   const urgency=capacityUrgencyCategory(r.slot);
-  const group=urgentSplitExtras&&capacityStatus==='extra'?urgency+' · Extra':urgency;
+  const group=urgency;
   const label=capacityChartStatus(r,urgentGroupWithheld,clock);
   if(!label)continue;
   const key=JSON.stringify([r.date,group,label]);counts.set(key,(counts.get(key)||0)+r.count);
@@ -3737,8 +3737,8 @@ function renderAvailabilityChart(){
   counts.clear();for(const [key,count] of aggregated)counts.set(key,count);
  }
  const heading=date=>weekly?'Week commencing '+new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'}):new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'short',year:'numeric',timeZone:'UTC'});
- const extras=urgentAddSignposted?[{name:'Sent External',colour:Object.entries(capacityColours).find(([name])=>name.trim().toLowerCase()==='sent external')?.[1]||'#8aa6bd'}]:[];
- const {traces,totals}=capacityGroupedSeries(buckets,names.flatMap(name=>urgentSplitExtras?[name,name+' · Extra']:[name]),counts,urgentGroupWithheld,heading,extras);
+ const extras=[];
+ const {traces,totals}=capacityGroupedSeries(buckets,names,counts,urgentGroupWithheld,heading,extras);
  const max=Math.ceil(Math.max(1,...totals)*1.2/10)*10;
  const weekLabels=Array.from({length:weekCount},(_,i)=>{const offset=i-urgentWeeksBack;return offset===0?'This Week':offset===-1?'Last Week':offset<0?Math.abs(offset)+' weeks ago':offset===1?'Next Week':offset+' weeks'});
  const annotations=weekLabels.map((text,i)=>({x:weekly?buckets[i]:dates[i*7+2],xref:'x',y:1.045,yref:'paper',text,showarrow:false,font:{size:13,color:'#344b60'},xanchor:'center',yanchor:'bottom'}));
