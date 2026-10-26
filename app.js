@@ -2922,13 +2922,20 @@ for(const [id,step] of [['dayView2CalendarPrevious',-1],['dayView2CalendarNext',
 document.addEventListener('click',event=>{if(!event.target.closest('#dayView2DateControls'))closeDayView2Calendar();});
 document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!$('dayView2Calendar')?.hidden){closeDayView2Calendar();$('dayView2DatePicker')?.focus();}});
 
+// Source arrays are replaced on import; WeakMap indexes cannot serve stale rows.
+const dayView2DateIndexes=new WeakMap();
+function dayView2RowsForDates(rows,dates){
+ let index=dayView2DateIndexes.get(rows);
+ if(!index){index=new Map();for(const row of rows){if(!index.has(row.date))index.set(row.date,[]);index.get(row.date).push(row);}dayView2DateIndexes.set(rows,index);}
+ const selected=[];for(const date of dates)for(const row of index.get(date)||[])selected.push(row);return selected;
+}
 function collectDayView2Capacity(date,names,disabled,rows,clock=dayView2LondonClock()){
  date=dayView2WorkingDate(date);
  const statuses=['missedEmpty','booked','available','embargoed','blocked'];
  const empty=()=>({missedEmpty:0,booked:0,available:0,embargoed:0,blocked:0});
  const active=names.filter(name=>!disabled.has(name));
  const days=new Map(Array.from({length:8},(_,i)=>[dayView2AddWorkingDays(date,i),{groups:new Map(active.map(name=>[name,empty()])),totals:empty(),unknown:0,matched:0}]));
- for(const r of rows){
+ for(const r of dayView2RowsForDates(rows,days.keys())){
   const day=days.get(r.date);
   if(!day||excludedSlotTypes.has(r.slot))continue;
   const group=day.groups.get(capacityUrgencyCategory(r.slot));
@@ -3031,7 +3038,8 @@ function createDayView2PaceRail(actual,baseline,total,clock){
 function dayView2PaceBaseline(date,minute,names,holidays,remainingMinute=minute){
  const key=JSON.stringify([date,minute,remainingMinute,[...names].sort(),[...excludedSlotTypes].sort()]);
  if(capacityPaceCache?.key===key&&capacityPaceCache.availability===availabilityRecords&&capacityPaceCache.bookings===appointmentTimeRecords)return capacityPaceCache.result;
- const result=calculateDayView2PaceBaseline({date,minute,remainingMinute,names,availability:availabilityRecords,bookings:appointmentTimeRecords,excluded:excludedSlotTypes,groupForSlot:capacityUrgencyCategory,holidays});
+ const comparisonDates=[];for(let offset=7;offset<=371;offset+=7)comparisonDates.push(dayView2AddDays(date,-offset));
+ const result=calculateDayView2PaceBaseline({date,minute,remainingMinute,names,availability:dayView2RowsForDates(availabilityRecords,comparisonDates),bookings:dayView2RowsForDates(appointmentTimeRecords,comparisonDates),excluded:excludedSlotTypes,groupForSlot:capacityUrgencyCategory,holidays});
  capacityPaceCache={key,availability:availabilityRecords,bookings:appointmentTimeRecords,result};return result;
 }
 
@@ -3135,7 +3143,7 @@ function renderDayView2(){
  });
  const liveClock=dayView2LondonClock();
  const days=collectDayView2Capacity(date,names,dayView2DisabledUrgencies,availabilityRecords,liveClock),selected=days.get(date),totals=selected.totals;
- const slotTotals=collectDayView2Capacity(date,names,dayView2DisabledUrgencies,availabilityRecords.filter(isDayView2SlotReportRecord),liveClock).get(date).totals;
+ const slotTotals=collectDayView2Capacity(date,names,dayView2DisabledUrgencies,dayView2RowsForDates(availabilityRecords,days.keys()).filter(isDayView2SlotReportRecord),liveClock).get(date).totals;
  const paceContext=dayView2PaceContext(date,[...selected.groups.keys()],slotTotals);
  const paceExpanded=$('dayView2Lanes').querySelector('.day-view2-pace-details')?.open;
  const statuses=['missedEmpty','booked','available','embargoed','blocked'];
@@ -4125,12 +4133,15 @@ function renderPlannedAvailabilityChart(){
  const clock=dayView2LondonClock();
  let matched=0;
  const bucketSet=new Set(dates);
+ const activeTypes=new Set(plannedDetailedTypes().filter(name=>!plannedDisabledTypes.has(name)));
+ const firstDate=weeks[0],lastDate=dayView2AddDays(weeks[weeks.length-1],7);
+ const weekForDate=new Map();
  for(const r of availabilityRecords){
-  if(excludedSlotTypes.has(r.slot))continue;
-  const detailed=String(assignments[r.slot]||'').trim();
+  if(r.date<firstDate||r.date>=lastDate||excludedSlotTypes.has(r.slot))continue;
   const group=capacityUrgencyCategory(r.slot);
-  if(!plannedDetailedTypes().includes(group)||plannedDisabledTypes.has(group)||!plannedClinicianMatches(r.clinician,r.person)||!plannedConsultMatches(r.slot))continue;
-  const bucket=isDaily?r.date:mondayOf(r.date);
+  if(!activeTypes.has(group)||!plannedClinicianMatches(r.clinician,r.person)||!plannedConsultMatches(r.slot))continue;
+  let bucket=r.date;
+  if(!isDaily){if(!weekForDate.has(r.date))weekForDate.set(r.date,mondayOf(r.date));bucket=weekForDate.get(r.date);}
   if(!bucketSet.has(bucket))continue;
   const label=capacityChartStatus(r,plannedGroupWithheld,clock);
   if(!label)continue;
