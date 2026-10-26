@@ -3719,7 +3719,7 @@ function renderAvailabilityChart(){
   if(!selectedNames.has(capacityUrgencyCategory(r.slot))||(!referral&&!urgentClinicianMatches(r.clinician,r.person))||(!referral&&!urgentConsultMatches(r.slot))||(!referral&&!urgentPurposeMatches(r.slot)))continue;
   const urgency=capacityUrgencyCategory(r.slot);
   const group=urgency;
-  const label=capacityChartStatus(r,urgentGroupWithheld,clock);
+  const label=capacityChartStatus(r,urgentGroupWithheld,clock)||(referral&&capacityStatus==='sent external'?'Booked':null);
   if(!label)continue;
   const key=JSON.stringify([r.date,group,label]);counts.set(key,(counts.get(key)||0)+r.count);
  }
