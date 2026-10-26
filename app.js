@@ -859,39 +859,80 @@ function readChartPreferences(){const key=chartPreferenceKey();if(!key)return {}
 function writeChartPreference(key,value){const storageKey=chartPreferenceKey();if(!storageKey)return;try{const saved=readChartPreferences();saved[key]=value;localStorage.setItem(storageKey,JSON.stringify(saved))}catch(error){console.warn('Could not save chart preference',error)}}
 window.gpChartPreferences={read:readChartPreferences,write:writeChartPreference,account:chartPreferenceAccount};
 function chartControlKey(el){
- if(!el||el.type!=='checkbox')return null;
- const page=el.closest('[id$="Page"]');if(!page||/categoryPage|settingsPage/i.test(page.id))return null;
- if(el.id)return 'checkbox:'+page.id+':'+el.id;
+ if(!el||!el.matches?.('input,select'))return null;
+ const page=el.closest('[id$="Page"]');
+ if(!page||['categoryPage','practiceSettingsPage','peoplePage'].includes(page.id))return null;
+ const type=el.tagName==='SELECT'?'select':el.type;
+ if(!['checkbox','radio','select','range','date','month','number','search','text'].includes(type))return null;
+ if(el.id)return (type==='checkbox'?'checkbox':type)+':'+page.id+':'+el.id;
  const row=el.closest('label')||el.parentElement;
- const label=(row?.textContent||el.getAttribute('aria-label')||'').trim().replace(/\\s+/g,' ').slice(0,120);
+ const label=(row?.textContent||el.getAttribute('aria-label')||'').trim().replace(/\s+/g,' ').slice(0,120);
  const panel=el.closest('[id]')?.id||page.id;
- return label?'checkbox:'+page.id+':'+panel+':'+label:null;
+ return label?(type==='checkbox'?'checkbox':type)+':'+page.id+':'+panel+':'+label:null;
 }
-let chartPreferenceRestoring=false;
+function chartControlValue(el){
+ if(el.type==='checkbox'||el.type==='radio')return el.checked;
+ return el.multiple?[...el.selectedOptions].map(option=>option.value):el.value;
+}
+let chartPreferenceRestoring=false,chartRestoredAccount=null;
+const chartRestoredValues=new Map();
 function restoreChartCheckboxes(){
- if(!chartPreferenceAccount())return;
- const saved=readChartPreferences();
+ const account=chartPreferenceAccount();if(!account)return;
+ if(account!==chartRestoredAccount){chartRestoredAccount=account;chartRestoredValues.clear();}
+ const saved=readChartPreferences(),changes=[];
  chartPreferenceRestoring=true;
- try{document.querySelectorAll('#dashboardShell input[type="checkbox"]').forEach(el=>{
-  const key=chartControlKey(el);
-  if(key&&typeof saved[key]==='boolean'&&el.checked!==saved[key]){
-   // A checkbox is only the visual control: its change handler also updates
-   // the filter Set used by the chart. Replay that handler when restoring.
-   el.checked=saved[key];
-   el.dispatchEvent(new Event('change',{bubbles:true}));
-  }
- })}finally{chartPreferenceRestoring=false}
+ try{
+  document.querySelectorAll('#dashboardShell input,#dashboardShell select').forEach(el=>{
+   const key=chartControlKey(el);if(!key||!(key in saved))return;
+   // Waiting sliders attach their state handlers only when first opened.
+   if(el.type==='range'&&/^waiting/.test(el.id)&&!el.dataset.bound)return;
+   const value=saved[key],signature=JSON.stringify(value);
+   if(chartRestoredValues.get(key)===signature)return;
+   if(el.tagName==='SELECT'){
+    const wanted=Array.isArray(value)?value:[String(value)];
+    if(!wanted.every(v=>[...el.options].some(option=>option.value===v)))return;
+   }
+   chartRestoredValues.set(key,signature);
+   if(JSON.stringify(chartControlValue(el))===signature)return;
+   if(el.type==='checkbox'||el.type==='radio'){if(typeof value!=='boolean')return;el.checked=value;}
+   else if(el.multiple){for(const option of el.options)option.selected=value.includes(option.value);}
+   else el.value=String(value);
+   changes.push(el);
+  });
+  // Set both range handles before their handlers enforce ordering.
+  for(const el of changes)el.dispatchEvent(new Event(['range','search','text'].includes(el.type)?'input':'change',{bubbles:true}));
+ }finally{chartPreferenceRestoring=false}
 }
-document.addEventListener('change',event=>{
+window.gpChartPreferences.restore=restoreChartCheckboxes;
+function rememberChartControl(event){
  if(chartPreferenceRestoring)return;
- const key=chartControlKey(event.target);
- if(key)writeChartPreference(key,event.target.checked);
-},true);
+ const el=event.target,key=chartControlKey(el);
+ if(key)queueMicrotask(()=>{const value=chartControlValue(el);writeChartPreference(key,value);chartRestoredValues.set(key,JSON.stringify(value));});
+}
+document.addEventListener('change',rememberChartControl,true);
+document.addEventListener('input',rememberChartControl,true);
+function chartExpansionKey(button){
+ const page=button?.closest('[id$="Page"]');
+ if(!page||['categoryPage','practiceSettingsPage','peoplePage'].includes(page.id))return null;
+ const target=button.getAttribute('aria-controls');return target?'expanded:'+page.id+':'+target:null;
+}
+document.addEventListener('click',event=>{
+ const button=event.target.closest?.('.collapse-filter-button');if(!button||chartPreferenceRestoring)return;
+ const key=chartExpansionKey(button);if(!key)return;
+ queueMicrotask(()=>{if(!chartPreferenceRestoring)writeChartPreference(key,button.getAttribute('aria-expanded')==='true');});
+});
+function restoreChartExpansions(){
+ const saved=readChartPreferences();chartPreferenceRestoring=true;
+ try{document.querySelectorAll('#dashboardShell .collapse-filter-button').forEach(button=>{
+  const key=chartExpansionKey(button);if(!key||typeof saved[key]!=='boolean')return;
+  if((button.getAttribute('aria-expanded')==='true')!==saved[key])button.click();
+ });}finally{chartPreferenceRestoring=false}
+}
 document.addEventListener('DOMContentLoaded',()=>{
  const shell=$('dashboardShell');if(!shell)return;
  let queued=false;
- new MutationObserver(()=>{if(queued)return;queued=true;queueMicrotask(()=>{queued=false;restoreChartCheckboxes()})}).observe(shell,{childList:true,subtree:true});
- restoreChartCheckboxes();
+ new MutationObserver(()=>{if(queued)return;queued=true;queueMicrotask(()=>{queued=false;restoreChartCheckboxes();restoreChartExpansions()})}).observe(shell,{childList:true,subtree:true});
+ restoreChartCheckboxes();restoreChartExpansions();
 });
 const CLOUD_SETTINGS_NAME='weekly-demand-categories.json';
 function cloudNotice(msg){const el=$('cloudCategoryStatus');if(el)el.textContent=msg}
