@@ -1574,9 +1574,62 @@ function renderSignpostingChart(){
  status.textContent=signpostingRecords.length.toLocaleString('en-GB')+' signposting records · '+sortedDestinations.length+' destinations · '+signpostingFileCount+' CSV file'+(signpostingFileCount===1?'':'s')+'. Empty cells filled from preceding rows.';
 }
 function updateHomeReportDates(items){const slots=items.filter(f=>/slot[\s_-]*report/i.test(f.name));const signs=items.filter(f=>isSignpostingFile(f.name));const display=files=>{if(!files.length)return 'No report found';const dates=files.map(f=>Date.parse(f.lastModifiedDateTime||'')).filter(Number.isFinite);return dates.length?new Date(Math.max(...dates)).toLocaleString('en-GB',{day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:true,timeZone:'Europe/London'}):'Modified date unavailable'};$('homeSlotModified').textContent=display(slots);$('homeSignpostingModified').textContent=display(signs)}
-// Parsed per-file contributions are retained for the current browser session.
+// Parsed per-file contributions survive reloads in a private browser IndexedDB cache.
 // A replacement invalidates only its own contribution, not the other CSV files.
 const csvContributionCache=new Map();
+// Bump this only when CSV parsing or contribution structure changes, not for UI deployments.
+const CSV_CACHE_SCHEMA=1;
+let csvMemoryScope=null;
+function csvCacheScope(){
+ const account=activeAccount?.homeAccountId||activeAccount?.localAccountId||activeAccount?.username;
+ return account&&selectedFolder?JSON.stringify([CSV_CACHE_SCHEMA,account,selectedFolder.id,isOwner?'owner':sharedFolderId]):null;
+}
+function openCSVCache(){
+ return new Promise(resolve=>{
+  if(!window.indexedDB){resolve(null);return;}
+  let request;try{request=indexedDB.open('capacity-iq-csv-cache',1);}catch(_){resolve(null);return;}
+  request.onupgradeneeded=()=>{if(!request.result.objectStoreNames.contains('folders'))request.result.createObjectStore('folders');};
+  request.onsuccess=()=>resolve(request.result);
+  request.onerror=()=>resolve(null);request.onblocked=()=>resolve(null);
+ });
+}
+async function readCSVCache(scope){
+ const db=await openCSVCache();if(!db)return null;
+ return new Promise(resolve=>{
+  try{const tx=db.transaction('folders','readonly');const request=tx.objectStore('folders').get(scope);
+   let value=null;request.onsuccess=()=>{value=request.result;};
+   tx.oncomplete=()=>{db.close();resolve(value);};tx.onerror=tx.onabort=()=>{db.close();resolve(null);};
+  }catch(_){db.close();resolve(null);}
+ });
+}
+async function writeCSVCache(scope,entries){
+ if(!scope)return;
+ const db=await openCSVCache();if(!db)return;
+ await new Promise(resolve=>{
+  try{const tx=db.transaction('folders','readwrite');tx.objectStore('folders').put({schema:CSV_CACHE_SCHEMA,entries},scope);
+   tx.oncomplete=tx.onerror=tx.onabort=()=>{db.close();resolve();};
+  }catch(_){db.close();resolve();}
+ });
+}
+async function restoreCSVCache(){
+ const scope=csvCacheScope();
+ if(scope===csvMemoryScope)return scope;
+ csvMemoryScope=scope;csvContributionCache.clear();lastFingerprint='';
+ if(!scope)return null;
+ const saved=await readCSVCache(scope);
+ if(saved?.schema===CSV_CACHE_SCHEMA&&Array.isArray(saved.entries)){
+  for(const entry of saved.entries){
+   if(!Array.isArray(entry)||entry.length!==2)continue;
+   const [id,value]=entry;
+   if(typeof id!=='string'||typeof value?.version!=='string')continue;
+   if(value.kind==='slot'&&(!Array.isArray(value.maps)||value.maps.length!==8||!value.maps.every(map=>map instanceof Map)))continue;
+   if(value.kind==='signposting'&&!Array.isArray(value.events))continue;
+   if(!['slot','signposting','other'].includes(value.kind))continue;
+   csvContributionCache.set(id,value);
+  }
+ }
+ return scope;
+}
 function mergeCSVCounts(target,source){
  for(const [key,value] of source){
   if(value&&typeof value==='object'&&!Array.isArray(value)){
@@ -1595,13 +1648,15 @@ function parseCSVContribution(csvText,name){
 }
 async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;setButtons();showRefreshFeedback('Refreshing data…',true);setSync('Checking OneDrive CSV files…');try{
  const items=(await children(selectedFolder.id)).filter(f=>f.file&&/\.csv$/i.test(f.name)).sort((a,b)=>a.name.localeCompare(b.name));if(!items.length)throw Error('No CSV files found directly inside this folder.');updateHomeReportDates(items);
- const fingerprint=JSON.stringify(items.map(f=>[f.id,f.lastModifiedDateTime,f.size]));if(!force&&fingerprint===lastFingerprint){showRefreshFeedback('Already up to date');setSync(`No changes detected · ${items.length} CSV files · Checked ${new Date().toLocaleTimeString('en-GB')}`);return}
+ const cacheScope=await restoreCSVCache();
+ const fingerprint=JSON.stringify(items.map(f=>[f.id,f.name,f.lastModifiedDateTime,f.size]));if(!force&&fingerprint===lastFingerprint){showRefreshFeedback('Already up to date');setSync(`No changes detected · ${items.length} CSV files · Checked ${new Date().toLocaleTimeString('en-GB')}`);return}
  const aggregate=new Map(),availabilityAggregate=new Map(),bookingTimeAggregate=new Map(),appointmentTimeAggregate=new Map(),waitingAggregate=new Map(),waitingTrendAggregate=new Map(),peopleAggregate=new Map(),newSlotTypeStats=new Map();let valid=0,skipped=0;const newSignposting=[];let newSignpostingFiles=0,newSlotFiles=0;
  const activeIds=new Set(items.map(f=>f.id));
+ const removedCachedFiles=[...csvContributionCache.keys()].some(id=>!activeIds.has(id));
  const pendingCache=new Map();
  let downloaded=0,reused=0;
  for(let i=0;i<items.length;i++){
-  const f=items[i],version=JSON.stringify([f.id,f.lastModifiedDateTime,f.size]);
+  const f=items[i],version=JSON.stringify([f.id,f.name,f.lastModifiedDateTime,f.size]);
   let contribution=csvContributionCache.get(f.id);
   if(!contribution||contribution.version!==version){
    downloaded++;
@@ -1627,6 +1682,8 @@ async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;
  // Commit the new cache only after all changed files have parsed successfully.
  for(const id of csvContributionCache.keys())if(!activeIds.has(id))csvContributionCache.delete(id);
  for(const [id,contribution] of pendingCache)csvContributionCache.set(id,contribution);
+ // IndexedDB preserves Maps through structured cloning; a cache failure never blocks loading.
+ if(downloaded||removedCachedFiles)await writeCSVCache(cacheScope,[...pendingCache]);
  // Date the newest Slot Report CSV was last modified, committed only
  // after every changed file has downloaded and parsed successfully.
  const capacityFileDates=items.filter(file=>pendingCache.get(file.id)?.kind==='slot').map(file=>Date.parse(file.lastModifiedDateTime||'')).filter(Number.isFinite);
