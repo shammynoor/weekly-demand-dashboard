@@ -3251,10 +3251,18 @@ let urgentSplitExtras=false,urgentAddSignposted=false;
 for(const [id,setter] of [['urgentSplitExtras',value=>urgentSplitExtras=value],['urgentAddSignposted',value=>urgentAddSignposted=value]]){
  $(id)?.addEventListener('change',event=>{setter(event.target.checked);renderAvailabilityChart()});
 }
-// Weekly Today marker spans the visible bar: Mon 5%, Tue 27.5%, Wed 50%, Thu 72.5%, Fri 95%.
+// Weekly Today marker spans the visible bar: Mon 10%, Tue 30%, Wed 50%, Thu 70%, Fri 90%.
 // Weekly charts use bargap 0.11, so the bar occupies 89% of its category.
+function capacityTodayLabel(dateString=todayLondon){
+ const date=new Date(dateString+'T12:00:00Z');
+ const day=date.getUTCDate(),lastTwo=day%100;
+ const suffix=lastTwo>=11&&lastTwo<=13?'th':({1:'st',2:'nd',3:'rd'}[day%10]||'th');
+ const weekday=date.toLocaleDateString('en-GB',{weekday:'long',timeZone:'UTC'});
+ const month=date.toLocaleDateString('en-GB',{month:'long',timeZone:'UTC'});
+ return 'Today<br><span style="font-size:12px">'+weekday+' '+day+suffix+' '+month+'</span>';
+}
 function weeklyCapacityTodayX(weekIndex,dayIndex){
- const fraction=0.05+Math.min(Math.max(dayIndex,0),4)*0.225;
+ const fraction=0.10+Math.min(Math.max(dayIndex,0),4)*0.20;
  return weekIndex+(fraction-0.5)*(1-0.11);
 }
 function renderAvailabilityChart(){
@@ -3321,7 +3329,7 @@ function renderAvailabilityChart(){
   const x=weekly?weeklyCapacityTodayX(urgentWeeksBack,(new Date(todayLondon+'T12:00:00Z').getUTCDay()+6)%7):dates.indexOf(todayLondon);
   shapes.unshift({type:'rect',xref:'x',yref:'paper',x0:-.5,x1:x,y0:0,y1:1,fillcolor:'rgba(97,112,130,0.12)',line:{width:0},layer:'above'});
   shapes.push({type:'line',xref:'x',yref:'paper',x0:x,x1:x,y0:0,y1:1,line:{color:'#257cb6',width:2.5,dash:'dot'},layer:'above'});
-  annotations.push({x,xref:'x',y:1.005,yref:'paper',text:'Today',showarrow:false,font:{size:17,color:'#206ca6'},xanchor:'left',yanchor:'top',xshift:7,yshift:-8});
+  annotations.push({x,xref:'x',y:1.005,yref:'paper',text:capacityTodayLabel(),align:'left',showarrow:false,font:{size:17,color:'#206ca6'},xanchor:'left',yanchor:'top',xshift:7,yshift:-8});
  }
  buckets.forEach((date,i)=>{if((weekly||weekdays.has(date))&&totals[i])annotations.push({x:date,xref:'x',y:totals[i],yref:'y',text:String(totals[i]),showarrow:false,font:{size:weekly?13:10,color:'#425b70'},yshift:15,yanchor:'bottom'})});
  const note=$('availabilityNote');if(note)note.textContent=names.length?'':'Select an Urgent detailed urgency category to display appointments.';
@@ -3498,7 +3506,7 @@ function renderRoutineAvailabilityChart(){
   {type:'line',xref:'x',yref:'paper',x0:todayX,x1:todayX,y0:0,y1:1,line:{color:'#257cb6',width:2.5,dash:'dot'},layer:'above'}
  ];
  for(let i=0;i<weeks.length-1;i++){const boundary=isDaily?(i+1)*7-0.5:i+0.5;shapes.push({type:'line',xref:'x',yref:'paper',x0:boundary,x1:boundary,y0:0,y1:1,line:{color:'#bdcbd6',width:1,dash:'dot'},layer:'above'});}
- if(todayX!==null)annotations.push({xref:'x',yref:'paper',x:todayX,y:0.96,text:'Today',showarrow:false,xanchor:'left',yanchor:'top',xshift:7,font:{size:17,color:'#206ca6'}});
+ if(todayX!==null)annotations.push({xref:'x',yref:'paper',x:todayX,y:0.96,text:capacityTodayLabel(),align:'left',showarrow:false,xanchor:'left',yanchor:'top',xshift:7,font:{size:17,color:'#206ca6'}});
  const note=$('routineAvailabilityNote');
  if(note)note.textContent=matched?'':"No matching Routine urgency-group appointments found. Check Manage categories → Urgency Group.";
  Plotly.react(target,traces,{dragmode:false,
