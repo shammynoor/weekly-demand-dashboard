@@ -3607,7 +3607,7 @@ function applyFlatAvailabilityBars(target,isDaily=false){
     return;
    }
    const colour=Array.isArray(marker.color)?marker.color[j]||baseColour:baseColour;
-   path.style.setProperty('fill',colour,'important');
+   if(!marker.pattern?.shape)path.style.setProperty('fill',colour,'important');
    path.style.setProperty('fill-opacity','1','important');
    path.style.setProperty('stroke','rgba(255,255,255,0.85)','important');
    path.style.setProperty('stroke-width','0.65px','important');
@@ -3647,6 +3647,30 @@ function weeklyCapacityTodayX(weekIndex,dayIndex){
  const fraction=0.10+Math.min(Math.max(dayIndex,0),4)*0.20;
  return weekIndex+(fraction-0.5)*(1-0.11);
 }
+// Keep every availability status beside its own urgency group in a stack.
+function capacityChartStatus(row,held,clock){
+ let status=String(row.availability||'').trim().toLowerCase();
+ if(status==='available'&&(row.date<clock.date||(row.date===clock.date&&Number.isFinite(row.minute)&&row.minute<clock.minute)))return 'Missed Empty';
+ return ({booked:'Booked',available:'Available',embargoed:held?'Held Back':'Embargoed',blocked:held?'Held Back':'Blocked'})[status]||null;
+}
+function capacityGroupedSeries(dates,names,counts,held,heading,extras=[]){
+ const statuses=['Missed Empty','Booked','Available',...(held?['Held Back']:['Embargoed','Blocked'])];
+ const colours={'Available':'#ffffff','Embargoed':'#586674','Blocked':'#354454','Held Back':'#48535f'};
+ const value=(date,group,status)=>counts.get(JSON.stringify([date,group,status]))||0;
+ const totals=dates.map(date=>names.reduce((sum,group)=>sum+statuses.reduce((n,status)=>n+value(date,group,status),0),0)+extras.reduce((sum,item)=>sum+(counts.get(JSON.stringify([date,item.name]))||0),0));
+ const traces=[];
+ for(const group of names){
+  const colour=group.endsWith(' · Extra')?(capacityColours.Extra||'#8aa6bd'):urgencyGroupColour(group);
+  const summaries=dates.map(date=>simpleAvailabilityHover(heading(date)+' · '+group,statuses,statuses.map(status=>value(date,group,status)),statuses.reduce((n,status)=>n+value(date,group,status),0)));
+  for(const status of statuses)traces.push({type:'bar',name:group+' · '+status,showlegend:false,x:dates,y:dates.map(date=>value(date,group,status)),marker:{color:status==='Booked'?colour:status==='Missed Empty'?'#ffffff':colours[status],line:{width:0},...(status==='Missed Empty'?{pattern:{shape:'/',fgcolor:colour,bgcolor:'#ffffff',fillmode:'replace',size:6,solidity:0.17}}:{})},customdata:summaries,hovertemplate:'%{customdata}<extra></extra>'});
+ }
+ for(const group of names)traces.push({type:'scatter',mode:'markers',name:group,x:[null],y:[null],marker:{symbol:'circle',size:14,color:group.endsWith(' · Extra')?(capacityColours.Extra||'#8aa6bd'):urgencyGroupColour(group)},showlegend:true,hoverinfo:'skip'});
+ // A patterned bar trace supplies an accurate striped legend swatch.
+ traces.push({type:'bar',name:'Missed Empty',x:[null],y:[null],showlegend:true,marker:{color:'#ffffff',pattern:{shape:'/',fgcolor:'#586674',bgcolor:'#ffffff',fillmode:'replace',size:6,solidity:0.17}},hoverinfo:'skip'});
+ for(const status of statuses.filter(s=>!['Booked','Missed Empty'].includes(s)))traces.push({type:'scatter',mode:'markers',name:status,x:[null],y:[null],marker:{symbol:'circle',size:14,color:colours[status],line:{color:status==='Available'?'#a7b8c6':colours[status],width:status==='Available'?1.5:0}},showlegend:true,hoverinfo:'skip'});
+ for(const item of extras)traces.push({type:'bar',name:item.name,x:dates,y:dates.map(date=>counts.get(JSON.stringify([date,item.name]))||0),marker:{color:item.colour},showlegend:true,customdata:dates.map(date=>simpleAvailabilityHover(heading(date),[item.name],[counts.get(JSON.stringify([date,item.name]))||0],counts.get(JSON.stringify([date,item.name]))||0)),hovertemplate:'%{customdata}<extra></extra>'});
+ return {traces,totals};
+}
 function renderAvailabilityChart(){
  const target=$('availabilityChart');
  if($('availabilityPage').classList.contains('hidden')||!window.Plotly||!target)return;
@@ -3662,6 +3686,7 @@ function renderAvailabilityChart(){
  const dateSet=new Set(dates);
  const weekdays=new Set(dates.filter(d=>{const n=new Date(d+'T12:00:00Z').getUTCDay();return n!==0&&n!==6}));
  const counts=new Map();
+ const clock=dayView2LondonClock();
  for(const r of availabilityRecords){
   if(!weekdays.has(r.date))continue;
   const capacityStatus=String(capacityAssignments[r.slot]||'').trim().toLowerCase();
@@ -3676,11 +3701,11 @@ function renderAvailabilityChart(){
   }
   if(excludedSlotTypes.has(r.slot))continue;
   if(!names.includes(capacityUrgencyCategory(r.slot))||!urgentClinicianMatches(r.clinician,r.person)||!urgentConsultMatches(r.slot)||!urgentPurposeMatches(r.slot))continue;
-  const status=String(r.availability||'').trim().toLowerCase();
-  const isExtra=urgentSplitExtras&&capacityStatus==='extra';
-  const label=isExtra?'Extra':status==='booked'?capacityUrgencyCategory(r.slot):status==='blocked'?(urgentGroupWithheld?'Held Back':'Blocked'):status==='embargoed'?(urgentGroupWithheld?'Held Back':'Embargoed'):status==='available'?'Available':null;
+  const urgency=capacityUrgencyCategory(r.slot);
+  const group=urgentSplitExtras&&capacityStatus==='extra'?urgency+' · Extra':urgency;
+  const label=capacityChartStatus(r,urgentGroupWithheld,clock);
   if(!label)continue;
-  const key=JSON.stringify([r.date,label]);counts.set(key,(counts.get(key)||0)+r.count);
+  const key=JSON.stringify([r.date,group,label]);counts.set(key,(counts.get(key)||0)+r.count);
  }
 
  const weekly=urgentAvailabilityGranularity==='week';
@@ -3688,22 +3713,13 @@ function renderAvailabilityChart(){
  const bucketFor=date=>weekly?mondayOf(date):date;
  if(weekly){
   const aggregated=new Map();
-  for(const [key,count] of counts){const [date,label]=JSON.parse(key);const k=JSON.stringify([bucketFor(date),label]);aggregated.set(k,(aggregated.get(k)||0)+count);}
+  for(const [key,count] of counts){const [date,...parts]=JSON.parse(key);const k=JSON.stringify([bucketFor(date),...parts]);aggregated.set(k,(aggregated.get(k)||0)+count);}
   counts.clear();for(const [key,count] of aggregated)counts.set(key,count);
  }
- const labels=[...names,...(urgentSplitExtras?['Extra']:[]),...(urgentGroupWithheld?['Held Back']:['Blocked','Embargoed']),'Available',...(urgentAddSignposted?['Sent External']:[])];
- const colours=Object.fromEntries(names.map(n=>[n,urgentColour(n)]));
- Object.assign(colours,{Blocked:'#435569',Embargoed:'#586674','Held Back':'#48535f',Available:'#ffffff'});
- if(urgentSplitExtras)colours.Extra=capacityColours.Extra||'#8aa6bd';
- if(urgentAddSignposted)colours['Sent External']=Object.entries(capacityColours).find(([name])=>name.trim().toLowerCase()==='sent external')?.[1]||'#8aa6bd';
- const totals=buckets.map(date=>labels.reduce((a,n)=>a+(counts.get(JSON.stringify([date,n]))||0),0));
+ const heading=date=>weekly?'Week commencing '+new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'}):new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'short',year:'numeric',timeZone:'UTC'});
+ const extras=urgentAddSignposted?[{name:'Sent External',colour:Object.entries(capacityColours).find(([name])=>name.trim().toLowerCase()==='sent external')?.[1]||'#8aa6bd'}]:[];
+ const {traces,totals}=capacityGroupedSeries(buckets,names.flatMap(name=>urgentSplitExtras?[name,name+' · Extra']:[name]),counts,urgentGroupWithheld,heading,extras);
  const max=Math.ceil(Math.max(1,...totals)*1.2/10)*10;
- const daySummary=buckets.map(date=>{
-  const weekday=weekly?'Week commencing '+new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'}):new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'short',year:'numeric',timeZone:'UTC'});
-  return simpleAvailabilityHover(weekday,labels,labels.map(n=>counts.get(JSON.stringify([date,n]))||0),totals[buckets.indexOf(date)]);
- });
- const traces=labels.map(name=>({type:'bar',name,showlegend:false,x:buckets,y:buckets.map(date=>(weekly||weekdays.has(date))?counts.get(JSON.stringify([date,name]))||0:null),marker:{color:colours[name],line:{width:0}},customdata:daySummary,hovertemplate:'%{customdata}<extra></extra>'}));
- for(const name of labels)traces.push({type:'scatter',mode:'markers',name,x:[null],y:[null],marker:{symbol:'circle',size:14,color:colours[name],line:{color:name==='Available'?'#aeb8c3':colours[name],width:name==='Available'?1.5:0}},hoverinfo:'skip',showlegend:true});
  const weekLabels=Array.from({length:weekCount},(_,i)=>{const offset=i-urgentWeeksBack;return offset===0?'This Week':offset===-1?'Last Week':offset<0?Math.abs(offset)+' weeks ago':offset===1?'Next Week':offset+' weeks'});
  const annotations=weekLabels.map((text,i)=>({x:weekly?buckets[i]:dates[i*7+2],xref:'x',y:1.045,yref:'paper',text,showarrow:false,font:{size:13,color:'#344b60'},xanchor:'center',yanchor:'bottom'}));
  const shapes=Array.from({length:weekCount-1},(_,i)=>({type:'line',xref:'x',yref:'paper',x0:weekly?i+0.5:i*7+5.5,x1:weekly?i+0.5:i*7+5.5,y0:0,y1:1,line:{color:'#bdcbd6',width:1,dash:'dot'}}));
@@ -3845,6 +3861,7 @@ function renderRoutineAvailabilityChart(){
   for(const w of weeks)for(let d=0;d<7;d++){const dt=new Date(w+'T12:00:00Z');dt.setUTCDate(dt.getUTCDate()+d);dates.push(dt.toISOString().slice(0,10));}
  }else dates.push(...weeks);
  const byBucket=new Map();
+ const clock=dayView2LondonClock();
  let matched=0;
  const bucketSet=new Set(dates);
  for(const r of availabilityRecords){
@@ -3854,28 +3871,15 @@ function renderRoutineAvailabilityChart(){
   if(!routineDetailedTypes().includes(group)||routineDisabledTypes.has(group)||!routineClinicianMatches(r.clinician,r.person)||!routineConsultMatches(r.slot))continue;
   const bucket=isDaily?r.date:mondayOf(r.date);
   if(!bucketSet.has(bucket))continue;
-  const status=String(r.availability||'').trim().toLowerCase();
-  const label=({booked:'Booked',blocked:routineGroupWithheld?'Held Back':'Blocked',embargoed:routineGroupWithheld?'Held Back':'Embargoed',available:'Available'})[status];
+  const label=capacityChartStatus(r,routineGroupWithheld,clock);
   if(!label)continue;
   matched+=r.count;
-  const key=JSON.stringify([bucket,label]);byBucket.set(key,(byBucket.get(key)||0)+r.count);
-  if(label==='Booked'){const typeKey=JSON.stringify([bucket,'Booked',group]);byBucket.set(typeKey,(byBucket.get(typeKey)||0)+r.count);}
+  const key=JSON.stringify([bucket,group,label]);byBucket.set(key,(byBucket.get(key)||0)+r.count);
  }
- const labels=['Booked',...(routineGroupWithheld?['Held Back']:['Blocked','Embargoed']),'Available'];
- const colours={'Booked':'#5fc18a','Blocked':'#435569','Embargoed':'#586674','Held Back':'#48535f','Available':'#ffffff'};
- const dateText=d=>new Date(d+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',timeZone:'UTC'});
- const summaries=dates.map(date=>{
-  const heading=isDaily?new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'short',timeZone:'UTC'}):'Week commencing '+dateText(date);
-  return simpleAvailabilityHover(heading,[...routineDetailedTypes().filter(name=>!routineDisabledTypes.has(name)),...labels.filter(name=>name!=='Booked')],[...routineDetailedTypes().filter(name=>!routineDisabledTypes.has(name)).map(name=>byBucket.get(JSON.stringify([date,'Booked',name]))||0),...labels.filter(name=>name!=='Booked').map(name=>byBucket.get(JSON.stringify([date,name]))||0)],labels.reduce((sum,label)=>sum+(byBucket.get(JSON.stringify([date,label]))||0),0));
- });
+ const heading=date=>isDaily?new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'short',timeZone:'UTC'}):'Week commencing '+new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',timeZone:'UTC'});
  const plotBackground='#e1eaf1';
- const routineTypes=routineDetailedTypes().filter(name=>!routineDisabledTypes.has(name));
- const traces=[
-  ...routineTypes.map(name=>({type:'bar',name,showlegend:true,x:dates,y:dates.map(date=>byBucket.get(JSON.stringify([date,'Booked',name]))||0),marker:{color:urgencyGroupColour(name),line:{width:0}},customdata:summaries,hovertemplate:'%{customdata}<extra></extra>'})),
-  ...labels.filter(label=>label!=='Booked').map(label=>({type:'bar',name:label,showlegend:false,x:dates,y:dates.map(date=>byBucket.get(JSON.stringify([date,label]))||0),marker:{color:colours[label],line:{width:0}},customdata:summaries,hovertemplate:'%{customdata}<extra></extra>'}))
- ];
- for(const label of labels.filter(label=>label!=='Booked'))traces.push({type:'scatter',mode:'markers',name:label,x:[null],y:[null],marker:{symbol:'circle',size:14,color:colours[label],line:{color:label==='Available'?'#a7b8c6':colours[label],width:label==='Available'?1.5:0}},showlegend:true,hoverinfo:'skip'});
- const totals=dates.map(date=>labels.reduce((sum,label)=>sum+(byBucket.get(JSON.stringify([date,label]))||0),0));
+ const types=routineDetailedTypes().filter(name=>!routineDisabledTypes.has(name));
+ const {traces,totals}=capacityGroupedSeries(dates,types,byBucket,routineGroupWithheld,heading);
  const max=Math.max(1,...totals);
  const annotations=totals.flatMap((total,i)=>total?[{xref:'x',x:i,y:total,text:total.toLocaleString('en-GB'),showarrow:false,yshift:15,font:{size:isDaily?10:13,color:'#425b70'}}]:[]);
  const weekTitles=weeks.map((_,i)=>{const offset=routineStartWeek+i;return offset===0?'This Week':offset===-1?'Last Week':offset<0?Math.abs(offset)+' weeks ago':offset===1?'Next Week':offset+' weeks'});
@@ -4024,6 +4028,7 @@ function renderPlannedAvailabilityChart(){
   for(const w of weeks)for(let d=0;d<7;d++){const dt=new Date(w+'T12:00:00Z');dt.setUTCDate(dt.getUTCDate()+d);dates.push(dt.toISOString().slice(0,10));}
  }else dates.push(...weeks);
  const byBucket=new Map();
+ const clock=dayView2LondonClock();
  let matched=0;
  const bucketSet=new Set(dates);
  for(const r of availabilityRecords){
@@ -4033,28 +4038,15 @@ function renderPlannedAvailabilityChart(){
   if(!plannedDetailedTypes().includes(group)||plannedDisabledTypes.has(group)||!plannedClinicianMatches(r.clinician,r.person)||!plannedConsultMatches(r.slot))continue;
   const bucket=isDaily?r.date:mondayOf(r.date);
   if(!bucketSet.has(bucket))continue;
-  const status=String(r.availability||'').trim().toLowerCase();
-  const label=({booked:'Booked',blocked:plannedGroupWithheld?'Held Back':'Blocked',embargoed:plannedGroupWithheld?'Held Back':'Embargoed',available:'Available'})[status];
+  const label=capacityChartStatus(r,plannedGroupWithheld,clock);
   if(!label)continue;
   matched+=r.count;
-  const key=JSON.stringify([bucket,label]);byBucket.set(key,(byBucket.get(key)||0)+r.count);
-  if(label==='Booked'){const typeKey=JSON.stringify([bucket,'Booked',group]);byBucket.set(typeKey,(byBucket.get(typeKey)||0)+r.count);}
+  const key=JSON.stringify([bucket,group,label]);byBucket.set(key,(byBucket.get(key)||0)+r.count);
  }
- const labels=['Booked',...(plannedGroupWithheld?['Held Back']:['Blocked','Embargoed']),'Available'];
- const colours={'Booked':'#5fc18a','Blocked':'#435569','Embargoed':'#586674','Held Back':'#48535f','Available':'#ffffff'};
- const dateText=d=>new Date(d+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',timeZone:'UTC'});
- const summaries=dates.map(date=>{
-  const heading=isDaily?new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'short',timeZone:'UTC'}):'Week commencing '+dateText(date);
-  return simpleAvailabilityHover(heading,[...plannedDetailedTypes().filter(name=>!plannedDisabledTypes.has(name)),...labels.filter(name=>name!=='Booked')],[...plannedDetailedTypes().filter(name=>!plannedDisabledTypes.has(name)).map(name=>byBucket.get(JSON.stringify([date,'Booked',name]))||0),...labels.filter(name=>name!=='Booked').map(name=>byBucket.get(JSON.stringify([date,name]))||0)],labels.reduce((sum,label)=>sum+(byBucket.get(JSON.stringify([date,label]))||0),0));
- });
+ const heading=date=>isDaily?new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'short',timeZone:'UTC'}):'Week commencing '+new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',timeZone:'UTC'});
  const plotBackground='#e1eaf1';
- const plannedTypes=plannedDetailedTypes().filter(name=>!plannedDisabledTypes.has(name));
- const traces=[
-  ...plannedTypes.map(name=>({type:'bar',name,showlegend:true,x:dates,y:dates.map(date=>byBucket.get(JSON.stringify([date,'Booked',name]))||0),marker:{color:urgencyGroupColour(name),line:{width:0}},customdata:summaries,hovertemplate:'%{customdata}<extra></extra>'})),
-  ...labels.filter(label=>label!=='Booked').map(label=>({type:'bar',name:label,showlegend:false,x:dates,y:dates.map(date=>byBucket.get(JSON.stringify([date,label]))||0),marker:{color:colours[label],line:{width:0}},customdata:summaries,hovertemplate:'%{customdata}<extra></extra>'}))
- ];
- for(const label of labels.filter(label=>label!=='Booked'))traces.push({type:'scatter',mode:'markers',name:label,x:[null],y:[null],marker:{symbol:'circle',size:14,color:colours[label],line:{color:label==='Available'?'#a7b8c6':colours[label],width:label==='Available'?1.5:0}},showlegend:true,hoverinfo:'skip'});
- const totals=dates.map(date=>labels.reduce((sum,label)=>sum+(byBucket.get(JSON.stringify([date,label]))||0),0));
+ const types=plannedDetailedTypes().filter(name=>!plannedDisabledTypes.has(name));
+ const {traces,totals}=capacityGroupedSeries(dates,types,byBucket,plannedGroupWithheld,heading);
  const max=Math.max(1,...totals);
  const annotations=totals.flatMap((total,i)=>total?[{xref:'x',x:i,y:total,text:total.toLocaleString('en-GB'),showarrow:false,yshift:15,font:{size:isDaily?10:13,color:'#425b70'}}]:[]);
  const weekTitles=weeks.map((_,i)=>{const offset=plannedStartWeek+i;return offset===0?'This Week':offset===-1?'Last Week':offset<0?Math.abs(offset)+' weeks ago':offset===1?'Next Week':offset+' weeks'});
