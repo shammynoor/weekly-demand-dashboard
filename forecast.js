@@ -136,7 +136,24 @@ function renderUrgencyPlanningModes(){
   row.append(heading,switchLabel);root.append(row);
  }
 }
+function forecastHorizonWeeks(){
+ const value=Number($('dailyForecastHorizon')?.value??14);
+ return Number.isFinite(value)?Math.min(14,Math.max(3,Math.round(value))):14;
+}
+function updateForecastHorizonLabels(){
+ const weeks=forecastHorizonWeeks();
+ const title=$('dailyForecastHorizonTitle'),value=$('dailyForecastHorizonValue');
+ if(title)title.textContent=String(weeks);
+ if(value)value.textContent=String(weeks);
+}
+let forecastHorizonFrame=null;
+function changeForecastHorizon(){
+ updateForecastHorizonLabels();
+ if(forecastHorizonFrame!==null)cancelAnimationFrame(forecastHorizonFrame);
+ forecastHorizonFrame=requestAnimationFrame(()=>{forecastHorizonFrame=null;renderHistoricalWeekday();});
+}
 function renderHistoricalWeekday(){
+ updateForecastHorizonLabels();
  syncForecastPreferences();
  const root=$('dailyForecastHistoryChart'),summary=$('dailyForecastHistorySummary'),select=$('dailyForecastWeekday');
  if(!root||!summary||!select)return;
@@ -315,7 +332,7 @@ function renderHistoricalWeekday(){
   };
   for(let year=Number(today.slice(0,4));year<=Number(today.slice(0,4))+2;year++)holidayLabel(year);
   const bankHolidayDates=new Set();for(let year=Number(today.slice(0,4));year<=Number(today.slice(0,4))+2;year++)for(const day of englandWalesBankHolidays(year))bankHolidayDates.add(day);
-  for(let week=0;week<14;week++){
+  for(let week=0;week<forecastHorizonWeeks();week++){
    const weekStart=shift(nextMonday,week*7),tr=document.createElement('tr'),weekCell=document.createElement('th');
    weekCell.scope='row';weekCell.textContent=new Date(weekStart+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'});
    tr.append(weekCell);
@@ -462,5 +479,5 @@ function selectForecastTab(tab){
  if(!predictions)requestAnimationFrame(renderHistoricalWeekday);
 }
 function open(mode){for(const p of ['dailyForecastPage','weeklyForecastPage'])$(p)?.classList.toggle('hidden',p!==(mode==='daily'?'dailyForecastPage':'weeklyForecastPage'));for(const p of ['homePage','chartPage','waitingTimesPage','waitingOverTimePage','categoryPage','availabilityPage','routineAvailabilityPage','plannedAvailabilityPage','dayView2Page','bookingTimesPage','signpostingPage','peoplePage','practiceSettingsPage'])$(p)?.classList.add('hidden');document.querySelectorAll('.dashboard-nav button.active').forEach(b=>b.classList.remove('active'));$('nav'+(mode==='daily'?'Daily':'Weekly')+'Forecast')?.classList.add('active');if(mode==='daily')renderHistoricalWeekday();else render(mode)}
-document.addEventListener('DOMContentLoaded',()=>{$('forecastPredictionsTab')?.addEventListener('click',()=>selectForecastTab('predictions'));$('forecastAnalyticsTab')?.addEventListener('click',()=>selectForecastTab('analytics'));document.querySelectorAll('.dashboard-nav button').forEach(b=>{if(b.id!=='navDailyForecast'&&b.id!=='navWeeklyForecast'&&b.id!=='navForecastMenu')b.addEventListener('click',()=>{$('dailyForecastPage')?.classList.add('hidden');$('weeklyForecastPage')?.classList.add('hidden')})});$('dailyForecastWeekday')?.addEventListener('change',renderHistoricalWeekday);$('dailyForecastExcludeBankHolidayWeeks')?.addEventListener('change',renderHistoricalWeekday);$('dailyForecastAdjustListSize')?.addEventListener('change',renderHistoricalWeekday);$('dailyForecastHistory')?.addEventListener('change',renderHistoricalWeekday);for(const mode of ['daily','weekly']){$('nav'+(mode==='daily'?'Daily':'Weekly')+'Forecast')?.addEventListener('click',()=>open(mode));$(mode+'ForecastHistory')?.addEventListener('change',()=>{if(mode==='daily')renderHistoricalWeekday();else render(mode)})}});
+document.addEventListener('DOMContentLoaded',()=>{$('dailyForecastHorizon')?.addEventListener('input',changeForecastHorizon);$('forecastPredictionsTab')?.addEventListener('click',()=>selectForecastTab('predictions'));$('forecastAnalyticsTab')?.addEventListener('click',()=>selectForecastTab('analytics'));document.querySelectorAll('.dashboard-nav button').forEach(b=>{if(b.id!=='navDailyForecast'&&b.id!=='navWeeklyForecast'&&b.id!=='navForecastMenu')b.addEventListener('click',()=>{$('dailyForecastPage')?.classList.add('hidden');$('weeklyForecastPage')?.classList.add('hidden')})});$('dailyForecastWeekday')?.addEventListener('change',renderHistoricalWeekday);$('dailyForecastExcludeBankHolidayWeeks')?.addEventListener('change',renderHistoricalWeekday);$('dailyForecastAdjustListSize')?.addEventListener('change',renderHistoricalWeekday);$('dailyForecastHistory')?.addEventListener('change',renderHistoricalWeekday);for(const mode of ['daily','weekly']){$('nav'+(mode==='daily'?'Daily':'Weekly')+'Forecast')?.addEventListener('click',()=>open(mode));$(mode+'ForecastHistory')?.addEventListener('change',()=>{if(mode==='daily')renderHistoricalWeekday();else render(mode)})}});
 })();
