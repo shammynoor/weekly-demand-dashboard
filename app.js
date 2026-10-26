@@ -2811,6 +2811,24 @@ $('dayViewToday')?.addEventListener('click',()=>{$('dayViewDate').value=dayViewL
 
 // Day View 2 uses appointment-date availability snapshots, independently of booking-date Day View.
 const dayView2DisabledUrgencies=new Set();
+let dayView2GroupLabelObserver=null;
+function layoutDayView2GroupLabels(root){
+ for(const segment of root.querySelectorAll('.day-view2-segment')){const text=segment.dataset.count||'';segment.textContent=segment.clientWidth>=text.length*8+12?text:'';}
+ for(const legend of root.querySelectorAll('.day-view2-group-legend')){
+  const bounds=legend.getBoundingClientRect(),rows=[];
+  for(const item of legend.children){
+   const label=item.querySelector('strong'),span=item.getBoundingClientRect();
+   const width=Math.min(label.getBoundingClientRect().width,bounds.width);
+   const left=Math.max(0,Math.min(bounds.width-width,span.left-bounds.left+span.width/2-width/2));
+   let row=0;
+   while(rows[row]?.some(range=>left<range[1]+8&&left+width>range[0]-8))row++;
+   (rows[row]||(rows[row]=[])).push([left,left+width]);
+   label.style.left=left+'px';label.style.top=(9+row*25)+'px';
+  }
+  legend.style.height=(rows.length?9+rows.length*25:0)+'px';
+ }
+}
+
 function dayView2LocalDate(){
  const parts=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/London',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
  const p=Object.fromEntries(parts.map(part=>[part.type,part.value]));
@@ -2871,7 +2889,7 @@ function renderDayView2(){
  const bookable=totals.booked+totals.available;
  $('dayView2Fill').textContent=bookable?Math.round(100*totals.booked/bookable)+'% of bookable capacity filled':'No bookable slots reported';
  $('dayView2Detail').textContent='Select a capacity segment for its count and meaning.';
- const lanes=$('dayView2Lanes');lanes.replaceChildren();
+ const lanes=$('dayView2Lanes');dayView2GroupLabelObserver?.disconnect();lanes.replaceChildren();
  for(let offset=0;offset<=2;offset++){
  const laneDate=dayView2AddDays(date,offset),laneDay=days.get(laneDate),laneTotals=laneDay.totals;
  const laneTotal=statuses.reduce((sum,status)=>sum+laneTotals[status],0);
@@ -2892,11 +2910,15 @@ function renderDayView2(){
  };
  const orderedGroups=[...laneDay.groups].sort((a,b)=>groupOrder(a[0])-groupOrder(b[0]));
  for(const [name,counts] of orderedGroups){
+  const groupTotal=statuses.reduce((sum,status)=>sum+counts[status],0);
+  if(!groupTotal)continue;
   const colour=urgencyGroupColour(name);
+  const groupSpan=document.createElement('div');groupSpan.className='day-view2-urgency-span';groupSpan.style.flex=String(groupTotal);groupSpan.setAttribute('role','group');groupSpan.setAttribute('aria-label',name);
+
   for(const status of statuses){
    if(!counts[status])continue;
    const segment=document.createElement('button');segment.type='button';segment.className='day-view2-segment day-view2-'+status;segment.style.flex=String(counts[status]);
-   segment.dataset.date=laneDate;segment.dataset.urgency=name;segment.dataset.status=status;
+   segment.dataset.count=number(counts[status]);segment.dataset.date=laneDate;segment.dataset.urgency=name;segment.dataset.status=status;
    if(status==='booked'){
     segment.style.setProperty('--day-view2-group-colour',colour);
     const hex=/^#([0-9a-f]{6})$/i.exec(colour);
@@ -2909,12 +2931,13 @@ function renderDayView2(){
     const meaning={booked:'Already booked for this appointment date.',available:'Free to book in the loaded report; appointment times are not supplied, so this may include earlier slots.',embargoed:'Held from booking. The report does not supply a release time.',blocked:'Currently unavailable; these slots are not counted as free to book.'};
     $('dayView2Detail').textContent=laneDateLabel+' · '+name+' · '+number(counts[status])+' '+status+' slots. '+meaning[status];
    });
-   bar.append(segment);
+   groupSpan.append(segment);
   }
-  const item=document.createElement('div');item.className='day-view2-group-legend-item';
-  const nameLabel=document.createElement('strong');const dot=document.createElement('span');dot.className='day-view-dot';dot.style.backgroundColor=colour;nameLabel.append(dot,document.createTextNode(name));
-  const values=document.createElement('span');values.textContent=statuses.map(status=>number(counts[status])+' '+status).join(' · ');
-  item.append(nameLabel,values);groupLegend.append(item);
+  bar.append(groupSpan);
+  const item=document.createElement('div');item.className='day-view2-group-legend-item';item.style.flex=String(groupTotal);
+  const line=document.createElement('span');line.className='day-view2-group-line';line.style.borderColor=colour;line.setAttribute('aria-hidden','true');
+  const nameLabel=document.createElement('strong');nameLabel.textContent=name;nameLabel.title=name;
+  item.append(line,nameLabel);groupLegend.append(item);
  }
  lane.append(heading,bar);
  if(laneTotal){lane.append(groupLegend);}else{
@@ -2926,6 +2949,8 @@ function renderDayView2(){
  lanes.append(lane);
  }
 
+ requestAnimationFrame(()=>layoutDayView2GroupLabels(lanes));
+ if(typeof ResizeObserver!=='undefined'){dayView2GroupLabelObserver=new ResizeObserver(()=>layoutDayView2GroupLabels(lanes));dayView2GroupLabelObserver.observe(lanes);}
  const empty=$('dayView2Empty');
  empty.classList.toggle('hidden',total>0);
  empty.textContent=!selected.groups.size?'Select an urgency group to view capacity.':!availabilityRecords.length?'Load your Slot Reports to view daily capacity.':selected.unknown?'No recognised capacity statuses for this date and selection.':'No capacity reported for this date and selection.';
