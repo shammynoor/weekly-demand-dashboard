@@ -4513,3 +4513,27 @@ function installPrimaryApptTypeBoxConvention(){
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',installPrimaryApptTypeBoxConvention);
 else installPrimaryApptTypeBoxConvention();
+
+/* Shared soft-pill endpoints for mutually exclusive day/week choices. */
+function enhanceTimeGroupingToggle(root){
+ if(!root||root.classList.contains('soft-time-toggle'))return;
+ const input=root.querySelector('.switch input');
+ const endpoints=[...root.children].filter(el=>['Days','Weeks','Daily','Weekly'].includes(el.textContent.trim()));
+ if(!input||endpoints.length!==2)return;
+ root.classList.add('soft-time-toggle');
+ root.setAttribute('role','group');
+ root.setAttribute('aria-label','Time grouping');
+ endpoints.forEach((original,index)=>{
+  const button=document.createElement('button');
+  button.type='button';button.className='time-choice-endpoint';
+  button.textContent=original.textContent;button.dataset.timeChoice=index?'week':'day';
+  button.addEventListener('click',event=>{
+   event.preventDefault();event.stopPropagation();
+   if(input.disabled||input.checked===Boolean(index))return;
+   input.checked=Boolean(index);
+   input.dispatchEvent(new Event('change',{bubbles:true}));
+  });
+  original.replaceWith(button);
+ });
+}
+document.querySelectorAll('.days-weeks-filter-row,.forecast-basis-switch').forEach(enhanceTimeGroupingToggle);

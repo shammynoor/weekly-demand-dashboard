@@ -138,9 +138,9 @@ function renderUrgencyPlanningModes(){
  const root=$('dailyForecastModeControls');if(!root)return;
  root.replaceChildren();
  for(const name of forecastUrgencyNames().filter(forecastUrgencyEnabled)){
-  const row=document.createElement('label');row.className='forecast-mode-row';
+  const row=document.createElement('div');row.className='forecast-mode-row';
   const heading=document.createElement('span');heading.className='forecast-mode-name';const dot=document.createElement('i');dot.className='forecast-mode-colour-dot';dot.style.backgroundColor=urgencyGroupColour(name);dot.setAttribute('aria-hidden','true');heading.append(dot,document.createTextNode(name));
-  const switchLabel=document.createElement('span');switchLabel.className='forecast-basis-switch';
+  const switchLabel=document.createElement('div');switchLabel.className='forecast-basis-switch';
   const daily=document.createElement('span');daily.textContent='Daily';
   const control=document.createElement('span');control.className='switch';
   const input=document.createElement('input');input.type='checkbox';
@@ -152,6 +152,7 @@ function renderUrgencyPlanningModes(){
   const weekly=document.createElement('span');weekly.textContent='Weekly';
   switchLabel.append(daily,control,weekly);
   input.addEventListener('change',()=>{urgencyPlanningMode.set(name,input.checked?'weekly':'daily');saveForecastPreferences();renderHistoricalWeekday()});
+  enhanceTimeGroupingToggle(switchLabel);
   row.append(heading,switchLabel);root.append(row);
  }
 }
