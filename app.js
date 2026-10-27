@@ -4500,8 +4500,13 @@ function enhancePrimaryApptTypeBox(root){
   const key=root.id+'::'+category;
   master.checked=primaryApptCategoryState.get(key)!==false;
   const applyDisabled=()=>{
-   section.classList.toggle('primary-appt-category-off',!master.checked);
-   for(const {input} of items)input.disabled=!master.checked;
+   const off=!master.checked;
+   section.classList.toggle('primary-appt-category-off',off);
+   for(const {input} of items){
+    if(off)input.checked=false;
+    input.disabled=off;
+    input.setAttribute('aria-disabled',String(off));
+   }
   };
   applyDisabled();
   master.addEventListener('change',()=>{
