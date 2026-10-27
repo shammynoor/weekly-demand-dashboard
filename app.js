@@ -2559,7 +2559,8 @@ $('adjustListSize')?.addEventListener('change',e=>{adjustDemandForListSize=e.tar
 function updateHomePracticeName(){const el=$('homePracticeName');if(el)el.textContent=practiceSettings.name.trim()||'Practice overview';}
 
 /* Practice settings workspace; population chart remains the existing editor. */
-let practiceSettingsTab='users',practiceUsersLoading=false;
+let practiceSettingsTab='users',practiceUsersLoading=false,practiceUserRemovalBusy=false;
+let practiceUsersSnapshot={base:'',permissions:[]};
 function selectPracticeSettingsTab(tab){
  practiceSettingsTab=tab==='list'?'list':'users';
  for(const name of ['users','list']){
@@ -2574,7 +2575,7 @@ function selectPracticeSettingsTab(tab){
 function practicePermissionUsers(permissions){
  const ownerEmail=(activeAccount?.username||'').toLowerCase();
  const rows=new Map();
- const add=(identity,email='',owner=false)=>{
+ const add=(identity,email='',owner=false,permission=null)=>{
   const user=identity?.user||identity?.siteUser||{};
   const address=String(user.email||email||'').trim();
   const id=String(user.id||identity?.siteUser?.id||'');
@@ -2582,7 +2583,7 @@ function practicePermissionUsers(permissions){
   if(!key)return;
   const admin=owner||address.toLowerCase()===ownerEmail||id.toLowerCase()===OWNER_DRIVE_ID.toLowerCase();
   const existing=rows.get(key);
-  rows.set(key,{name:user.displayName||existing?.name||address||'Name unavailable',email:address||existing?.email||'',role:admin?'Admin':existing?.role||'View only'});
+  rows.set(key,{name:user.displayName||existing?.name||address||'Name unavailable',email:address||existing?.email||'',role:admin?'Admin':existing?.role||'View only',id:id||existing?.id||'',permissions:[...(existing?.permissions||[]),...(permission?[permission]:[])]});
  };
  add({user:{displayName:activeAccount?.name||activeAccount?.username}},activeAccount?.username||'',true);
  for(const permission of permissions){
@@ -2590,17 +2591,82 @@ function practicePermissionUsers(permissions){
   const identities=[permission.grantedToV2||permission.grantedTo,...(permission.grantedToIdentitiesV2||permission.grantedToIdentities||[])].filter(Boolean);
   const owner=(permission.roles||[]).includes('owner');
   if(owner)continue; // The signed-in administrator is already listed above.
-  for(const identity of identities)add(identity,identities.length===1?permission.invitation?.email||'':'');
-  if(!identities.length&&permission.invitation?.email)add({},permission.invitation.email);
+  for(const identity of identities)add(identity,identities.length===1?permission.invitation?.email||'':'',false,permission);
+  if(!identities.length&&permission.invitation?.email)add({},permission.invitation.email,false,permission);
  }
  return [...rows.values()].sort((a,b)=>(a.role==='Admin'?-1:1)-(b.role==='Admin'?-1:1)||a.name.localeCompare(b.name));
 }
+
+function practiceUserRemovalBlock(user,permissions=practiceUsersSnapshot.permissions){
+ if(user.role==='Admin')return 'The administrator cannot be removed.';
+ if(!user.email&&!user.id)return 'Microsoft did not return an identifiable account. Manage this user in OneDrive.';
+ if(permissions.some(p=>p.link&&['anonymous','organization'].includes(p.link.scope)))return 'General sharing links may still grant access. Manage this user in OneDrive.';
+ if(!user.permissions?.length)return 'Refresh the user list before removing this user.';
+ for(const permission of user.permissions){
+  if(!permission.id||permission.inheritedFrom)return 'This access is inherited. Manage it in OneDrive.';
+  if(permission.link)return 'This user has access through a sharing link. Manage their individual access in OneDrive.';
+  const people=[permission.grantedToV2||permission.grantedTo,...(permission.grantedToIdentitiesV2||permission.grantedToIdentities||[])].filter(Boolean);
+  if(people.some(p=>p.group||p.siteGroup)||people.length>1)return 'This permission is shared with other people. Manage this user in OneDrive.';
+ }
+ return '';
+}
+function samePracticeUser(a,b){
+ return !!(a.email&&b.email&&a.email.toLowerCase()===b.email.toLowerCase()||a.id&&b.id&&a.id===b.id);
+}
+let pendingPracticeRemoval=null;
+function confirmPracticeUserRemoval(user){
+ if(!isOwner||practiceUserRemovalBusy)return;
+ pendingPracticeRemoval=user;
+ $('practiceRemoveMessage').textContent='Are you sure you want to remove '+(user.email||user.name)+'? Their sharing access to the practice OneDrive folder will also be removed.';
+ $('practiceRemoveDialog').showModal();
+}
+async function removePracticeUser(){
+ const target=pendingPracticeRemoval;
+ if(!isOwner||!target||target.role==='Admin'||practiceUserRemovalBusy)return;
+ practiceUserRemovalBusy=true;$('practiceRemoveYes').disabled=true;$('practiceRemoveNo').disabled=true;
+ const status=$('practiceUsersStatus');
+ try{
+  // Re-read permissions before any write; never delete a stale or multi-user grant.
+  const refreshed=await renderPracticeUsers();
+  if(!refreshed)throw Error('The current access list could not be verified. No access was removed.');
+  const matches=refreshed.filter(user=>samePracticeUser(user,target));
+  if(!matches.length)throw Error('This user is no longer listed. Refresh the user list.');
+  for(const user of matches){const reason=practiceUserRemovalBlock(user);if(reason)throw Error(reason);}
+  const ids=[...new Set(matches.flatMap(user=>user.permissions.map(p=>p.id)))];
+  const base=practiceUsersSnapshot.base;
+  for(const id of ids){
+   if(!isOwner)throw Error('Administrator access is required.');
+   const bearer=await token();
+   const response=await fetch(GRAPH+base+'/'+encodeURIComponent(id),{method:'DELETE',headers:{Authorization:'Bearer '+bearer}});
+   if(!response.ok&&response.status!==404)throw Error('Microsoft could not remove all access (HTTP '+response.status+'). Refresh the list before retrying.');
+  }
+  const after=await renderPracticeUsers();
+  if(!after)throw Error('Removal was requested, but access could not be verified. Refresh the user list.');
+  if(after.some(user=>samePracticeUser(user,target)))throw Error('This user still has folder access. Manage their remaining sharing permissions in OneDrive.');
+  status.textContent=(target.email||target.name)+' was removed and their OneDrive folder sharing was revoked.';
+ }catch(error){status.textContent='User removal could not be completed: '+(error?.message||error);}
+ finally{practiceUserRemovalBusy=false;pendingPracticeRemoval=null;$('practiceRemoveYes').disabled=false;$('practiceRemoveNo').disabled=false;$('practiceRemoveDialog').close();}
+}
+$('practiceRemoveYes').addEventListener('click',()=>void removePracticeUser());
+$('practiceRemoveNo').addEventListener('click',()=>{$('practiceRemoveDialog').close();pendingPracticeRemoval=null;});
+$('practiceRemoveDialog').addEventListener('cancel',event=>{if(practiceUserRemovalBusy)event.preventDefault();else pendingPracticeRemoval=null;});
+
 function drawPracticeUsers(rows){
  const body=$('practiceUsersBody');body.replaceChildren();
  for(const user of rows){
   const row=document.createElement('tr');
   for(const value of [user.name,user.email||'Not supplied',user.role]){const cell=document.createElement('td');cell.textContent=value;row.append(cell);}
-  body.append(row);
+  const action=document.createElement('td');
+  if(user.role!=='Admin'){
+   const reason=practiceUserRemovalBlock(user);
+   const button=document.createElement('button');button.type='button';button.className='secondary practice-remove-user';
+   button.textContent=reason?'Manage in OneDrive':'Remove User';
+   button.setAttribute('aria-label',(reason?'Manage access for ':'Remove user ')+(user.email||user.name));
+   if(reason){button.addEventListener('click',()=>{$('practiceUsersStatus').textContent=reason;window.open(SHARED_FOLDER_LINK,'_blank','noopener,noreferrer');});}
+   else button.addEventListener('click',()=>confirmPracticeUserRemoval(user));
+   action.append(button);
+  }
+  row.append(action);body.append(row);
  }
 }
 async function renderPracticeUsers(){
@@ -2614,6 +2680,7 @@ async function renderPracticeUsers(){
   const drive=folder.parentReference?.driveId;
   if(!drive||!folder.id)throw Error('The shared practice folder could not be identified.');
   let next='/drives/'+encodeURIComponent(drive)+'/items/'+encodeURIComponent(folder.id)+'/permissions';
+  const base=next;
   const permissions=[],seen=new Set();
   while(next){
    if(seen.has(next))throw Error('The user list could not be loaded completely.');
@@ -2621,10 +2688,12 @@ async function renderPracticeUsers(){
    const page=await graph(next);permissions.push(...(page.value||[]));next=page['@odata.nextLink']||'';
   }
   if(!isOwner)return;
+  practiceUsersSnapshot={base,permissions};
   const rows=practicePermissionUsers(permissions);drawPracticeUsers(rows);
   const unnamedLinks=permissions.some(p=>p.link&&['anonymous','organization'].includes(p.link.scope));
   status.textContent=rows.length+' practice user'+(rows.length===1?'':'s')+'.'+(unnamedLinks?' Access through general sharing links cannot be listed by name.':'');
- }catch(error){status.textContent='Unable to load the full practice user list: '+(error?.message||'Please try again.');}
+  return rows;
+ }catch(error){status.textContent='Unable to load the full practice user list: '+(error?.message||'Please try again.');return null;}
  finally{practiceUsersLoading=false;button.disabled=false;}
 }
 $('practiceTab-users').addEventListener('click',()=>selectPracticeSettingsTab('users'));
