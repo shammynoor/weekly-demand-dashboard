@@ -19,7 +19,8 @@ const OWNER_DRIVE_ID='07c73540cffc666d';
 const SHARED_SETTINGS_FILE='weekly-demand-categories.json';
 const SHARED_TOKEN='u!'+btoa(unescape(encodeURIComponent(SHARED_FOLDER_LINK))).replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
 let isOwner=false,sharedDriveId='',sharedFolderId='';
-let folderAccessVerified=false,folderAccessDenied=false;
+let folderAccessVerified=false,folderAccessDenied=false,authNeedsAccountSelection=false,authChecking=false;
+try{authNeedsAccountSelection=!!sessionStorage.getItem('gp-insight-account-selection-required');}catch(_){}
 function sharedPath(){return '/shares/'+SHARED_TOKEN+'/driveItem'}
 function sourceItemUrl(id){return isOwner?'/me/drive/items/'+encodeURIComponent(id):'/drives/'+encodeURIComponent(sharedDriveId)+'/items/'+encodeURIComponent(id)}
 // One menu lifecycle for Activity, Capacity, Forecast and Settings.
@@ -1197,7 +1198,7 @@ window.addEventListener('resize',scheduleChartResize);
 function setButtons(){
  // Never interpret a background chart/data refresh as a sign-out.
  // Recover the active MSAL account from its persistent cache if needed.
- if(!activeAccount&&auth){
+ if(!activeAccount&&auth&&!authNeedsAccountSelection){
   try{activeAccount=auth.getActiveAccount()||auth.getAllAccounts()[0]||null}catch(e){}
  }
  if(activeAccount)authenticatedOnce=true;
@@ -1214,14 +1215,30 @@ function setButtons(){
   $('loginScreen').classList.remove('hidden');
   $('dashboardShell').classList.add('hidden');
  }
- $('signIn').disabled=logged&&!folderAccessDenied;
- $('signIn').textContent=folderAccessDenied?'Sign in with a different Microsoft account':'Sign in with Microsoft';
+ $('signIn').disabled=authChecking||(logged&&folderAccessVerified&&!folderAccessDenied);
+ $('signIn').textContent='Sign in with Microsoft';
  $('signOut').disabled=!logged;
  $('chooseFolder').disabled=!logged||!isOwner;
  $('refreshData').disabled=!logged||!selectedFolder||busy;
 }
+function authStepWithTimeout(promise,message,milliseconds=20000){
+ let timer;
+ return Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error(message)),milliseconds);})]).finally(()=>clearTimeout(timer));
+}
+function returnToMicrosoftSignIn(denied){
+ folderAccessDenied=denied;folderAccessVerified=false;authenticatedOnce=false;
+ authNeedsAccountSelection=true;activeAccount=null;selectedFolder=null;
+ isOwner=false;cloudReady=false;
+ $('dashboardShell').dataset.signedIn='false';
+ $('dashboardShell').classList.add('hidden');$('loginScreen').classList.remove('hidden');
+ $('accountLabel').textContent='';
+ try{auth?.setActiveAccount(null);}catch(_){}
+ try{sessionStorage.setItem('gp-insight-account-selection-required',denied?'denied':'retry');}catch(_){}
+ applyAccessMode();
+}
 async function initAuth(){
  if(authInitPromise)return authInitPromise;
+ authChecking=true;
  // A reload can occur while large CSVs are parsed. If MSAL has a cached
  // account, do not flash the login page while redirect handling resolves.
  try{
@@ -1235,8 +1252,10 @@ async function initAuth(){
   if(!window.msal)throw Error('Microsoft sign-in library did not load. Please refresh with Ctrl+F5 or check browser content blocking.');
   if(!window.Plotly||!window.Papa)setSync('A chart or CSV library did not load. Refresh the page to retry.');
   auth=new msal.PublicClientApplication({auth:{clientId:CLIENT_ID,authority:'https://login.microsoftonline.com/consumers',redirectUri:REDIRECT_URI,navigateToLoginRequestUrl:false},cache:{cacheLocation:'localStorage',storeAuthStateInCookie:false}});
-  if(typeof auth.initialize==='function')await auth.initialize();const result=await auth.handleRedirectPromise();
-  activeAccount=result?.account||auth.getActiveAccount()||auth.getAllAccounts()[0]||activeAccount||null;
+  if(typeof auth.initialize==='function')await authStepWithTimeout(auth.initialize(),'Microsoft sign-in took too long. Please try again.');const result=await authStepWithTimeout(auth.handleRedirectPromise(),'Microsoft sign-in took too long. Please try again.');
+  if(result?.account){authNeedsAccountSelection=false;try{sessionStorage.removeItem('gp-insight-account-selection-required');}catch(_){}}
+  
+  activeAccount=authNeedsAccountSelection?null:(result?.account||auth.getActiveAccount()||auth.getAllAccounts()[0]||activeAccount||null);
   if(activeAccount){
    authenticatedOnce=true;
    auth.setActiveAccount(activeAccount);
@@ -1261,21 +1280,18 @@ async function initAuth(){
    $('accountLabel').textContent=activeAccount.username||'Microsoft account';
    if(selectedFolder){$('folderStatus').textContent='Source: '+selectedFolder.name;await loadFolder(false)}
    else if(isOwner){setSync('No source folder saved yet. Use Slot settings → Source folder setup.');$('sourceSetup').classList.remove('hidden')}
-  }else setStatus('Sign in with the Hotmail account that owns your OneDrive files.');
+  }else setStatus(authNeedsAccountSelection?'Choose a Microsoft account with access to this dashboard.':'Sign in with a Microsoft account that has access to this dashboard.');
  }catch(e){
   const message=String(e?.message||e);
   // Only a confirmed 401/403 or a sharing-link denial is an access rejection.
   // Network outages and missing settings should not be mislabelled as unauthorised.
-  const permissionError=/\b(401|403)\b|access.?denied|permission.?denied|not authorised|not authorized|sharing link.*(invalid|access)|does not have access|itemNotFound|item not found/i.test(message);
-  if(!isOwner&&permissionError){
-   folderAccessDenied=true;folderAccessVerified=false;
-   setStatus('You do not have access to this dashboard. Ask the folder owner to share the OneDrive folder with your Microsoft account, then sign in again.');
-  }else{
-   folderAccessVerified=false;
-   setStatus('Unable to open dashboard: '+message);
-  }
-  if(auth){try{activeAccount=activeAccount||auth.getActiveAccount()||auth.getAllAccounts()[0]||null}catch(_){}}
- }finally{setButtons()}
+  const permissionError=[401,403,404].includes(e?.status)||/access.?denied|permission.?denied|not authorised|not authorized|does not have access|itemNotFound|item not found/i.test(String(e?.code||'')+' '+message);
+  const failedAccessCheck=!folderAccessVerified;
+  if(failedAccessCheck){
+   returnToMicrosoftSignIn(permissionError);
+   setStatus(permissionError?'You do not have access to this dashboard. Sign in with a different Microsoft account.':'Unable to check dashboard access: '+message+' You can try signing in again.');
+  }else setStatus('Unable to open dashboard: '+message);
+ }finally{authChecking=false;setButtons()}
  })();
  return authInitPromise;
 }
@@ -1291,7 +1307,19 @@ async function token(){
   throw e;
  }
 }
-async function graph(url){const bearer=await token();const response=await fetch(url.startsWith('https://')?url:GRAPH+url,{headers:{Authorization:'Bearer '+bearer}});if(!response.ok){let message='HTTP '+response.status;try{const body=await response.json();message=body.error?.message||message}catch{}throw Error(message)}return response.json()}
+async function graph(url){
+ const bearer=await authStepWithTimeout(token(),'Microsoft account verification timed out. Please sign in again.');
+ const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),20000);
+ try{
+  const response=await fetch(url.startsWith('https://')?url:GRAPH+url,{headers:{Authorization:'Bearer '+bearer},signal:controller.signal});
+  if(!response.ok){
+   let body=null;try{body=await response.json()}catch(_){}
+   const error=Error(body?.error?.message||'HTTP '+response.status);error.status=response.status;error.code=body?.error?.code||'';throw error;
+  }
+  return await response.json();
+ }catch(error){if(error?.name==='AbortError')throw Error('OneDrive access verification timed out. Please sign in again.');throw error;}
+ finally{clearTimeout(timer)}
+}
 async function children(id){if(!isOwner&&id===sharedFolderId){const items=[];let url=sharedPath()+'/children?$top=200';while(url){const r=await graph(url);items.push(...(r.value||[]));url=r['@odata.nextLink']||null}return items;}let url=id==='root'?'/me/drive/root/children?$top=200&$select=id,name,folder,file,size,lastModifiedDateTime':`/me/drive/items/${encodeURIComponent(id)}/children?$top=200&$select=id,name,folder,file,size,lastModifiedDateTime`;const items=[];while(url){const r=await graph(url);items.push(...(r.value||[]));url=r['@odata.nextLink']||null}return items}
 async function showFolderPicker(){$('onedrivePanel').classList.remove('hidden');folderView={id:'root',name:'OneDrive',trail:[]};$('folderPicker').classList.remove('hidden');await showFolderContents()}
 async function showFolderContents(){try{$('pickerPath').textContent=[...folderView.trail.map(x=>x.name),folderView.name].join(' / ');$('pickerEntries').textContent='Loading folders…';const folders=(await children(folderView.id)).filter(x=>x.folder).sort((a,b)=>a.name.localeCompare(b.name));$('pickerEntries').replaceChildren();if(!folders.length)$('pickerEntries').textContent='No subfolders. You can select this folder.';for(const f of folders){const btn=document.createElement('button');btn.className='folder-entry';btn.textContent='📁 '+f.name;btn.onclick=async()=>{folderView={id:f.id,name:f.name,trail:[...folderView.trail,{id:folderView.id,name:folderView.name}]};await showFolderContents()};$('pickerEntries').append(btn)}}catch(e){$('pickerEntries').textContent='Could not list folders: '+e.message}}
@@ -1852,9 +1880,14 @@ const drawingErrors=[];
  showRefreshFeedback('Refresh failed: '+message);
  setSync('Refresh failed: '+message+' · You remain signed in; the existing charts have been preserved where possible.');
  }finally{busy=false;setButtons()}}
-$('signIn').onclick=async()=>{if(folderAccessDenied&&auth&&activeAccount){
- try{folderAccessDenied=false;folderAccessVerified=false;authenticatedOnce=false;$('dashboardShell').dataset.signedIn='false';await auth.logoutRedirect({account:activeAccount,postLogoutRedirectUri:REDIRECT_URI});}catch(e){setStatus('Account switch failed: '+e.message)}return;
- }if((authenticatedOnce||activeAccount)&&folderAccessVerified)return;try{if(!auth){await initAuth();if(!auth)throw Error('Microsoft sign-in is still unavailable. Refresh the page (Ctrl+F5).')}await auth.loginRedirect({scopes:SCOPES,prompt:activeAccount?'select_account':undefined,loginHint:activeAccount?.username})}catch(e){setStatus('Sign-in failed: '+e.message)}};
+$('signIn').onclick=async()=>{
+ if(authChecking||folderAccessVerified)return;
+ try{
+  if(!auth){authInitPromise=null;await initAuth();if(!auth)throw Error('Microsoft sign-in is unavailable. Please refresh and try again.');}
+  if(folderAccessVerified)return;
+  await auth.loginRedirect({scopes:SCOPES,prompt:'select_account'});
+ }catch(error){setStatus('Sign-in failed: '+(error?.message||error));setButtons();}
+};
 $('signOut').onclick=async()=>{if(!activeAccount)return;try{authenticatedOnce=false;$('dashboardShell').dataset.signedIn='false';await auth.logoutRedirect({account:activeAccount,postLogoutRedirectUri:REDIRECT_URI})}catch(e){setStatus('Sign-out failed: '+e.message)}};
 $('chooseFolder').onclick=()=>{if(isOwner)showFolderPicker()};
 $('sourceSetup').onclick=()=>{if(isOwner)showFolderPicker()};
