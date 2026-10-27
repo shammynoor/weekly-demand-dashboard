@@ -2950,6 +2950,13 @@ function dayView2LondonClock(value=new Date()){
  const p=Object.fromEntries(new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/London',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).formatToParts(value).map(part=>[part.type,part.value]));
  return {date:p.year+'-'+p.month+'-'+p.day,minute:Number(p.hour)*60+Number(p.minute)+Number(p.second)/60};
 }
+// Missed slots are measured against the imported report snapshot, never the live clock.
+function capacitySnapshotClock(){
+ return Number.isFinite(capacityCSVLatestModified)?dayView2LondonClock(new Date(capacityCSVLatestModified)):null;
+}
+function isMissedAvailableSlot(row,clock=capacitySnapshotClock()){
+ return !!clock&&(row.date<clock.date||(row.date===clock.date&&Number.isFinite(row.minute)&&row.minute<clock.minute));
+}
 function dayView2Time(minute){
  const value=Math.floor(minute),hour=Math.floor(value/60)%24;
  return (hour%12||12)+':'+String(value%60).padStart(2,'0')+(hour>=12?'pm':'am');
@@ -3045,7 +3052,7 @@ function dayView2RowsForDates(rows,dates){
  if(!index){index=new Map();for(const row of rows){if(!index.has(row.date))index.set(row.date,[]);index.get(row.date).push(row);}dayView2DateIndexes.set(rows,index);}
  const selected=[];for(const date of dates)for(const row of index.get(date)||[])selected.push(row);return selected;
 }
-function collectDayView2Capacity(date,names,disabled,rows,clock=dayView2LondonClock()){
+function collectDayView2Capacity(date,names,disabled,rows,clock=capacitySnapshotClock()){
  date=dayView2WorkingDate(date);
  const statuses=['missedEmpty','booked','available','embargoed','blocked'];
  const empty=()=>({missedEmpty:0,booked:0,available:0,embargoed:0,blocked:0});
@@ -3060,7 +3067,7 @@ function collectDayView2Capacity(date,names,disabled,rows,clock=dayView2LondonCl
   if(!Number.isFinite(count)||count<=0)continue;
   day.matched+=count;
   let status=String(r.availability||'').trim().toLowerCase();
-  if(status==='available'&&(r.date<clock.date||(r.date===clock.date&&Number.isFinite(r.minute)&&r.minute<clock.minute)))status='missedEmpty';
+  if(status==='available'&&isMissedAvailableSlot(r,clock))status='missedEmpty';
   if(!statuses.includes(status)){day.unknown+=count;continue;}
   group[status]+=count;day.totals[status]+=count;
  }
@@ -3284,9 +3291,9 @@ function renderDayView2(){
   checkbox.checked=!dayView2DisabledUrgencies.has(checkbox.dataset.filterName);
   checkbox.nextElementSibling.style.setProperty('--switch-on',urgencyGroupColour(checkbox.dataset.filterName));
  });
- const liveClock=dayView2LondonClock();
- const days=collectDayView2Capacity(date,names,dayView2DisabledUrgencies,availabilityRecords,liveClock),selected=days.get(date),totals=selected.totals;
- const slotTotals=collectDayView2Capacity(date,names,dayView2DisabledUrgencies,dayView2RowsForDates(availabilityRecords,days.keys()).filter(isDayView2SlotReportRecord),liveClock).get(date).totals;
+ const snapshotClock=capacitySnapshotClock();
+ const days=collectDayView2Capacity(date,names,dayView2DisabledUrgencies,availabilityRecords,snapshotClock),selected=days.get(date),totals=selected.totals;
+ const slotTotals=collectDayView2Capacity(date,names,dayView2DisabledUrgencies,dayView2RowsForDates(availabilityRecords,days.keys()).filter(isDayView2SlotReportRecord),snapshotClock).get(date).totals;
  const paceContext=dayView2PaceContext(date,[...selected.groups.keys()],slotTotals);
  const paceExpanded=$('dayView2Lanes').querySelector('.day-view2-pace-details')?.open;
  const statuses=['missedEmpty','booked','available','embargoed','blocked'];
@@ -3343,7 +3350,7 @@ function renderDayView2(){
    segment.setAttribute('aria-label',laneDateLabel+' · '+name+': '+number(counts[status])+' '+(status==='missedEmpty'?'Missed Empty':status)+' slots');
    if(counts[status]/laneTotal>=.04)segment.textContent=number(counts[status]);
    segment.addEventListener('click',()=>{
-    const meaning={missedEmpty:'An unbooked slot whose appointment start time has already passed.',booked:'Already booked for this appointment date.',available:'An unbooked slot whose start time has not passed in the loaded report.',embargoed:'Held from booking. The report does not supply a release time.',blocked:'Currently unavailable; these slots are not counted as free to book.'};
+    const meaning={missedEmpty:'An unbooked slot whose appointment start time was before the imported Slot Report refresh time.',booked:'Already booked for this appointment date.',available:'An unbooked slot whose start time has not passed in the loaded report.',embargoed:'Held from booking. The report does not supply a release time.',blocked:'Currently unavailable; these slots are not counted as free to book.'};
     $('dayView2Detail').textContent=laneDateLabel+' · '+name+' · '+number(counts[status])+' '+(status==='missedEmpty'?'Missed Empty':status)+' slots. '+meaning[status];
    });
    groupSpan.append(segment);
@@ -3802,6 +3809,22 @@ function urgentGradientStops(hex){
 // SVG gradient is a visual finish only. It does not alter Plotly data, bar
 // positions, totals, tooltip targets, Today marker or historical shading.
 // Shared flat visual treatment; saved type colours remain the source of truth.
+// SVG hatch remains diagonal and dashed at every bar size and in both day/week views.
+function capacityMissedPattern(svg,colour,id){
+ const ns='http://www.w3.org/2000/svg';
+ let defs=svg.querySelector('defs');if(!defs){defs=document.createElementNS(ns,'defs');svg.prepend(defs);}
+ let pattern=[...defs.querySelectorAll('pattern')].find(node=>node.id===id);
+ if(!pattern){
+  pattern=document.createElementNS(ns,'pattern');pattern.id=id;
+  pattern.setAttribute('patternUnits','userSpaceOnUse');pattern.setAttribute('width','7');pattern.setAttribute('height','7');
+  pattern.setAttribute('patternTransform','rotate(45)');
+  const background=document.createElementNS(ns,'rect');background.setAttribute('width','7');background.setAttribute('height','7');background.setAttribute('fill','#ffffff');
+  const stripe=document.createElementNS(ns,'line');stripe.setAttribute('x1','0');stripe.setAttribute('x2','0');stripe.setAttribute('y1','0');stripe.setAttribute('y2','7');stripe.setAttribute('stroke-width','1.5');stripe.setAttribute('stroke-dasharray','4 3');
+  pattern.append(background,stripe);defs.append(pattern);
+ }
+ pattern.querySelector('line').setAttribute('stroke',colour);
+ return 'url(#'+id+')';
+}
 function applyFlatAvailabilityBars(target,isDaily=false,separateGroups=false){
  // Apply one medium bottom-right shadow to the composited stacked bars,
  // rather than to each coloured segment (which would create internal seams).
@@ -3836,7 +3859,16 @@ function applyFlatAvailabilityBars(target,isDaily=false,separateGroups=false){
    }
    const colour=Array.isArray(marker.color)?marker.color[j]||baseColour:baseColour;
    const missed=barTraces[i]?.name?.endsWith(' · Missed Empty');
-   if(missed){const urgency=barTraces[i]?.meta?.capacityGroup;path.style.setProperty('fill',urgencyGroupColour(urgency),'important');path.style.setProperty('fill-opacity','0.18','important');path.style.setProperty('stroke',urgencyGroupColour(urgency),'important');path.style.setProperty('stroke-width','1.8px','important');path.style.setProperty('stroke-dasharray','4 2','important');}else if(!marker.pattern?.shape)path.style.setProperty('fill',colour,'important');
+   if(missed){
+    const urgency=barTraces[i]?.meta?.capacityGroup;
+    const fill=capacityMissedPattern(path.ownerSVGElement,urgencyGroupColour(urgency),target.id+'-missed-'+i);
+    path.style.setProperty('fill',fill,'important');
+    path.style.setProperty('fill-opacity','1','important');
+    path.style.setProperty('stroke','rgba(255,255,255,0.85)','important');
+    path.style.setProperty('stroke-width','0.65px','important');
+    path.style.removeProperty('stroke-dasharray');
+    return;
+   }else if(!marker.pattern?.shape)path.style.setProperty('fill',colour,'important');
    path.style.setProperty('fill-opacity','1','important');
    path.style.setProperty('stroke','rgba(255,255,255,0.85)','important');
    path.style.setProperty('stroke-width','0.65px','important');
@@ -3880,7 +3912,7 @@ function weeklyCapacityTodayX(weekIndex,dayIndex){
 // Keep every availability status beside its own urgency group in a stack.
 function capacityChartStatus(row,held,clock){
  let status=String(row.availability||'').trim().toLowerCase();
- if(status==='available'&&(row.date<clock.date||(row.date===clock.date&&Number.isFinite(row.minute)&&row.minute<clock.minute)))return 'Missed Empty';
+ if(status==='available'&&isMissedAvailableSlot(row,clock))return 'Missed Empty';
  return ({booked:'Booked',available:'Available',embargoed:held?'Held Back':'Embargoed',blocked:held?'Held Back':'Blocked'})[status]||null;
 }
 function capacityHoverDetails(dates,names,counts,held,heading){
@@ -3904,11 +3936,11 @@ function capacityGroupedSeries(dates,names,counts,held,heading,extras=[]){
  for(const group of names){
   const colour=group.endsWith(' · Extra')?(capacityColours.Extra||'#8aa6bd'):urgencyGroupColour(group);
   const summaries=dates.map(date=>simpleAvailabilityHover(heading(date)+' · '+group,statuses,statuses.map(status=>value(date,group,status)),statuses.reduce((n,status)=>n+value(date,group,status),0)));
-  for(const status of statuses)traces.push({type:'bar',name:group+' · '+status,meta:{capacityGroup:group},showlegend:false,x:dates,y:dates.map(date=>value(date,group,status)),marker:{color:status==='Booked'?colour:status==='Missed Empty'?'#ffffff':colours[status],line:{width:0},...(status==='Missed Empty'?{line:{color:colour,width:1.5,dash:'dash'}}:{})},customdata:summaries,hovertemplate:'%{customdata}<extra></extra>'});
+  for(const status of statuses)traces.push({type:'bar',name:group+' · '+status,meta:{capacityGroup:group},showlegend:false,x:dates,y:dates.map(date=>value(date,group,status)),marker:{color:status==='Booked'?colour:status==='Missed Empty'?'#ffffff':colours[status],line:{width:0},...(status==='Missed Empty'?{pattern:{shape:'/',fgcolor:colour,bgcolor:'#ffffff',size:7,solidity:0.15},line:{width:0}}:{})},customdata:summaries,hovertemplate:'%{customdata}<extra></extra>'});
  }
  for(const group of names)traces.push({type:'scatter',mode:'markers',name:group,x:[null],y:[null],marker:{symbol:'circle',size:14,color:group.endsWith(' · Extra')?(capacityColours.Extra||'#8aa6bd'):urgencyGroupColour(group)},showlegend:true,hoverinfo:'skip'});
  // A patterned bar trace supplies an accurate striped legend swatch.
- traces.push({type:'bar',name:'Missed Empty',x:[null],y:[null],showlegend:true,marker:{color:'#e9edf1',line:{color:'#586674',width:2}},hoverinfo:'skip'});
+ traces.push({type:'bar',name:'Missed Empty',x:[null],y:[null],showlegend:true,marker:{color:'#ffffff',pattern:{shape:'/',fgcolor:'#586674',bgcolor:'#ffffff',size:7,solidity:0.15},line:{width:0}},hoverinfo:'skip'});
  for(const status of statuses.filter(s=>!['Booked','Missed Empty'].includes(s)))traces.push({type:'scatter',mode:'markers',name:status,x:[null],y:[null],marker:{symbol:'circle',size:14,color:colours[status],line:{color:status==='Available'?'#a7b8c6':colours[status],width:status==='Available'?1.5:0}},showlegend:true,hoverinfo:'skip'});
  for(const item of extras)traces.push({type:'bar',name:item.name,meta:{capacityGroup:item.name},x:dates,y:dates.map(date=>counts.get(JSON.stringify([date,item.name]))||0),marker:{color:item.colour},showlegend:true,customdata:dates.map(date=>simpleAvailabilityHover(heading(date),[item.name],[counts.get(JSON.stringify([date,item.name]))||0],counts.get(JSON.stringify([date,item.name]))||0)),hovertemplate:'%{customdata}<extra></extra>'});
  return {traces:traces.filter(trace=>trace.showlegend||trace.y.some(value=>value>0)),totals};
@@ -3928,7 +3960,7 @@ function renderAvailabilityChart(){
  const dateSet=new Set(dates);
  const weekdays=new Set(dates.filter(d=>{const n=new Date(d+'T12:00:00Z').getUTCDay();return n!==0&&n!==6}));
  const counts=new Map();
- const clock=dayView2LondonClock();
+ const clock=capacitySnapshotClock();
  const selectedNames=new Set(names);
  for(const r of availabilityRecords){
   if(!weekdays.has(r.date))continue;
@@ -4100,7 +4132,7 @@ function renderRoutineAvailabilityChart(){
   for(const w of weeks)for(let d=0;d<7;d++){const dt=new Date(w+'T12:00:00Z');dt.setUTCDate(dt.getUTCDate()+d);dates.push(dt.toISOString().slice(0,10));}
  }else dates.push(...weeks);
  const byBucket=new Map();
- const clock=dayView2LondonClock();
+ const clock=capacitySnapshotClock();
  let matched=0;
  const bucketSet=new Set(dates);
  const activeTypes=new Set(routineDetailedTypes().filter(name=>!routineDisabledTypes.has(name)));
@@ -4275,7 +4307,7 @@ function renderPlannedAvailabilityChart(){
   for(const w of weeks)for(let d=0;d<7;d++){const dt=new Date(w+'T12:00:00Z');dt.setUTCDate(dt.getUTCDate()+d);dates.push(dt.toISOString().slice(0,10));}
  }else dates.push(...weeks);
  const byBucket=new Map();
- const clock=dayView2LondonClock();
+ const clock=capacitySnapshotClock();
  let matched=0;
  const bucketSet=new Set(dates);
  const activeTypes=new Set(plannedDetailedTypes().filter(name=>!plannedDisabledTypes.has(name)));
