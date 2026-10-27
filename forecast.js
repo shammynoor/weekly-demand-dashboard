@@ -99,12 +99,21 @@ const note=document.createElement('p');note.className='muted';note.textContent='
 function forecastUrgencyNames(){return prioritySort('urgency',groupUrgencyNames.filter(isDashboardToggleOption))}
 function forecastUrgencyEnabled(name){return !disabled.daily.has(name)&&(isDaily(name)||urgencyExplicitlyEnabled.has(name))}
 const urgencyExplicitlyEnabled=new Set();
+let forecastFilterRefreshTimer=null;
+function scheduleForecastFilterRefresh(mode){
+ clearTimeout(forecastFilterRefreshTimer);
+ forecastFilterRefreshTimer=setTimeout(()=>{
+  forecastFilterRefreshTimer=null;
+  if(mode==='weekly')render('weekly');
+  else renderHistoricalWeekday();
+ },140);
+}
 function setForecastUrgencyEnabled(name,enabled){
  if(enabled){disabled.daily.delete(name);if(!isDaily(name))urgencyExplicitlyEnabled.add(name)}
  else{disabled.daily.add(name);urgencyExplicitlyEnabled.delete(name)}
- saveForecastPreferences();renderHistoricalWeekday();
+ saveForecastPreferences();
+ scheduleForecastFilterRefresh('daily');
 }
-// Shared Primary Appt Type Box: batch category changes into one forecast refresh.
 window.setForecastPrimaryApptCategory=function(rootId,names,on){
  const mode=rootId==='weeklyForecastFilters'?'weekly':'daily';
  for(const name of names){
@@ -114,16 +123,25 @@ window.setForecastPrimaryApptCategory=function(rootId,names,on){
    if(!on)urgencyExplicitlyEnabled.delete(name);
   }
  }
- saveForecastPreferences();
- if(mode==='daily')renderHistoricalWeekday();else render(mode);
+ if(mode==='daily')saveForecastPreferences();
+ scheduleForecastFilterRefresh(mode);
 };
 function renderDailyUrgencyFilters(){
  const root=$('dailyForecastFilters');if(!root)return;
+ const names=forecastUrgencyNames();
+ const existing=[...root.querySelectorAll('input[data-forecast-name]')];
+ if(existing.length===names.length&&names.every(name=>existing.some(input=>input.dataset.forecastName===name))){
+  for(const input of existing){
+   const category=input.closest('.primary-appt-category');
+   input.checked=category?.classList.contains('primary-appt-category-off')?false:forecastUrgencyEnabled(input.dataset.forecastName);
+  }
+  return;
+ }
  root.replaceChildren();
- for(const name of forecastUrgencyNames()){
+ for(const name of names){
   const label=document.createElement('label');label.className='filter-row';
   const sw=document.createElement('span');sw.className='switch';
-  const input=document.createElement('input');input.type='checkbox';input.checked=forecastUrgencyEnabled(name);
+  const input=document.createElement('input');input.type='checkbox';input.dataset.forecastName=name;input.checked=forecastUrgencyEnabled(name);
   const track=document.createElement('span');track.className='switch-track';track.style.setProperty('--switch-on',urgencyGroupColour(name));
   sw.append(input,track);label.append(sw,document.createTextNode(name));root.append(label);
   input.addEventListener('change',()=>setForecastUrgencyEnabled(name,input.checked));
