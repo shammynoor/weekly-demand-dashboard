@@ -3994,7 +3994,7 @@ function renderRoutineCategoryToggles(){
  applyRoutineUrgencyDefaults();
  const names=prioritySort('urgency',routineDetailedTypes().filter(isDashboardToggleOption));
  const old=[...root.querySelectorAll('input[data-filter-name]')].map(el=>el.dataset.filterName);
- if(old.length===names.length&&names.every((name,i)=>name===old[i])){
+ if(old.length===names.length&&names.every(name=>old.includes(name))){
   root.querySelectorAll('input[data-filter-name]').forEach(input=>input.nextElementSibling?.style.setProperty('--switch-on',urgencyGroupColour(input.dataset.filterName)));
   return;
  }
@@ -4466,81 +4466,73 @@ const primaryApptCategoryState=new Map();
 const PRIMARY_APPT_ROOT_IDS=['demandUrgencyToggles','urgentCategoryToggles','routineCategoryToggles','plannedCategoryToggles','dayView2UrgencyToggles','bookingTimesUrgencyFilters','waitingUrgencyToggles','waitingTrendUrgencyToggles','dailyForecastFilters','weeklyForecastFilters'];
 function enhancePrimaryApptTypeBox(root){
  if(!root)return;
- const rows=[...root.querySelectorAll('label.filter-row')].filter(row=>row.querySelector('input[type="checkbox"]'));
+ // Only inspect direct, ungrouped rows. Never mistake the category master for
+ // an appointment type, and never repeatedly reparent an already grouped box.
+ const rows=[...root.children].filter(row=>row.matches?.('label.filter-row')&&row.querySelector('input[type="checkbox"]'));
  if(!rows.length)return;
- const names=rows.map(row=>row.querySelector('input').dataset.filterName||row.querySelector('input').dataset.urgencyGroup||row.textContent.trim()||'');
- if(names.some(name=>!name||!groupUrgencyNames.includes(name)))return;
- const categories=[...new Set([...appointmentCategoryNames,'Other'])];
- const signature=JSON.stringify(rows.map((row,i)=>[names[i],appointmentCategoryFor(names[i])||'Other']));
- if(root.dataset.primaryApptSignature===signature&&root.querySelector('.primary-appt-category'))return;
- root.dataset.primaryApptSignature=signature;
- const existing=rows.map((row,i)=>({row,name:names[i]}));
+ const entries=rows.map(row=>{
+  const input=row.querySelector('input[type="checkbox"]');
+  return {row,input,name:input.dataset.filterName||input.dataset.urgencyGroup||row.textContent.trim()};
+ });
+ if(entries.some(e=>!e.name||!groupUrgencyNames.includes(e.name)))return;
  const buckets=new Map();
- for(const {row,name} of existing){const cat=appointmentCategoryFor(name)||'Other';if(!buckets.has(cat))buckets.set(cat,[]);buckets.get(cat).push(row);}
+ for(const entry of entries){
+  const cat=appointmentCategoryFor(entry.name)||'Other';
+  if(!buckets.has(cat))buckets.set(cat,[]);
+  buckets.get(cat).push(entry);
+ }
  const fragment=document.createDocumentFragment();
- for(const category of categories){
+ for(const category of [...new Set([...appointmentCategoryNames,'Other',...buckets.keys()])]){
   const items=buckets.get(category);if(!items?.length)continue;
   const section=document.createElement('div');section.className='primary-appt-category';
   const header=document.createElement('label');header.className='filter-row primary-appt-category-header';
   const sw=document.createElement('span');sw.className='switch primary-appt-master-switch';
-  const master=document.createElement('input');master.type='checkbox';master.setAttribute('role','switch');master.setAttribute('aria-label','Enable '+category+' appointment types');
-  const track=document.createElement('span');track.className='switch-track';track.style.setProperty('--switch-on',appointmentCategoryColours[category]||'#638fac');
+  const master=document.createElement('input');master.type='checkbox';master.setAttribute('role','switch');
+  master.setAttribute('aria-label','Enable '+category+' appointment types');
+  const track=document.createElement('span');track.className='switch-track';
+  track.style.setProperty('--switch-on',appointmentCategoryColours[category]||'#638fac');
   sw.append(master,track);
-  const title=document.createElement('span');title.textContent=category;header.append(sw,title);section.append(header);
+  const title=document.createElement('span');title.textContent=category;
+  header.append(sw,title);section.append(header);
   const children=document.createElement('div');children.className='primary-appt-category-items';
-  for(const row of items)children.append(row);
+  for(const item of items)children.append(item.row);
   section.append(children);fragment.append(section);
   const key=root.id+'::'+category;
-  const enabled=primaryApptCategoryState.get(key)!==false;
-  master.checked=enabled;
-  const applyDisabled=()=>{section.classList.toggle('primary-appt-category-off',!master.checked);for(const input of children.querySelectorAll('input[type="checkbox"]'))input.disabled=!master.checked;};
-  if(!enabled){
-   for(const input of children.querySelectorAll('input[type="checkbox"]'))input.checked=false;
-  }
+  master.checked=primaryApptCategoryState.get(key)!==false;
+  const applyDisabled=()=>{
+   section.classList.toggle('primary-appt-category-off',!master.checked);
+   for(const {input} of items)input.disabled=!master.checked;
+  };
   applyDisabled();
   master.addEventListener('change',()=>{
    const on=master.checked;
    primaryApptCategoryState.set(key,on);
-   const inputs=[...children.querySelectorAll('input[type="checkbox"]')];
-   // Update the backing filter set in one pass and redraw once. Dispatching
-   // a change event for every child previously launched several expensive
-   // synchronous Plotly renders and could freeze the whole dashboard.
    const sets={
     demandUrgencyToggles:typeof disabledDemandUrgencyGroups!=='undefined'?disabledDemandUrgencyGroups:null,
     urgentCategoryToggles:typeof urgentCategoryDisabled!=='undefined'?urgentCategoryDisabled:null,
     routineCategoryToggles:typeof routineDisabledTypes!=='undefined'?routineDisabledTypes:null,
     plannedCategoryToggles:typeof plannedDisabledTypes!=='undefined'?plannedDisabledTypes:null,
-    dayView2UrgencyToggles:typeof dayView2DisabledUrgencies!=='undefined'?dayView2DisabledUrgencies:null,
     waitingUrgencyToggles:typeof waitingDisabledUrgency!=='undefined'?waitingDisabledUrgency:null,
     waitingTrendUrgencyToggles:typeof waitingTrendDisabledUrgency!=='undefined'?waitingTrendDisabledUrgency:null
    };
    const disabledSet=sets[root.id];
-   if(disabledSet){
-    for(const input of inputs){
-     const name=input.dataset.filterName||input.dataset.urgencyGroup||input.closest('label')?.textContent.trim();
-     input.checked=on;
-     if(on)disabledSet.delete(name);else disabledSet.add(name);
-    }
-    if(root.id==='demandUrgencyToggles'){
-     demandFilterCache=new WeakMap();clinicianMatchCache=new Map();scheduleDemandRefresh();
-    }else if(root.id==='dayView2UrgencyToggles'){
-     saveDayView2Preferences();renderDayView2();
-    }else if(root.id==='waitingUrgencyToggles'){
-     renderWaitingTimesChart();
-    }else if(root.id==='waitingTrendUrgencyToggles'){
-     renderWaitingTrendChart();
-    }else{
-     (root.id==='urgentCategoryToggles'?renderAvailabilityChart:root.id==='plannedCategoryToggles'?renderPlannedAvailabilityChart:renderRoutineAvailabilityChart)();
-    }
-   }else if((root.id==='dailyForecastFilters'||root.id==='weeklyForecastFilters')&&typeof window.setForecastPrimaryApptCategory==='function'){
-    for(const input of inputs)input.checked=on;
-    window.setForecastPrimaryApptCategory(root.id,inputs.map(input=>input.closest('label')?.textContent.trim()).filter(Boolean),on);
-   }else{
-    // Unknown panel: update its visible switches without firing a storm of
-    // expensive synchronous chart renders. Individual switches still work.
-    for(const input of inputs)input.checked=on;
+   for(const {input,name} of items){
+    input.checked=on;
+    if(disabledSet){if(on)disabledSet.delete(name);else disabledSet.add(name);}
    }
    applyDisabled();
+   // Only one render per category action; defer until the switch has painted.
+   requestAnimationFrame(()=>{
+    if(root.id==='demandUrgencyToggles'){
+     demandFilterCache=new WeakMap();clinicianMatchCache=new Map();scheduleDemandRefresh();
+    }else if(root.id==='urgentCategoryToggles')renderAvailabilityChart();
+    else if(root.id==='routineCategoryToggles')renderRoutineAvailabilityChart();
+    else if(root.id==='plannedCategoryToggles')renderPlannedAvailabilityChart();
+    else if(root.id==='waitingUrgencyToggles')renderWaitingTimesChart();
+    else if(root.id==='waitingTrendUrgencyToggles')renderWaitingTrendChart();
+    else if((root.id==='dailyForecastFilters'||root.id==='weeklyForecastFilters')&&typeof window.setForecastPrimaryApptCategory==='function')
+     window.setForecastPrimaryApptCategory(root.id,items.map(item=>item.name),on);
+   });
   });
  }
  root.replaceChildren(fragment);
