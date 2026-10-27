@@ -4510,12 +4510,24 @@ function enhancePrimaryApptTypeBox(root){
  root.replaceChildren(fragment);
 }
 function installPrimaryApptTypeBoxConvention(){
- const roots=()=>PRIMARY_APPT_ROOT_IDS.map(id=>document.getElementById(id)).filter(Boolean);
- let pending=false;
- const refresh=()=>{if(pending)return;pending=true;queueMicrotask(()=>{pending=false;for(const root of roots())enhancePrimaryApptTypeBox(root);});};
- const observer=new MutationObserver(mutations=>{if(mutations.some(m=>m.type==='childList'))refresh();});
- observer.observe(document.body,{childList:true,subtree:true});
- refresh();
+ // Observe only the small set of appointment-type filter roots, never the whole
+ // dashboard: Plotly and tooltip DOM updates can otherwise cause constant work.
+ for(const id of PRIMARY_APPT_ROOT_IDS){
+  const root=document.getElementById(id);
+  if(!root)continue;
+  let pending=false;
+  const refresh=()=>{
+   if(pending)return;
+   pending=true;
+   queueMicrotask(()=>{pending=false;enhancePrimaryApptTypeBox(root);});
+  };
+  const observer=new MutationObserver(mutations=>{
+   // Only direct child replacements indicate a filter list has been rebuilt.
+   if(mutations.some(m=>m.type==='childList'))refresh();
+  });
+  observer.observe(root,{childList:true});
+  refresh();
+ }
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',installPrimaryApptTypeBoxConvention);
 else installPrimaryApptTypeBoxConvention();
