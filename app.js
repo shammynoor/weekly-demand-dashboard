@@ -3774,7 +3774,7 @@ function renderUrgentCategoryToggles(){
  applyUrgentUrgencyDefaults();
  const names=prioritySort('urgency',urgentCategoryNames());
  const current=[...root.querySelectorAll('input[data-filter-name]')].map(x=>x.dataset.filterName);
- if(current.length===names.length&&current.every((x,i)=>x===names[i])){root.querySelectorAll('input[data-filter-name]').forEach(input=>input.nextElementSibling?.style.setProperty('--switch-on',urgentColour(input.dataset.filterName)));return;}
+ if(current.length===names.length&&names.every(name=>current.includes(name))){root.querySelectorAll('input[data-filter-name]').forEach(input=>input.nextElementSibling?.style.setProperty('--switch-on',urgentColour(input.dataset.filterName)));return;}
  root.replaceChildren();
  if(!names.length){root.textContent='Create Appointment Types in Slot Settings to display capacity.';return}
  for(const name of names){
