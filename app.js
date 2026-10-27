@@ -887,7 +887,7 @@ function restoreChartCheckboxes(){
    // Waiting sliders attach their state handlers only when first opened.
    if(el.type==='range'&&/^waiting/.test(el.id)&&!el.dataset.bound)return;
    const value=saved[key],signature=JSON.stringify(value);
-   if(chartRestoredValues.get(key)===signature)return;
+   // Rebuilt toggle rows must be restored even when the saved value has not changed.
    if(el.tagName==='SELECT'){
     const wanted=Array.isArray(value)?value:[String(value)];
     if(!wanted.every(v=>[...el.options].some(option=>option.value===v)))return;
@@ -2879,6 +2879,15 @@ window.addEventListener('resize',hideDayView2Tooltip);
 document.addEventListener('keydown',event=>{if(event.key==='Escape')hideDayView2Tooltip();});
 
 const dayView2DisabledUrgencies=new Set();
+let dayView2PreferencesAccount=null;
+function syncDayView2Preferences(){
+ const account=chartPreferenceAccount();if(account===dayView2PreferencesAccount)return;
+ dayView2PreferencesAccount=account;dayView2DisabledUrgencies.clear();
+ if(!account)return;
+ const saved=readChartPreferences()['dayView2:disabledUrgencies'];
+ if(Array.isArray(saved))for(const name of saved)if(typeof name==='string')dayView2DisabledUrgencies.add(name);
+}
+function saveDayView2Preferences(){writeChartPreference('dayView2:disabledUrgencies',[...dayView2DisabledUrgencies]);}
 let dayView2SegmentObserver=null;
 function layoutDayView2SegmentCounts(root){
  for(const segment of root.querySelectorAll('.day-view2-segment')){const text=segment.dataset.count||'';segment.textContent=segment.clientWidth>=text.length*8+12?text:'';}
@@ -3206,6 +3215,7 @@ function renderDayView2(){
  if(!page||page.classList.contains('hidden')||!input||!filters)return;
  input.value=dayView2WorkingDate(input.value||dayView2LocalDate());
  $('dayView2DatePicker').textContent=new Date(input.value+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'});
+ syncDayView2Preferences();
  const date=input.value,names=prioritySort('urgency',groupUrgencyNames.filter(isDashboardToggleOption));
  const signature=JSON.stringify(names);
  if(filters.dataset.groups!==signature){
@@ -3217,7 +3227,7 @@ function renderDayView2(){
    const track=document.createElement('span');track.className='switch-track';
    const caption=document.createElement('span');caption.textContent=name;
    sw.append(checkbox,track);label.append(sw,caption);filters.append(label);
-   checkbox.addEventListener('change',()=>{if(checkbox.checked)dayView2DisabledUrgencies.delete(name);else dayView2DisabledUrgencies.add(name);renderDayView2();});
+   checkbox.addEventListener('change',()=>{if(checkbox.checked)dayView2DisabledUrgencies.delete(name);else dayView2DisabledUrgencies.add(name);saveDayView2Preferences();renderDayView2();});
   }
  }
  filters.querySelectorAll('input[data-filter-name]').forEach(checkbox=>{
@@ -3268,7 +3278,7 @@ function renderDayView2(){
   const groupTotal=statuses.reduce((sum,status)=>sum+counts[status],0);
   if(!groupTotal)continue;
   const colour=urgencyGroupColour(name);
-  const groupSpan=document.createElement('div');groupSpan.className='day-view2-urgency-span';groupSpan.style.width=(100*groupTotal/scaleMax)+'%';groupSpan.setAttribute('role','group');groupSpan.setAttribute('aria-label',name);
+  const groupSpan=document.createElement('div');groupSpan.className='day-view2-urgency-span';groupSpan.style.setProperty('width',(100*groupTotal/scaleMax)+'%','important');groupSpan.style.flex='0 0 auto';groupSpan.setAttribute('role','group');groupSpan.setAttribute('aria-label',name);
   installDayView2GroupTooltip(groupSpan,{name,date:laneDateLabel,counts,colour});
 
   for(const status of statuses){
