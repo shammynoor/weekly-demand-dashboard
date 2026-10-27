@@ -4463,12 +4463,12 @@ setupTogglePriority();
 
 /* Primary Appt Type Box: one shared category/master-switch convention for every page. */
 const primaryApptCategoryState=new Map();
-const PRIMARY_APPT_ROOT_IDS=['demandUrgencyToggles','urgentCategoryToggles','routineCategoryToggles','plannedCategoryToggles','dayView2UrgencyToggles','bookingTimesUrgencyFilters','waitingUrgencyToggles','waitingTrendUrgencyToggles'];
+const PRIMARY_APPT_ROOT_IDS=['demandUrgencyToggles','urgentCategoryToggles','routineCategoryToggles','plannedCategoryToggles','dayView2UrgencyToggles','bookingTimesUrgencyFilters','waitingUrgencyToggles','waitingTrendUrgencyToggles','dailyForecastFilters','weeklyForecastFilters'];
 function enhancePrimaryApptTypeBox(root){
  if(!root)return;
  const rows=[...root.querySelectorAll('label.filter-row')].filter(row=>row.querySelector('input[type="checkbox"]'));
  if(!rows.length)return;
- const names=rows.map(row=>row.querySelector('input').dataset.filterName||row.querySelector('input').dataset.urgencyGroup||'');
+ const names=rows.map(row=>row.querySelector('input').dataset.filterName||row.querySelector('input').dataset.urgencyGroup||row.textContent.trim()||'');
  if(names.some(name=>!name||!groupUrgencyNames.includes(name)))return;
  const categories=[...new Set([...appointmentCategoryNames,'Other'])];
  const signature=JSON.stringify(rows.map((row,i)=>[names[i],appointmentCategoryFor(names[i])||'Other']));
@@ -4482,7 +4482,7 @@ function enhancePrimaryApptTypeBox(root){
   const items=buckets.get(category);if(!items?.length)continue;
   const section=document.createElement('div');section.className='primary-appt-category';
   const header=document.createElement('label');header.className='filter-row primary-appt-category-header';
-  const sw=document.createElement('span');sw.className='switch';
+  const sw=document.createElement('span');sw.className='switch primary-appt-master-switch';
   const master=document.createElement('input');master.type='checkbox';master.setAttribute('role','switch');master.setAttribute('aria-label','Enable '+category+' appointment types');
   const track=document.createElement('span');track.className='switch-track';track.style.setProperty('--switch-on',appointmentCategoryColours[category]||'#638fac');
   sw.append(master,track);
