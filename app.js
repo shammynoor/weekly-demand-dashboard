@@ -2449,7 +2449,7 @@ function refreshPriorityEditors(){
  }
 }
 const priorityToggleIds={
- urgency:['demandUrgencyToggles','dayView2UrgencyToggles','routineCategoryToggles','plannedCategoryToggles','bookingTimesUrgencyFilters','urgentCategoryToggles'],
+ urgency:['demandUrgencyToggles','dayView2UrgencyToggles','routineCategoryToggles','plannedCategoryToggles','urgentCategoryToggles'],
  mode:['consultChartFilters','routineConsultFilters','plannedConsultFilters','bookingTimesConsultFilters'],
  purpose:['demandPurposeToggles','urgentPurposeToggles','routinePurposeFilters','plannedPurposeFilters','bookingTimesPurposeFilters'],
  capacity:['demandCapacityToggles','urgentCapacityToggles','routineCapacityFilters','plannedCapacityFilters','bookingTimesCapacityFilters']
@@ -4510,7 +4510,9 @@ function enhancePrimaryApptTypeBox(root){
     urgentCategoryToggles:typeof urgentCategoryDisabled!=='undefined'?urgentCategoryDisabled:null,
     routineCategoryToggles:typeof routineDisabledTypes!=='undefined'?routineDisabledTypes:null,
     plannedCategoryToggles:typeof plannedDisabledTypes!=='undefined'?plannedDisabledTypes:null,
-    dayView2UrgencyToggles:typeof dayView2DisabledUrgencies!=='undefined'?dayView2DisabledUrgencies:null
+    dayView2UrgencyToggles:typeof dayView2DisabledUrgencies!=='undefined'?dayView2DisabledUrgencies:null,
+    waitingUrgencyToggles:typeof waitingDisabledUrgency!=='undefined'?waitingDisabledUrgency:null,
+    waitingTrendUrgencyToggles:typeof waitingTrendDisabledUrgency!=='undefined'?waitingTrendDisabledUrgency:null
    };
    const disabledSet=sets[root.id];
    if(disabledSet){
@@ -4523,6 +4525,10 @@ function enhancePrimaryApptTypeBox(root){
      demandFilterCache=new WeakMap();clinicianMatchCache=new Map();scheduleDemandRefresh();
     }else if(root.id==='dayView2UrgencyToggles'){
      saveDayView2Preferences();renderDayView2();
+    }else if(root.id==='waitingUrgencyToggles'){
+     renderWaitingTimesChart();
+    }else if(root.id==='waitingTrendUrgencyToggles'){
+     renderWaitingTrendChart();
     }else{
      (root.id==='urgentCategoryToggles'?renderAvailabilityChart:root.id==='plannedCategoryToggles'?renderPlannedAvailabilityChart:renderRoutineAvailabilityChart)();
     }
