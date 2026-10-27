@@ -40,8 +40,15 @@ for(const menu of dashboardMenus){
  if(!trigger)continue;
  menu.classList.add('nav-menu-managed');menu.classList.remove('menu-dismissed');
  trigger.setAttribute('aria-haspopup','true');trigger.setAttribute('aria-expanded','false');
- menu.addEventListener('pointerenter',event=>{if(event.pointerType!=='touch'){closeDashboardMenus(menu);setDashboardMenuOpen(menu,true);}});
- menu.addEventListener('pointerleave',()=>setDashboardMenuOpen(menu,false));
+ // Hover navigation is for real mouse pointers only. Touchscreens use click-to-open.
+ menu.addEventListener('pointerenter',event=>{
+  if(!window.matchMedia('(hover: hover) and (pointer: fine)').matches || event.pointerType==='touch' || menu.dataset.clickOpen==='true')return;
+  closeDashboardMenus(menu);setDashboardMenuOpen(menu,true);
+ });
+ menu.addEventListener('pointerleave',event=>{
+  if(event.pointerType==='touch' || !window.matchMedia('(hover: hover) and (pointer: fine)').matches)return;
+  setDashboardMenuOpen(menu,false);
+ });
  trigger.addEventListener('click',event=>{
   event.stopPropagation();const open=menu.dataset.clickOpen!=='true';
   closeDashboardMenus(menu);setDashboardMenuOpen(menu,open);
@@ -54,7 +61,11 @@ for(const menu of dashboardMenus){
   (event.key==='ArrowUp'?items[items.length-1]:items[0])?.focus();
  });
  menu.addEventListener('click',event=>{if(event.target.closest('button')!==trigger){closeDashboardMenus();hideDayView2Tooltip();}});
- menu.addEventListener('focusout',event=>{if(!menu.contains(event.relatedTarget))setDashboardMenuOpen(menu,false);});
+ // On mobile, tapping an option can blur the trigger before its click.
+ // Outside taps and selection already close the menu explicitly.
+ menu.addEventListener('focusout',event=>{
+  if(window.matchMedia('(hover: hover) and (pointer: fine)').matches && !menu.contains(event.relatedTarget))setDashboardMenuOpen(menu,false);
+ });
 }
 document.addEventListener('pointerdown',event=>{if(!event.target.closest('.nav-menu-managed'))closeDashboardMenus();});
 document.addEventListener('keydown',event=>{
