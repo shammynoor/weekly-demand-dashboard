@@ -865,6 +865,9 @@ function chartControlKey(el){
  const type=el.tagName==='SELECT'?'select':el.type;
  if(!['checkbox','radio','select','range','date','month','number','search','text'].includes(type))return null;
  if(el.id)return (type==='checkbox'?'checkbox':type)+':'+page.id+':'+el.id;
+ // Dynamic filter rows can be rebuilt or reordered; use their stable data key.
+ const filterName=el.dataset?.filterName||el.dataset?.name||el.dataset?.option;
+ if(filterName)return type+':'+page.id+':'+(el.closest('[id]')?.id||page.id)+':'+filterName;
  const row=el.closest('label')||el.parentElement;
  const label=(row?.textContent||el.getAttribute('aria-label')||'').trim().replace(/\s+/g,' ').slice(0,120);
  const panel=el.closest('[id]')?.id||page.id;
