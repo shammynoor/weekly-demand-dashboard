@@ -933,7 +933,10 @@ function restoreChartCheckboxes(){
    // Waiting sliders attach their state handlers only when first opened.
    if(el.type==='range'&&/^waiting/.test(el.id)&&!el.dataset.bound)return;
    const value=saved[key],signature=JSON.stringify(value);
-   // Rebuilt toggle rows must be restored even when the saved value has not changed.
+   // A handler may reject a saved selection (for example, no matching data).
+   // Replaying it after every chart DOM mutation causes a redraw/restore loop.
+   // Renderers own rebuilt controls after the saved value has been attempted.
+   if(chartRestoredValues.get(key)===signature)return;
    if(el.tagName==='SELECT'){
     const wanted=Array.isArray(value)?value:[String(value)];
     if(!wanted.every(v=>[...el.options].some(option=>option.value===v)))return;
