@@ -4463,7 +4463,7 @@ setupTogglePriority();
 
 /* Primary Appt Type Box: one shared category/master-switch convention for every page. */
 const primaryApptCategoryState=new Map();
-const PRIMARY_APPT_ROOT_IDS=['demandUrgencyToggles','urgentCategoryToggles','routineCategoryToggles','plannedCategoryToggles','dayView2UrgencyToggles','bookingTimesUrgencyFilters','waitingUrgencyToggles','waitingTrendUrgencyToggles','dailyForecastFilters','weeklyForecastFilters'];
+const PRIMARY_APPT_ROOT_IDS=['demandUrgencyToggles','urgentCategoryToggles','routineCategoryToggles','plannedCategoryToggles','dayView2UrgencyToggles','waitingUrgencyToggles','waitingTrendUrgencyToggles','dailyForecastFilters','weeklyForecastFilters'];
 function enhancePrimaryApptTypeBox(root){
  if(!root)return;
  // Only inspect direct, ungrouped rows. Never mistake the category master for
@@ -4512,6 +4512,7 @@ function enhancePrimaryApptTypeBox(root){
     urgentCategoryToggles:typeof urgentCategoryDisabled!=='undefined'?urgentCategoryDisabled:null,
     routineCategoryToggles:typeof routineDisabledTypes!=='undefined'?routineDisabledTypes:null,
     plannedCategoryToggles:typeof plannedDisabledTypes!=='undefined'?plannedDisabledTypes:null,
+    dayView2UrgencyToggles:typeof dayView2DisabledUrgencies!=='undefined'?dayView2DisabledUrgencies:null,
     waitingUrgencyToggles:typeof waitingDisabledUrgency!=='undefined'?waitingDisabledUrgency:null,
     waitingTrendUrgencyToggles:typeof waitingTrendDisabledUrgency!=='undefined'?waitingTrendDisabledUrgency:null
    };
@@ -4528,6 +4529,7 @@ function enhancePrimaryApptTypeBox(root){
     }else if(root.id==='urgentCategoryToggles')renderAvailabilityChart();
     else if(root.id==='routineCategoryToggles')renderRoutineAvailabilityChart();
     else if(root.id==='plannedCategoryToggles')renderPlannedAvailabilityChart();
+    else if(root.id==='dayView2UrgencyToggles'){saveDayView2Preferences();renderDayView2();}
     else if(root.id==='waitingUrgencyToggles')renderWaitingTimesChart();
     else if(root.id==='waitingTrendUrgencyToggles')renderWaitingTrendChart();
     else if((root.id==='dailyForecastFilters'||root.id==='weeklyForecastFilters')&&typeof window.setForecastPrimaryApptCategory==='function')
