@@ -4463,7 +4463,7 @@ setupTogglePriority();
 
 /* Primary Appt Type Box: one shared category/master-switch convention for every page. */
 const primaryApptCategoryState=new Map();
-const PRIMARY_APPT_ROOT_IDS=['demandUrgencyToggles','urgentCategoryToggles','routineCategoryToggles','plannedCategoryToggles','dayView2UrgencyFilters','waitingUrgencyToggles','waitingTrendUrgencyToggles'];
+const PRIMARY_APPT_ROOT_IDS=['demandUrgencyToggles','urgentCategoryToggles','routineCategoryToggles','plannedCategoryToggles','dayView2UrgencyToggles','bookingTimesUrgencyFilters','waitingUrgencyToggles','waitingTrendUrgencyToggles'];
 function enhancePrimaryApptTypeBox(root){
  if(!root)return;
  const rows=[...root.querySelectorAll('label.filter-row')].filter(row=>row.querySelector('input[type="checkbox"]'));
