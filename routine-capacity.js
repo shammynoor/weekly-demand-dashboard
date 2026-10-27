@@ -39,9 +39,9 @@ function availableModes(doctors){
  const found=new Set();
  for(const r of availabilityRecords){
   if(String(r.availability).toLowerCase()!=='booked'||!included(r,doctors))continue;
-  const mode=rowMode(r.slot);if(isDashboardToggleOption(mode))found.add(mode);
+  const mode=rowMode(r.slot);if(mode&&isDashboardToggleOption(mode))found.add(mode);
  }
- return prioritySort('consult',[...found]);
+ return prioritySort('mode',[...found]);
 }
 function renderModes(modes){
  const root=$('routineCapConsult');if(!root)return;
@@ -111,7 +111,7 @@ function capacityFor(model,target,horizon){
  // reduction in weeks of median wait. Distributed over planning horizon.
  // Ongoing demand is always maintained; allowing more waiting never means
  // the practice can safely supply fewer appointments than demand.
- return Math.ceil(model.demand*(1+Math.max(0,model.wait-target)/horizon));
+ return Math.ceil(Math.max(model.capacity,model.demand*(1+Math.max(0,model.wait-target)/horizon)));
 }
 function svgEl(tag,attrs,text){
  const e=document.createElementNS('http://www.w3.org/2000/svg',tag);
