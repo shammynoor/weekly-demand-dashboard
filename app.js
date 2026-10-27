@@ -4461,86 +4461,33 @@ window.addEventListener('resize',()=>{if(!$('bookingTimesPage').classList.contai
 setupTogglePriority();
 
 
-/* Primary Appt Type Box: one shared category/master-switch convention for every page. */
-const primaryApptCategoryState=new Map();
-const PRIMARY_APPT_ROOT_IDS=['demandUrgencyToggles','urgentCategoryToggles','routineCategoryToggles','plannedCategoryToggles','dayView2UrgencyToggles','waitingUrgencyToggles','waitingTrendUrgencyToggles','dailyForecastFilters','weeklyForecastFilters'];
+/* Appointment Type Toggle Box: shared outline fieldsets; individual types own selection. */
+const PRIMARY_APPT_ROOT_IDS=['demandUrgencyToggles','urgentCategoryToggles','routineCategoryToggles','plannedCategoryToggles','dayView2UrgencyToggles','waitingUrgencyToggles','waitingTrendUrgencyToggles','dailyForecastFilters','weeklyForecastFilters','bookingTimesUrgencyFilters'];
 function enhancePrimaryApptTypeBox(root){
  if(!root)return;
- // Only inspect direct, ungrouped rows. Never mistake the category master for
- // an appointment type, and never repeatedly reparent an already grouped box.
+ root.classList.add('appointment-type-toggle-box');
  const rows=[...root.children].filter(row=>row.matches?.('label.filter-row')&&row.querySelector('input[type="checkbox"]'));
  if(!rows.length)return;
  const entries=rows.map(row=>{
   const input=row.querySelector('input[type="checkbox"]');
-  return {row,input,name:input.dataset.filterName||input.dataset.urgencyGroup||row.textContent.trim()};
+  return {row,input,name:input.dataset.filterName||input.dataset.urgencyGroup||input.dataset.forecastName||row.textContent.trim()};
  });
  if(entries.some(e=>!e.name||!groupUrgencyNames.includes(e.name)))return;
  const buckets=new Map();
  for(const entry of entries){
-  const cat=appointmentCategoryFor(entry.name)||'Other';
-  if(!buckets.has(cat))buckets.set(cat,[]);
-  buckets.get(cat).push(entry);
+  const category=appointmentCategoryFor(entry.name)||'Other';
+  if(!buckets.has(category))buckets.set(category,[]);
+  buckets.get(category).push(entry);
  }
  const fragment=document.createDocumentFragment();
  for(const category of [...new Set([...appointmentCategoryNames,'Other',...buckets.keys()])]){
   const items=buckets.get(category);if(!items?.length)continue;
-  const section=document.createElement('div');section.className='primary-appt-category';
-  const header=document.createElement('label');header.className='filter-row primary-appt-category-header';
-  const sw=document.createElement('span');sw.className='switch primary-appt-master-switch';
-  const master=document.createElement('input');master.type='checkbox';master.setAttribute('role','switch');
-  master.setAttribute('aria-label','Enable '+category+' appointment types');
-  const track=document.createElement('span');track.className='switch-track';
-  track.style.setProperty('--switch-on',appointmentCategoryColours[category]||'#638fac');
-  sw.append(master,track);
-  const title=document.createElement('span');title.textContent=category;
-  header.append(sw,title);section.append(header);
+  const section=document.createElement('fieldset');section.className='primary-appt-category';
+  const title=document.createElement('legend');title.className='primary-appt-category-heading';title.textContent=category;
   const children=document.createElement('div');children.className='primary-appt-category-items';
+  // Move the original rows, retaining their sizes, checked state and event handlers.
   for(const item of items)children.append(item.row);
-  section.append(children);fragment.append(section);
-  const key=root.id+'::'+category;
-  master.checked=primaryApptCategoryState.get(key)!==false;
-  const applyDisabled=()=>{
-   const off=!master.checked;
-   section.classList.toggle('primary-appt-category-off',off);
-   for(const {input} of items){
-    if(off)input.checked=false;
-    input.disabled=off;
-    input.setAttribute('aria-disabled',String(off));
-   }
-  };
-  applyDisabled();
-  master.addEventListener('change',()=>{
-   const on=master.checked;
-   primaryApptCategoryState.set(key,on);
-   const sets={
-    demandUrgencyToggles:typeof disabledDemandUrgencyGroups!=='undefined'?disabledDemandUrgencyGroups:null,
-    urgentCategoryToggles:typeof urgentCategoryDisabled!=='undefined'?urgentCategoryDisabled:null,
-    routineCategoryToggles:typeof routineDisabledTypes!=='undefined'?routineDisabledTypes:null,
-    plannedCategoryToggles:typeof plannedDisabledTypes!=='undefined'?plannedDisabledTypes:null,
-    dayView2UrgencyToggles:typeof dayView2DisabledUrgencies!=='undefined'?dayView2DisabledUrgencies:null,
-    waitingUrgencyToggles:typeof waitingDisabledUrgency!=='undefined'?waitingDisabledUrgency:null,
-    waitingTrendUrgencyToggles:typeof waitingTrendDisabledUrgency!=='undefined'?waitingTrendDisabledUrgency:null
-   };
-   const disabledSet=sets[root.id];
-   for(const {input,name} of items){
-    input.checked=on;
-    if(disabledSet){if(on)disabledSet.delete(name);else disabledSet.add(name);}
-   }
-   applyDisabled();
-   // Only one render per category action; defer until the switch has painted.
-   requestAnimationFrame(()=>{
-    if(root.id==='demandUrgencyToggles'){
-     demandFilterCache=new WeakMap();clinicianMatchCache=new Map();scheduleDemandRefresh();
-    }else if(root.id==='urgentCategoryToggles')renderAvailabilityChart();
-    else if(root.id==='routineCategoryToggles')renderRoutineAvailabilityChart();
-    else if(root.id==='plannedCategoryToggles')renderPlannedAvailabilityChart();
-    else if(root.id==='dayView2UrgencyToggles'){saveDayView2Preferences();renderDayView2();}
-    else if(root.id==='waitingUrgencyToggles')renderWaitingTimesChart();
-    else if(root.id==='waitingTrendUrgencyToggles')renderWaitingTrendChart();
-    else if((root.id==='dailyForecastFilters'||root.id==='weeklyForecastFilters')&&typeof window.setForecastPrimaryApptCategory==='function')
-     window.setForecastPrimaryApptCategory(root.id,items.map(item=>item.name),on);
-   });
-  });
+  section.append(title,children);fragment.append(section);
  }
  root.replaceChildren(fragment);
 }

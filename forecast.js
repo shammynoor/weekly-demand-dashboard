@@ -114,26 +114,13 @@ function setForecastUrgencyEnabled(name,enabled){
  saveForecastPreferences();
  scheduleForecastFilterRefresh('daily');
 }
-window.setForecastPrimaryApptCategory=function(rootId,names,on){
- const mode=rootId==='weeklyForecastFilters'?'weekly':'daily';
- for(const name of names){
-  if(on)disabled[mode].delete(name);else disabled[mode].add(name);
-  if(mode==='daily'){
-   if(on&&!isDaily(name))urgencyExplicitlyEnabled.add(name);
-   if(!on)urgencyExplicitlyEnabled.delete(name);
-  }
- }
- if(mode==='daily')saveForecastPreferences();
- scheduleForecastFilterRefresh(mode);
-};
 function renderDailyUrgencyFilters(){
  const root=$('dailyForecastFilters');if(!root)return;
  const names=forecastUrgencyNames();
  const existing=[...root.querySelectorAll('input[data-forecast-name]')];
  if(existing.length===names.length&&names.every(name=>existing.some(input=>input.dataset.forecastName===name))){
   for(const input of existing){
-   const category=input.closest('.primary-appt-category');
-   input.checked=category?.classList.contains('primary-appt-category-off')?false:forecastUrgencyEnabled(input.dataset.forecastName);
+   input.checked=forecastUrgencyEnabled(input.dataset.forecastName);
   }
   return;
  }
