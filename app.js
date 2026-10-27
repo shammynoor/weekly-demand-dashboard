@@ -20,6 +20,7 @@ const SHARED_SETTINGS_FILE='weekly-demand-categories.json';
 const SHARED_TOKEN='u!'+btoa(unescape(encodeURIComponent(SHARED_FOLDER_LINK))).replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
 let isOwner=false,sharedDriveId='',sharedFolderId='';
 let folderAccessVerified=false,folderAccessDenied=false,authNeedsAccountSelection=false,authChecking=false;
+let dashboardIdleState=null,dashboardIdleInterval=null,dashboardLogoutRunning=false;
 try{authNeedsAccountSelection=!!sessionStorage.getItem('gp-insight-account-selection-required');}catch(_){}
 function sharedPath(){return '/shares/'+SHARED_TOKEN+'/driveItem'}
 function sourceItemUrl(id){return isOwner?'/me/drive/items/'+encodeURIComponent(id):'/drives/'+encodeURIComponent(sharedDriveId)+'/items/'+encodeURIComponent(id)}
@@ -1226,6 +1227,7 @@ function authStepWithTimeout(promise,message,milliseconds=20000){
  return Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error(message)),milliseconds);})]).finally(()=>clearTimeout(timer));
 }
 function returnToMicrosoftSignIn(denied){
+ stopDashboardIdleSession();
  folderAccessDenied=denied;folderAccessVerified=false;authenticatedOnce=false;
  authNeedsAccountSelection=true;activeAccount=null;selectedFolder=null;
  isOwner=false;cloudReady=false;
@@ -1270,7 +1272,7 @@ async function initAuth(){
    }
    await loadCloudCategories();
    if(!isOwner&&!cloudReady)throw Error('Shared settings could not be loaded. '+($('cloudCategoryStatus')?.textContent||'Ask the owner to publish them.'));
-   folderAccessVerified=true;folderAccessDenied=false;setButtons();
+   folderAccessVerified=true;folderAccessDenied=false;setButtons();startDashboardIdleSession();
    // Existing browser migrates its chosen folder to OneDrive settings once.
    if(isOwner){if(cloudFolder){selectedFolder=cloudFolder;localStorage.setItem(FOLDER_KEY,JSON.stringify(selectedFolder))}
    else if(selectedFolder&&cloudReady){cloudFolder=selectedFolder;await saveCloudCategories()}
@@ -1888,7 +1890,7 @@ $('signIn').onclick=async()=>{
   await auth.loginRedirect({scopes:SCOPES,prompt:'select_account'});
  }catch(error){setStatus('Sign-in failed: '+(error?.message||error));setButtons();}
 };
-$('signOut').onclick=async()=>{if(!activeAccount)return;try{authenticatedOnce=false;$('dashboardShell').dataset.signedIn='false';await auth.logoutRedirect({account:activeAccount,postLogoutRedirectUri:REDIRECT_URI})}catch(e){setStatus('Sign-out failed: '+e.message)}};
+$('signOut').onclick=()=>void logoutDashboard(false);
 $('chooseFolder').onclick=()=>{if(isOwner)showFolderPicker()};
 $('sourceSetup').onclick=()=>{if(isOwner)showFolderPicker()};
 $('cancelFolder').onclick=()=>$('folderPicker').classList.add('hidden');
@@ -2532,6 +2534,7 @@ function renderPersonalSettings(){
   const previous=document.createElement('option');previous.value=saved.userType;previous.textContent=saved.userType+' (no longer configured)';previous.disabled=true;select.append(previous);
  }
  select.value=typeof saved.userType==='string'?saved.userType:'';
+ $('personalLogoutMinutes').value=String(dashboardIdleMinutes());
  $('personalSettingsStatus').textContent='';
 }
 function savePersonalSettings(event){
@@ -2539,7 +2542,8 @@ function savePersonalSettings(event){
  const key=personalSettingsKey();
  if(!key){$('personalSettingsStatus').textContent='Sign in to save your personal settings.';return;}
  try{
-  localStorage.setItem(key,JSON.stringify({name:$('personalName').value.trim(),userType:$('personalUserType').value}));
+  localStorage.setItem(key,JSON.stringify({...readPersonalSettings(),name:$('personalName').value.trim(),userType:$('personalUserType').value,logoutMinutes:[10,30,60,120,240].includes(Number($('personalLogoutMinutes').value))?Number($('personalLogoutMinutes').value):30}));
+  recordDashboardActivity(true);checkDashboardInactivity();
   $('personalSettingsStatus').textContent='Personal settings saved.';
  }catch{$('personalSettingsStatus').textContent='Unable to save personal settings in this browser.';}
 }
@@ -4782,3 +4786,75 @@ function enhanceTimeGroupingToggle(root){
  });
 }
 document.querySelectorAll('.days-weeks-filter-row,.forecast-basis-switch').forEach(enhanceTimeGroupingToggle);
+
+
+/* Per-account inactivity timeout. Absolute timestamps survive throttled/background tabs. */
+function dashboardIdleMinutes(){
+ const minutes=Number(readPersonalSettings().logoutMinutes);
+ return [10,30,60,120,240].includes(minutes)?minutes:30;
+}
+function stopDashboardIdleSession(){
+ if(dashboardIdleInterval!==null)clearInterval(dashboardIdleInterval);
+ dashboardIdleInterval=null;dashboardIdleState=null;
+ const dialog=$('idleLogoutDialog');if(dialog?.open)dialog.close();
+}
+function startDashboardIdleSession(){
+ const account=chartPreferenceAccount();if(!account||!folderAccessVerified)return;
+ if(dashboardIdleState?.account===account)return;
+ stopDashboardIdleSession();dashboardLogoutRunning=false;
+ dashboardIdleState={account,key:'gp-insight-last-activity-v1:'+encodeURIComponent(account),lastActivity:Date.now(),lastWrite:0};
+ recordDashboardActivity(true);
+ dashboardIdleInterval=setInterval(checkDashboardInactivity,1000);
+}
+function recordDashboardActivity(force=false){
+ const state=dashboardIdleState;if(!state||dashboardLogoutRunning)return;
+ try{const shared=Number(localStorage.getItem(state.key));if(Number.isFinite(shared))state.lastActivity=Math.max(state.lastActivity,shared);}catch(_){}
+ if(Date.now()-state.lastActivity>=dashboardIdleMinutes()*60000){void logoutDashboard(true);return;}
+ if($('idleLogoutDialog')?.open&&!force)return;
+ state.lastActivity=Date.now();
+ if(force||state.lastActivity-state.lastWrite>=5000){
+  state.lastWrite=state.lastActivity;
+  try{localStorage.setItem(state.key,String(state.lastActivity));}catch(_){}
+ }
+ if(force){const dialog=$('idleLogoutDialog');if(dialog?.open)dialog.close();}
+}
+function checkDashboardInactivity(){
+ const state=dashboardIdleState;if(!state||dashboardLogoutRunning||!folderAccessVerified)return;
+ try{const saved=Number(localStorage.getItem(state.key));if(Number.isFinite(saved))state.lastActivity=Math.max(state.lastActivity,saved);}catch(_){}
+ const remaining=state.lastActivity+dashboardIdleMinutes()*60000-Date.now();
+ if(remaining<=0){void logoutDashboard(true);return;}
+ const dialog=$('idleLogoutDialog');
+ if(remaining<=30000){
+  $('idleLogoutCountdown').textContent='Logout in '+Math.ceil(remaining/1000)+' seconds';
+  if(!dialog.open)dialog.showModal();
+ }else if(dialog.open)dialog.close();
+}
+async function logoutDashboard(automatic=false){
+ if(dashboardLogoutRunning)return;
+ const account=activeAccount,accountId=chartPreferenceAccount();
+ dashboardLogoutRunning=true;stopDashboardIdleSession();
+ if(accountId)try{localStorage.setItem('gp-insight-session-ended:'+encodeURIComponent(accountId),String(Date.now()));}catch(_){}
+ returnToMicrosoftSignIn(false);authChecking=false;
+ setStatus(automatic?'You were logged out after inactivity. Sign in to continue.':'You have been signed out.');
+ setButtons();
+ try{if(auth&&account)await auth.logoutRedirect({account,postLogoutRedirectUri:REDIRECT_URI});}
+ catch(error){console.warn('Microsoft sign-out did not complete',error);}
+ finally{dashboardLogoutRunning=false;}
+}
+$('idleStaySignedIn').addEventListener('click',()=>{recordDashboardActivity(true);checkDashboardInactivity();});
+$('idleLogoutNow').addEventListener('click',()=>void logoutDashboard(false));
+$('idleLogoutDialog').addEventListener('cancel',event=>event.preventDefault());
+for(const event of ['pointerdown','pointermove','keydown','wheel','touchstart']){
+ document.addEventListener(event,e=>{if(e.isTrusted)recordDashboardActivity();},{capture:true,passive:true});
+}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')checkDashboardInactivity();});
+window.addEventListener('focus',checkDashboardInactivity);
+window.addEventListener('storage',event=>{
+ const state=dashboardIdleState;if(!state)return;
+ if(event.key==='gp-insight-session-ended:'+encodeURIComponent(state.account)){
+  stopDashboardIdleSession();returnToMicrosoftSignIn(false);authChecking=false;
+  setStatus('You have been signed out. Sign in to continue.');setButtons();return;
+ }
+ if(event.key===state.key){const value=Number(event.newValue);if(Number.isFinite(value))state.lastActivity=Math.max(state.lastActivity,value);checkDashboardInactivity();}
+ if(event.key===personalSettingsKey())checkDashboardInactivity();
+});
