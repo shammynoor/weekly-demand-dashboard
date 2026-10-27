@@ -77,8 +77,10 @@ function modelData(){
  },'');
  if(!mostRecent)return {error:'There are no completed routine doctor appointments in the loaded Slot Reports.'};
  // The most recent partially covered week is excluded unless the latest record is Sunday.
- const isSunday=new Date(mostRecent+'T12:00:00Z').getUTCDay()===0;
- const end=isSunday?mostRecent:shift(monday(mostRecent),-1);
+ const lastDay=new Date(mostRecent+'T12:00:00Z').getUTCDay();
+ // GP routine clinics usually run Monday–Friday. A week ending on Friday
+ // is complete even when there are no weekend doctor appointments.
+ const end=(lastDay===0||lastDay>=5)?shift(monday(mostRecent),6):shift(monday(mostRecent),-1);
  const weeks=Number($('routineCapHistory')?.value||52);
  const start=shift(end,1-weeks*7);
  const appts=new Map(),bookings=new Map(),leads=[];
