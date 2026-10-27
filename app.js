@@ -3052,22 +3052,48 @@ function calculateDayView2PaceBaseline({date,minute,remainingMinute=minute,names
  const tolerance=Math.max(2,mean*.05);
  return {ready:true,...diagnostics,mean,low:Math.max(0,Math.min(quantile(.15),mean-tolerance)),high:Math.max(quantile(.85),mean+tolerance)};
 }
+// The historical 15th–85th percentile band remains the normal range.
+const DAY_VIEW2_PACE_RATINGS=[
+ {label:'Much lower than usual',color:'#244A92',text:'#FFFFFF'},
+ {label:'Well below the normal range',color:'#3769AF',text:'#FFFFFF'},
+ {label:'Lower than normal',color:'#518CC5',text:'#FFFFFF'},
+ {label:'Just below the normal range',color:'#77B2D4',text:'#17334C'},
+ {label:'At the lower end of the normal range',color:'#9BCED1',text:'#17334C'},
+ {label:'A little below average',color:'#B6DDD0',text:'#17334C'},
+ {label:'About average',color:'#B9D9B2',text:'#17334C'},
+ {label:'A little above average',color:'#D8DEA0',text:'#17334C'},
+ {label:'At the upper end of the normal range',color:'#E9D27E',text:'#17334C'},
+ {label:'Just above the normal range',color:'#F2B65F',text:'#17334C'},
+ {label:'Higher than normal',color:'#EC9250',text:'#17334C'},
+ {label:'Well above the normal range',color:'#DE6848',text:'#FFFFFF'},
+ {label:'Much higher than usual',color:'#BE3F45',text:'#FFFFFF'}
+];
 function dayView2PaceClassification(actual,baseline){
- if(!baseline.ready)return 'unavailable';
- // A much larger departure must clear both normal historical variation and
- // a meaningful margin (15% of the typical count, with a five-slot minimum).
- if(actual<baseline.low){
-  const margin=Math.max(5,baseline.mean*.15,baseline.mean-baseline.low);
-  return actual<=baseline.low-margin?'much-below':'slightly-below';
+ if(!baseline?.ready||!Number.isFinite(actual)||!Number.isFinite(baseline.mean)||!Number.isFinite(baseline.low)||!Number.isFinite(baseline.high))return null;
+ const mean=baseline.mean,low=baseline.low,high=baseline.high;
+ const margin=Math.max(5,mean*.15,mean-low,high-mean);
+ const halfMargin=margin/2;
+ if(actual<low){
+  const distance=low-actual;
+  return distance>=margin*2?0:distance>=margin?1:distance>=halfMargin?2:3;
  }
- if(actual>baseline.high){
-  const margin=Math.max(5,baseline.mean*.15,baseline.high-baseline.mean);
-  return actual>=baseline.high+margin?'much-above':'slightly-above';
+ if(actual>high){
+  const distance=actual-high;
+  return distance>=margin*2?12:distance>=margin?11:distance>=halfMargin?10:9;
  }
- const width=baseline.high-baseline.low;
- if(width>0&&actual<baseline.low+width/3)return 'normal-low';
- if(width>0&&actual>baseline.high-width/3)return 'normal-high';
- return 'normal';
+ // Within the normal range, split either side of the historical mean into
+ // a lower/upper end, a little below/above average, and about average.
+ if(actual<mean){
+  const span=Math.max(0,mean-low);
+  const fraction=span>0?(actual-low)/span:1;
+  return fraction<1/3?4:fraction<2/3?5:6;
+ }
+ if(actual>mean){
+  const span=Math.max(0,high-mean);
+  const fraction=span>0?(actual-mean)/span:0;
+  return fraction>2/3?8:fraction>1/3?7:6;
+ }
+ return 6;
 }
 function layoutDayView2PaceRail(rail){
  const width=rail.clientWidth;if(!width)return;
@@ -3117,9 +3143,9 @@ function dayView2PaceContext(date,names,totals){
  else if(snapshotDate!==date){status='Awaiting today’s data';description='The latest Slot Report is from '+snapshot.toLocaleDateString('en-GB',{day:'numeric',month:'long',timeZone:'Europe/London'})+'. Refresh today’s report for a weekday comparison.';}
  else if([...holidays].some(holiday=>mondayOf(holiday)===mondayOf(date))){status='Bank holiday week';description='A normal '+weekday+' comparison is not shown during a bank-holiday week.';}
  else{
-  baseline=dayView2PaceBaseline(date,minute,names,holidays,remainingMinute);state=dayView2PaceClassification(totals.booked,baseline);
+  baseline=dayView2PaceBaseline(date,minute,names,holidays,remainingMinute);const ratingLevel=dayView2PaceClassification(totals.booked,baseline);state=ratingLevel==null?'unavailable':String(ratingLevel);
   if(!baseline.ready){status=baseline.reportedDays>=6?'Booking-time data incomplete':'Not enough history';description=baseline.reportedDays>=6?baseline.reportedDays+' non-bank-holiday '+weekday+' Slot Reports found in the last 12 months; '+baseline.samples.length+' have at least 90% booking-time coverage.':baseline.samples.length+' of 6 required comparable '+weekday+' Slot Reports available in the last 12 months.';}
-  else status={'much-below':'↘ Much lower than usual','slightly-below':'↘ Slightly lower than usual','normal-low':'≈ Lower end of usual range',normal:'≈ Within usual range','normal-high':'≈ Higher end of usual range','slightly-above':'↗ Slightly higher than usual','much-above':'↗ Much higher than usual'}[state];
+  else status=DAY_VIEW2_PACE_RATINGS[Number(state)]?.label||'About average';
  }
  return {date,names,totals,total,actual:totals.booked,weekday,minute,clock,remainingMinute,remainingClock,baseline,state,status,description};
 }
@@ -3129,7 +3155,7 @@ function createDayView2BookingPace(date,names,totals,context=dayView2PaceContext
  const box=document.createElement('section');box.className='day-view2-booking-pace';box.setAttribute('aria-label','Booking pace for today, Slot Reports only');box.dataset.paceState=state;
  const header=document.createElement('div');header.className='day-view2-pace-heading';
  const title=document.createElement('strong');title.textContent='Booking pace'+(clock?' · as of '+clock:'');
- const badge=document.createElement('span');badge.className='day-view2-pace-badge';badge.textContent=status;badge.setAttribute('role','status');
+ const badge=document.createElement('span');badge.className='day-view2-pace-badge';badge.textContent=status;badge.setAttribute('role','status');const rating=baseline?.ready?DAY_VIEW2_PACE_RATINGS[Number(state)]:null;if(rating){badge.style.backgroundColor=rating.color;badge.style.color=rating.text;}
  header.append(title,badge);box.append(header);
  if(description){const subtitle=document.createElement('p');subtitle.className='day-view2-pace-subtitle';subtitle.textContent=description;box.append(subtitle);}
  if(baseline?.ready){
