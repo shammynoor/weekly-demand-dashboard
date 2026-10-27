@@ -4499,10 +4499,38 @@ function enhancePrimaryApptTypeBox(root){
   }
   applyDisabled();
   master.addEventListener('change',()=>{
-   primaryApptCategoryState.set(key,master.checked);
-   for(const input of [...children.querySelectorAll('input[type="checkbox"]')]){
-    input.disabled=false;
-    if(input.checked!==master.checked){input.checked=master.checked;input.dispatchEvent(new Event('change',{bubbles:true}));}
+   const on=master.checked;
+   primaryApptCategoryState.set(key,on);
+   const inputs=[...children.querySelectorAll('input[type="checkbox"]')];
+   // Update the backing filter set in one pass and redraw once. Dispatching
+   // a change event for every child previously launched several expensive
+   // synchronous Plotly renders and could freeze the whole dashboard.
+   const sets={
+    demandUrgencyToggles:typeof disabledDemandUrgencyGroups!=='undefined'?disabledDemandUrgencyGroups:null,
+    urgentCategoryToggles:typeof urgentCategoryDisabled!=='undefined'?urgentCategoryDisabled:null,
+    routineCategoryToggles:typeof routineDisabledTypes!=='undefined'?routineDisabledTypes:null,
+    plannedCategoryToggles:typeof plannedDisabledTypes!=='undefined'?plannedDisabledTypes:null,
+    dayView2UrgencyToggles:typeof dayView2DisabledUrgencies!=='undefined'?dayView2DisabledUrgencies:null
+   };
+   const disabledSet=sets[root.id];
+   if(disabledSet){
+    for(const input of inputs){
+     const name=input.dataset.filterName||input.dataset.urgencyGroup||input.closest('label')?.textContent.trim();
+     input.checked=on;
+     if(on)disabledSet.delete(name);else disabledSet.add(name);
+    }
+    if(root.id==='demandUrgencyToggles'){
+     demandFilterCache=new WeakMap();clinicianMatchCache=new Map();scheduleDemandRefresh();
+    }else if(root.id==='dayView2UrgencyToggles'){
+     saveDayView2Preferences();renderDayView2();
+    }else{
+     (root.id==='urgentCategoryToggles'?renderAvailabilityChart:root.id==='plannedCategoryToggles'?renderPlannedAvailabilityChart:renderRoutineAvailabilityChart)();
+    }
+   }else{
+    // Other panels own their filter state; retain their existing handlers.
+    for(const input of inputs)if(input.checked!==on){
+     input.checked=on;input.dispatchEvent(new Event('change',{bubbles:true}));
+    }
    }
    applyDisabled();
   });
