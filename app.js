@@ -4495,7 +4495,7 @@ function enhancePrimaryApptTypeBox(root){
   master.checked=enabled;
   const applyDisabled=()=>{section.classList.toggle('primary-appt-category-off',!master.checked);for(const input of children.querySelectorAll('input[type="checkbox"]'))input.disabled=!master.checked;};
   if(!enabled){
-   for(const input of children.querySelectorAll('input[type="checkbox"]'))if(input.checked){input.checked=false;input.dispatchEvent(new Event('change',{bubbles:true}));}
+   for(const input of children.querySelectorAll('input[type="checkbox"]'))input.checked=false;
   }
   applyDisabled();
   master.addEventListener('change',()=>{
@@ -4526,11 +4526,13 @@ function enhancePrimaryApptTypeBox(root){
     }else{
      (root.id==='urgentCategoryToggles'?renderAvailabilityChart:root.id==='plannedCategoryToggles'?renderPlannedAvailabilityChart:renderRoutineAvailabilityChart)();
     }
+   }else if((root.id==='dailyForecastFilters'||root.id==='weeklyForecastFilters')&&typeof window.setForecastPrimaryApptCategory==='function'){
+    for(const input of inputs)input.checked=on;
+    window.setForecastPrimaryApptCategory(root.id,inputs.map(input=>input.closest('label')?.textContent.trim()).filter(Boolean),on);
    }else{
-    // Other panels own their filter state; retain their existing handlers.
-    for(const input of inputs)if(input.checked!==on){
-     input.checked=on;input.dispatchEvent(new Event('change',{bubbles:true}));
-    }
+    // Unknown panel: update its visible switches without firing a storm of
+    // expensive synchronous chart renders. Individual switches still work.
+    for(const input of inputs)input.checked=on;
    }
    applyDisabled();
   });
