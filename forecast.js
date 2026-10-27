@@ -104,6 +104,19 @@ function setForecastUrgencyEnabled(name,enabled){
  else{disabled.daily.add(name);urgencyExplicitlyEnabled.delete(name)}
  saveForecastPreferences();renderHistoricalWeekday();
 }
+// Shared Primary Appt Type Box: batch category changes into one forecast refresh.
+window.setForecastPrimaryApptCategory=function(rootId,names,on){
+ const mode=rootId==='weeklyForecastFilters'?'weekly':'daily';
+ for(const name of names){
+  if(on)disabled[mode].delete(name);else disabled[mode].add(name);
+  if(mode==='daily'){
+   if(on&&!isDaily(name))urgencyExplicitlyEnabled.add(name);
+   if(!on)urgencyExplicitlyEnabled.delete(name);
+  }
+ }
+ saveForecastPreferences();
+ if(mode==='daily')renderHistoricalWeekday();else render(mode);
+};
 function renderDailyUrgencyFilters(){
  const root=$('dailyForecastFilters');if(!root)return;
  root.replaceChildren();
