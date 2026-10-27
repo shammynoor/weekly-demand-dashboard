@@ -3245,11 +3245,9 @@ function renderDayView2(){
  $('dayView2Fill').textContent=bookable?Math.round(100*totals.booked/bookable)+'% of bookable capacity filled':'No bookable slots reported';
  $('dayView2Detail').textContent='Select a capacity segment for its count and meaning.';
  const lanes=$('dayView2Lanes');hideDayView2Tooltip();dayView2SegmentObserver?.disconnect();lanes.replaceChildren();
- // One slot-to-pixel scale for all three days, including identical group-gap allowance.
+ // Shared count axis across every appointment-type bar on all three dates.
  const visibleDays=Array.from({length:3},(_,i)=>days.get(dayView2AddWorkingDays(date,i)));
- const scaleMax=Math.max(1,...visibleDays.map(day=>statuses.reduce((sum,status)=>sum+day.totals[status],0)));
- const maxGroups=Math.max(1,...visibleDays.map(day=>[...day.groups.values()].filter(counts=>statuses.some(status=>counts[status]>0)).length));
- lanes.style.setProperty('--day-view2-gap-budget',((maxGroups-1)*12)+'px');
+ const scaleMax=Math.max(1,...visibleDays.flatMap(day=>[...day.groups.values()].map(counts=>statuses.reduce((sum,status)=>sum+counts[status],0))));
 
  for(let offset=0;offset<=2;offset++){
  const laneDate=dayView2AddWorkingDays(date,offset),laneDay=days.get(laneDate),laneTotals=laneDay.totals;
@@ -3270,7 +3268,7 @@ function renderDayView2(){
   const groupTotal=statuses.reduce((sum,status)=>sum+counts[status],0);
   if(!groupTotal)continue;
   const colour=urgencyGroupColour(name);
-  const groupSpan=document.createElement('div');groupSpan.className='day-view2-urgency-span';groupSpan.style.flex='0 0 calc((100% - var(--day-view2-gap-budget)) * '+(groupTotal/scaleMax)+')';groupSpan.setAttribute('role','group');groupSpan.setAttribute('aria-label',name);
+  const groupSpan=document.createElement('div');groupSpan.className='day-view2-urgency-span';groupSpan.style.width=(100*groupTotal/scaleMax)+'%';groupSpan.setAttribute('role','group');groupSpan.setAttribute('aria-label',name);
   installDayView2GroupTooltip(groupSpan,{name,date:laneDateLabel,counts,colour});
 
   for(const status of statuses){
@@ -3290,7 +3288,10 @@ function renderDayView2(){
    });
    groupSpan.append(segment);
   }
-  bar.append(groupSpan);
+  const groupRow=document.createElement('div');groupRow.className='day-view2-group-row';
+  const groupLabel=document.createElement('span');groupLabel.className='day-view2-group-name';groupLabel.textContent=name;
+  const track=document.createElement('div');track.className='day-view2-group-track';track.append(groupSpan);
+  groupRow.append(groupLabel,track);bar.append(groupRow);
  }
  lane.append(heading,bar);
  if(offset===0){const pace=createDayView2BookingPace(date,[...selected.groups.keys()],slotTotals,paceContext);if(pace){if(paceExpanded)pace.querySelector('details')?.setAttribute('open','');lane.append(pace);}const further=createDayView2FurtherBooking(paceContext);if(further)lane.append(further);}
