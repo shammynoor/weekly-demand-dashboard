@@ -4459,3 +4459,63 @@ function renderBookingTimesChart(){
 window.addEventListener('resize',()=>{if(!$('bookingTimesPage').classList.contains('hidden'))renderBookingTimesChart()});
 
 setupTogglePriority();
+
+
+/* Primary Appt Type Box: one shared category/master-switch convention for every page. */
+const primaryApptCategoryState=new Map();
+const PRIMARY_APPT_ROOT_IDS=['demandUrgencyToggles','urgentCategoryToggles','routineCategoryToggles','plannedCategoryToggles','dayView2UrgencyFilters','waitingUrgencyToggles','waitingTrendUrgencyToggles'];
+function enhancePrimaryApptTypeBox(root){
+ if(!root)return;
+ const rows=[...root.querySelectorAll('label.filter-row')].filter(row=>row.querySelector('input[type="checkbox"]'));
+ if(!rows.length)return;
+ const names=rows.map(row=>row.querySelector('input').dataset.filterName||row.querySelector('input').dataset.urgencyGroup||'');
+ if(names.some(name=>!name||!groupUrgencyNames.includes(name)))return;
+ const categories=[...new Set([...appointmentCategoryNames,'Other'])];
+ const signature=JSON.stringify(rows.map((row,i)=>[names[i],appointmentCategoryFor(names[i])||'Other']));
+ if(root.dataset.primaryApptSignature===signature&&root.querySelector('.primary-appt-category'))return;
+ root.dataset.primaryApptSignature=signature;
+ const existing=rows.map((row,i)=>({row,name:names[i]}));
+ const buckets=new Map();
+ for(const {row,name} of existing){const cat=appointmentCategoryFor(name)||'Other';if(!buckets.has(cat))buckets.set(cat,[]);buckets.get(cat).push(row);}
+ const fragment=document.createDocumentFragment();
+ for(const category of categories){
+  const items=buckets.get(category);if(!items?.length)continue;
+  const section=document.createElement('div');section.className='primary-appt-category';
+  const header=document.createElement('label');header.className='filter-row primary-appt-category-header';
+  const sw=document.createElement('span');sw.className='switch';
+  const master=document.createElement('input');master.type='checkbox';master.setAttribute('role','switch');master.setAttribute('aria-label','Enable '+category+' appointment types');
+  const track=document.createElement('span');track.className='switch-track';track.style.setProperty('--switch-on',appointmentCategoryColours[category]||'#638fac');
+  sw.append(master,track);
+  const title=document.createElement('span');title.textContent=category;header.append(sw,title);section.append(header);
+  const children=document.createElement('div');children.className='primary-appt-category-items';
+  for(const row of items)children.append(row);
+  section.append(children);fragment.append(section);
+  const key=root.id+'::'+category;
+  const enabled=primaryApptCategoryState.get(key)!==false;
+  master.checked=enabled;
+  const applyDisabled=()=>{section.classList.toggle('primary-appt-category-off',!master.checked);for(const input of children.querySelectorAll('input[type="checkbox"]'))input.disabled=!master.checked;};
+  if(!enabled){
+   for(const input of children.querySelectorAll('input[type="checkbox"]'))if(input.checked){input.checked=false;input.dispatchEvent(new Event('change',{bubbles:true}));}
+  }
+  applyDisabled();
+  master.addEventListener('change',()=>{
+   primaryApptCategoryState.set(key,master.checked);
+   for(const input of [...children.querySelectorAll('input[type="checkbox"]')]){
+    input.disabled=false;
+    if(input.checked!==master.checked){input.checked=master.checked;input.dispatchEvent(new Event('change',{bubbles:true}));}
+   }
+   applyDisabled();
+  });
+ }
+ root.replaceChildren(fragment);
+}
+function installPrimaryApptTypeBoxConvention(){
+ const roots=()=>PRIMARY_APPT_ROOT_IDS.map(id=>document.getElementById(id)).filter(Boolean);
+ let pending=false;
+ const refresh=()=>{if(pending)return;pending=true;queueMicrotask(()=>{pending=false;for(const root of roots())enhancePrimaryApptTypeBox(root);});};
+ const observer=new MutationObserver(mutations=>{if(mutations.some(m=>m.type==='childList'))refresh();});
+ observer.observe(document.body,{childList:true,subtree:true});
+ refresh();
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',installPrimaryApptTypeBoxConvention);
+else installPrimaryApptTypeBoxConvention();
