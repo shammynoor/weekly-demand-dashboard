@@ -2557,6 +2557,80 @@ function listSizeAdjustedCount(date,count){
 }
 $('adjustListSize')?.addEventListener('change',e=>{adjustDemandForListSize=e.target.checked;scheduleDemandRefresh();});
 function updateHomePracticeName(){const el=$('homePracticeName');if(el)el.textContent=practiceSettings.name.trim()||'Practice overview';}
+
+/* Practice settings workspace; population chart remains the existing editor. */
+let practiceSettingsTab='users',practiceUsersLoading=false;
+function selectPracticeSettingsTab(tab){
+ practiceSettingsTab=tab==='list'?'list':'users';
+ for(const name of ['users','list']){
+  const selected=practiceSettingsTab===name;
+  $('practiceTab-'+name).setAttribute('aria-selected',String(selected));
+  $('practiceTab-'+name).classList.toggle('active',selected);
+  $('practicePanel-'+name).hidden=!selected;
+ }
+ if(practiceSettingsTab==='users')void renderPracticeUsers();
+ else renderPracticeSettings();
+}
+function practicePermissionUsers(permissions){
+ const ownerEmail=(activeAccount?.username||'').toLowerCase();
+ const rows=new Map();
+ const add=(identity,email='',owner=false)=>{
+  const user=identity?.user||identity?.siteUser||{};
+  const address=String(user.email||email||'').trim();
+  const id=String(user.id||identity?.siteUser?.id||'');
+  const key=address.toLowerCase()||id||user.displayName;
+  if(!key)return;
+  const admin=owner||address.toLowerCase()===ownerEmail||id.toLowerCase()===OWNER_DRIVE_ID.toLowerCase();
+  const existing=rows.get(key);
+  rows.set(key,{name:user.displayName||existing?.name||address||'Name unavailable',email:address||existing?.email||'',role:admin?'Admin':existing?.role||'View only'});
+ };
+ add({user:{displayName:activeAccount?.name||activeAccount?.username}},activeAccount?.username||'',true);
+ for(const permission of permissions){
+  if(permission.expirationDateTime&&Date.parse(permission.expirationDateTime)<Date.now())continue;
+  const identities=[permission.grantedToV2||permission.grantedTo,...(permission.grantedToIdentitiesV2||permission.grantedToIdentities||[])].filter(Boolean);
+  const owner=(permission.roles||[]).includes('owner');
+  if(owner)continue; // The signed-in administrator is already listed above.
+  for(const identity of identities)add(identity,identities.length===1?permission.invitation?.email||'':'');
+  if(!identities.length&&permission.invitation?.email)add({},permission.invitation.email);
+ }
+ return [...rows.values()].sort((a,b)=>(a.role==='Admin'?-1:1)-(b.role==='Admin'?-1:1)||a.name.localeCompare(b.name));
+}
+function drawPracticeUsers(rows){
+ const body=$('practiceUsersBody');body.replaceChildren();
+ for(const user of rows){
+  const row=document.createElement('tr');
+  for(const value of [user.name,user.email||'Not supplied',user.role]){const cell=document.createElement('td');cell.textContent=value;row.append(cell);}
+  body.append(row);
+ }
+}
+async function renderPracticeUsers(){
+ if(!isOwner||practiceUsersLoading)return;
+ practiceUsersLoading=true;
+ const status=$('practiceUsersStatus'),button=$('practiceUsersRefresh');
+ button.disabled=true;status.textContent='Loading practice users…';
+ drawPracticeUsers(practicePermissionUsers([]));
+ try{
+  const folder=await graph(sharedPath());
+  const drive=folder.parentReference?.driveId;
+  if(!drive||!folder.id)throw Error('The shared practice folder could not be identified.');
+  let next='/drives/'+encodeURIComponent(drive)+'/items/'+encodeURIComponent(folder.id)+'/permissions';
+  const permissions=[],seen=new Set();
+  while(next){
+   if(seen.has(next))throw Error('The user list could not be loaded completely.');
+   seen.add(next);
+   const page=await graph(next);permissions.push(...(page.value||[]));next=page['@odata.nextLink']||'';
+  }
+  if(!isOwner)return;
+  const rows=practicePermissionUsers(permissions);drawPracticeUsers(rows);
+  const unnamedLinks=permissions.some(p=>p.link&&['anonymous','organization'].includes(p.link.scope));
+  status.textContent=rows.length+' practice user'+(rows.length===1?'':'s')+'.'+(unnamedLinks?' Access through general sharing links cannot be listed by name.':'');
+ }catch(error){status.textContent='Unable to load the full practice user list: '+(error?.message||'Please try again.');}
+ finally{practiceUsersLoading=false;button.disabled=false;}
+}
+$('practiceTab-users').addEventListener('click',()=>selectPracticeSettingsTab('users'));
+$('practiceTab-list').addEventListener('click',()=>selectPracticeSettingsTab('list'));
+$('practiceUsersRefresh').addEventListener('click',()=>void renderPracticeUsers());
+
 function renderPracticeSettings(){
  const input=$('practiceNameInput');if(!input)return;
  updateHomePracticeName();
@@ -3451,7 +3525,7 @@ function showPage(which){
  else if(which==='signposting')setTimeout(renderSignpostingChart,0);
  else if(which==='people'){renderPeopleGroups();renderPeopleGroupFilter();renderPeople();}
  else if(which==='personalSettings'){renderPersonalSettings();}
- else if(which==='practiceSettings'){renderPracticeSettings();}
+ else if(which==='practiceSettings'){selectPracticeSettingsTab(practiceSettingsTab);}
  else if(which==='categories'){renderSlotGroupBoxes();renderSlotTable();renderEditor();renderGroupUrgencyEditor();renderClinicianEditor();renderClinicianGroupEditor();renderConsultEditor()}
 }document.getElementById('navHome').onclick=()=>showPage('home');document.getElementById('navChart').onclick=()=>showPage('chart');document.getElementById('navWaitingTimes').onclick=()=>showPage('waitingTimes');document.getElementById('navWaitingTrend').onclick=()=>showPage('waitingTrend');document.getElementById('navCategories').onclick=()=>showPage('categories');document.getElementById('navAvailability').onclick=()=>showPage('availability');document.getElementById('navRoutineAvailability').onclick=()=>showPage('routineAvailability');
 document.getElementById('navPlannedAvailability').onclick=()=>showPage('plannedAvailability');document.getElementById('navDayView2').onclick=()=>showPage('dayView');document.getElementById('navBookingTimes').onclick=()=>showPage('bookingTimes');document.getElementById('navSignposting').onclick=()=>showPage('signposting');document.getElementById('navPeople').onclick=()=>showPage('people');document.getElementById('navPracticeSettings').onclick=()=>showPage('practiceSettings');document.getElementById('navPersonalSettings').onclick=()=>showPage('personalSettings');$('personalSettingsForm').addEventListener('submit',savePersonalSettings);$('demandAdditiveLines')?.addEventListener('change',()=>{const chart=$('combinedDemandChart');if(chart&&window.Plotly)Plotly.purge(chart);scheduleDemandRefresh();});$('slotTableSearch').addEventListener('input',renderSlotTable);for(const id of ['slotGroupFilter','slotModeFilter','slotPurposeFilter','slotCapacityFilter'])$(id)?.addEventListener('change',renderSlotTable);$('slotUnassignedOnly').addEventListener('change',renderSlotTable);$('slotModeUnassignedOnly').addEventListener('change',renderSlotTable);$('slotPurposeUnassignedOnly').addEventListener('change',renderSlotTable);$('slotCapacityUnassignedOnly').addEventListener('change',renderSlotTable);$('peopleSearch').addEventListener('input',renderPeople);$('peopleGroupFilter').addEventListener('change',renderPeople);$('peopleUnassignedOnly').addEventListener('change',()=>{const only=$('peopleUnassignedOnly').checked;$('peopleGroupFilter').disabled=only;renderPeople()});
