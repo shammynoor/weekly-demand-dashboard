@@ -2544,7 +2544,7 @@ function drawCombinedDemandChart(){
  const years=[...new Set(visibleWeeks.map(w=>Number(w.slice(0,4))))].sort((a,b)=>a-b);
  const latestYear=years.length?years[years.length-1]:null;
  const traces=[];
- const yearWidth=(year)=>year===latestYear?2.75:Math.max(0.65,1.4-(latestYear-year)*0.25);
+ const yearWidth=(year)=>[2.6,2.0,1.5][latestYear-year]??1.2;
  const x=p=>continuousMode?monthOfPeriod(p.date):(monthlyMode?Number(p.date.slice(5,7))-.5:monthPosition(p.date));
  // One legend entry per year; colour indicates urgency, thickness highlights the latest year.
  if(!continuousMode)for(const [i,year] of years.entries()){

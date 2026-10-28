@@ -28,7 +28,7 @@ Smoothing must share the neighbouring toolbar label font family, size, weight an
 
 ## Current-period continuity
 
-Use the historical booking-date/month axis for current observations and finishing ranges. Join the last completed historical point to the finishing estimate with a fine 1.35 px dotted segment (1 px dots, 3 px gaps). Keep its endpoint, observed circle, whisker and caps at one shared x position. All current-period series share the same booking date/month position; whiskers may overlap. Use 1.1 px whiskers at 65% opacity with 3 px caps and indicative 70% prediction coverage. Keep the full historical axis and mean lines continuous; do not reserve a separate prediction lane. Current-year line width is 2.75 px; earlier-year lines are thinner and more transparent.
+Use the historical booking-date/month axis for current observations and finishing ranges. Join the last completed historical point to the finishing estimate with a fine 1.35 px dotted segment (1 px dots, 3 px gaps). Keep its endpoint, observed circle, whisker and caps at one shared x position. All current-period series share the same booking date/month position; whiskers may overlap. Use 1.1 px whiskers at 65% opacity with 3 px caps and indicative 70% prediction coverage. Keep the full historical axis and mean lines continuous; do not reserve a separate prediction lane. Line widths relative to the latest displayed year are 2.6 px, 2.0 px for the previous year, 1.5 px two years earlier, and 1.2 px for all older years. Earlier-year opacity remains unchanged.
 
 ## Secondary toggle-box expansion
 
