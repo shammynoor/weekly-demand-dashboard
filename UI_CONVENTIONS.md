@@ -81,3 +81,8 @@ Appointment Number Suggestions must not read the analytics day-of-week selection
 ## Shared chart layout memory
 
 See [CHART_LAYOUT.md](CHART_LAYOUT.md) for the user-approved title-left, Display-options-right, timeline-below, full-width-chart layout. Historic Booking Activity uses this theme first. Preserve the flow-based options panel, tight toggle column, aligned dropdown/smoothing column, rounded open dropdown menus, non-overlapping tick labels and per-account preferences when applying it to other requested charts.
+
+
+## Historical timeline and line finish
+
+Use a 44 px outlined rounded timeline container, a 12 px blue rail and 34 px white-rimmed handles. Fill geometry must use the actual 34 px thumb diameter. Historical year shading is blue-grey (#e1eaf1 at 80% opacity); apply a subtle neutral shadow only to historical data-line paths, preserving average lines and uncertainty markers.

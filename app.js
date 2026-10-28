@@ -2377,7 +2377,7 @@ function yearBackgroundShapes(periods){
  const years=periods.map(v=>Number(v.slice(0,4)));
  const shapes=[];
  for(let year=Math.min(...years);year<=Math.max(...years);year++){
-  if(year%2===0)shapes.push({type:'rect',xref:'x',yref:'paper',x0:year+'-01-01',x1:(year+1)+'-01-01',y0:0,y1:1,fillcolor:'#f2f5f8',opacity:0.65,line:{width:0},layer:'below'});
+  if(year%2===0)shapes.push({type:'rect',xref:'x',yref:'paper',x0:year+'-01-01',x1:(year+1)+'-01-01',y0:0,y1:1,fillcolor:'#e1eaf1',opacity:0.8,line:{width:0},layer:'below'});
  }
  return shapes;
 }
@@ -2403,7 +2403,7 @@ function setupDemandMonthSlider(){
  // The native range thumb travels over the input width MINUS its own diameter.
  // Position the blue fill between the actual thumb centres, not the input edges.
  const trackWidth=fill.parentElement.clientWidth;
- const thumbDiameter=20;
+ const thumbDiameter=34;
  const sliderLeft=start.getBoundingClientRect().left-fill.parentElement.getBoundingClientRect().left;
  const travel=Math.max(0,start.clientWidth-thumbDiameter);
  const startCentre=sliderLeft+thumbDiameter/2+((a-low)/span)*travel;
