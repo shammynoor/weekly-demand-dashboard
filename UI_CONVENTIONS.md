@@ -53,11 +53,14 @@ Place small Average capsules inside the plot, along their dotted average lines. 
 
 ## Darwin responsive header
 
-Use Darwin Insight IQ with IQ in superscript, retaining the original logo mark. The compact branding/account row is soft slate (#527595); the menu row stays slate blue (#3c6487). Display the saved personal name (falling back to the Microsoft name/email) above Administrator or View only. Show Refreshed with the date and time of the latest successfully imported Slot Report, formatted in Europe/London; do not substitute the refresh-check time or a Signposting timestamp. Keep refresh and account/sign-out actions available.
+Use Darwin Insight IQ with IQ in superscript, retaining the original logo mark. The compact branding/account row is soft slate (#527595); the menu row stays slate blue (#3c6487). Display the saved personal name (falling back to the Microsoft name/email) above Administrator or View only. Show Last clinical system download with the date and time of the latest successfully imported Slot Report, formatted in Europe/London; do not substitute the refresh-check time or a Signposting timestamp. Keep refresh and account/sign-out actions available.
 
-Above 1100 px keep the icon-led navigation expanded. At 1100 px and below use a Menu toggle with the current page and a 29 px settings cog at the right end of the same menu row. Open the main navigation as wrapping compact pills, with bounded dropdown submenus; close it on selection, outside click, Escape or crossing the breakpoint. Opening Menu must not change the selected page. Keep name, role and timestamp visible on phones and preserve 44 px touch targets.
+Above 1100 px keep the icon-led navigation expanded. At 1100 px and below use a Menu toggle with a 29 px settings cog at the right end of the same menu row. Open the main navigation as wrapping compact pills, with bounded dropdown submenus; close it on selection, outside click, Escape or crossing the breakpoint. Opening Menu must not change the selected page. Do not show a page-name label beside the hamburger. Keep name, role and timestamp visible on phones and preserve 44 px touch targets.
 
 
 ## Navigation pill spacing
 
 Use fully rounded primary pills (999 px radius), 14 px desktop labels, 20 px icons, 40 px height and 8 px gaps. Inactive pills retain a subtle white outline; the selected pill uses a white fill. The expanded hamburger menu uses content-width pills rather than full-width rows. Its submenus use 12 px text, 32 px desktop minimum rows and 40 px touch minimum rows, with capped height and scrolling. Clamp dropdown positions to the navigation bounds when opened or resized.
+
+
+While refreshing/updating, replace the clinical-download caption and timestamp with progress in that same header region, then restore the imported-file timestamp when finished. Keep refresh errors visible in the feedback region. Retain a small down-chevron immediately to the right of each primary dropdown label.

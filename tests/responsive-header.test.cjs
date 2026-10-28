@@ -36,10 +36,10 @@ test('header name uses the personal name, then Microsoft name, then email',()=>{
  const f=fixture();f.ctx.readPersonalSettings=()=>({name:'Personal Name'});f.ctx.updateHeaderIdentity();assert.equal(f.nodes.accountLabel.textContent,'Personal Name');assert.equal(f.nodes.accountLabel.title,'user@example.com');
  f.ctx.readPersonalSettings=()=>({name:' '});f.ctx.updateHeaderIdentity();assert.equal(f.nodes.accountLabel.textContent,'Microsoft Name');f.ctx.activeAccount.name='';f.ctx.updateHeaderIdentity();assert.equal(f.nodes.accountLabel.textContent,'user@example.com');
 });
-test('Refreshed shows the imported file date and time in London, including midnight and DST',()=>{
- const f=fixture();f.ctx.updateHeaderSlotReportTime(Date.parse('2026-07-01T23:30:00Z'));assert.match(f.nodes.headerSlotRefreshed.textContent,/Refreshed: 2 Jul 2026,? 00:30/);
- f.ctx.updateHeaderSlotReportTime(Date.parse('2026-10-27T14:35:00Z'));assert.match(f.nodes.headerSlotRefreshed.textContent,/Refreshed: 27 Oct 2026,? 14:35/);
- f.ctx.updateHeaderSlotReportTime(null);assert.equal(f.nodes.headerSlotRefreshed.textContent,'Refreshed: unavailable');f.ctx.updateHeaderSlotReportTime(1e300);assert.equal(f.nodes.headerSlotRefreshed.textContent,'Refreshed: unavailable');
+test('Clinical download shows the imported file date and time in London, including midnight and DST',()=>{
+ const f=fixture();f.ctx.updateHeaderSlotReportTime(Date.parse('2026-07-01T23:30:00Z'));assert.match(f.nodes.headerSlotRefreshed.textContent,/Last clinical system download: 2 Jul 2026,? 00:30/);
+ f.ctx.updateHeaderSlotReportTime(Date.parse('2026-10-27T14:35:00Z'));assert.match(f.nodes.headerSlotRefreshed.textContent,/Last clinical system download: 27 Oct 2026,? 14:35/);
+ f.ctx.updateHeaderSlotReportTime(null);assert.equal(f.nodes.headerSlotRefreshed.textContent,'Last clinical system download: unavailable');f.ctx.updateHeaderSlotReportTime(1e300);assert.equal(f.nodes.headerSlotRefreshed.textContent,'Last clinical system download: unavailable');
 });
 
 test('opening the responsive Menu does not dismiss a visible Forecast page',()=>{
@@ -67,4 +67,15 @@ test('compact dropdowns are kept within the navigation bounds',()=>{
  position={left:30,right:280};ctx.positionDashboardSubmenu(menu);assert.equal(style['--nav-dropdown-shift'],'14px');
  style['--nav-dropdown-shift']='untouched';narrow=false;ctx.positionDashboardSubmenu(menu);assert.equal(style['--nav-dropdown-shift'],'untouched');
  narrow=true;settings=true;ctx.positionDashboardSubmenu(menu);assert.equal(style['--nav-dropdown-shift'],'untouched');
+});
+
+test('refresh progress replaces the clinical download label in the same header area',()=>{
+ const f=fixture();f.nodes.refreshFeedback=new f.Node('refreshFeedback');
+ const a=source.indexOf('function showRefreshFeedback('),b=source.indexOf('function resizeVisibleCharts(',a);vm.runInContext(source.slice(a,b),f.ctx);
+ f.ctx.updateHeaderSlotReportTime(Date.parse('2026-10-27T14:35Z'));
+ f.ctx.showRefreshFeedback('Updating data…',true);assert.equal(f.nodes.headerSlotRefreshed.textContent,'Updating data…');assert.equal(f.nodes.headerSlotRefreshed.getAttribute('aria-busy'),'true');assert.equal(f.nodes.refreshFeedback.textContent,'');
+ f.ctx.updateHeaderSlotReportTime(Date.parse('2026-10-28T09:15Z'));assert.equal(f.nodes.headerSlotRefreshed.textContent,'Updating data…');
+ f.ctx.showRefreshFeedback('Data refreshed successfully');assert.match(f.nodes.headerSlotRefreshed.textContent,/Last clinical system download: 28 Oct 2026,? 09:15/);assert.equal(f.nodes.headerSlotRefreshed.getAttribute('aria-busy'),'false');
+ assert.equal(f.nodes.refreshFeedback.classList.contains('header-feedback-quiet'),true);
+ f.ctx.showRefreshFeedback('Refreshing data…',true);f.ctx.showRefreshFeedback('Refresh failed: offline');assert.match(f.nodes.headerSlotRefreshed.textContent,/28 Oct 2026/);assert.equal(f.nodes.refreshFeedback.textContent,'Refresh failed: offline');assert.equal(f.nodes.refreshFeedback.classList.contains('header-feedback-quiet'),false);
 });

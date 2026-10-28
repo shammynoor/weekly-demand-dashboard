@@ -89,10 +89,13 @@ function updateHeaderIdentity(){
  label.textContent=(typeof saved.name==='string'&&saved.name.trim())||activeAccount?.name||activeAccount?.username||'Microsoft account';
  label.title=activeAccount?.username||'';
 }
+let headerReportTimestamp=null,headerRefreshLoading=false;
 function updateHeaderSlotReportTime(timestamp){
+ headerReportTimestamp=timestamp;
+ if(headerRefreshLoading)return;
  const label=$('headerSlotRefreshed');if(!label)return;
  const valid=Number.isFinite(timestamp)&&!Number.isNaN(new Date(timestamp).getTime());
- label.textContent='Refreshed: '+(valid?new Date(timestamp).toLocaleString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'Europe/London'}):'unavailable');
+ label.textContent='Last clinical system download: '+(valid?new Date(timestamp).toLocaleString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'Europe/London'}):'unavailable');
  label.title=valid?'Latest successfully imported Slot Report file · London time':'No imported Slot Report timestamp is available.';
 }
 function closeHeaderNavigation(){
@@ -115,12 +118,6 @@ function setupResponsiveHeader(){
  document.addEventListener('pointerdown',event=>{if(!nav.contains(event.target))setOpen(false);const accountMenu=$('headerAccountMenu');if(accountMenu&&!accountMenu.contains(event.target))accountMenu.removeAttribute('open');});
  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&nav.classList.contains('header-menu-open')){setOpen(false);toggle.focus();}});
  const widthChanged=()=>setOpen(false);if(narrow.addEventListener)narrow.addEventListener('change',widthChanged);else narrow.addListener(widthChanged);
- const updateCurrent=()=>{
-  const active=[...nav.querySelectorAll('button.active')];
-  const selected=active.find(button=>button.closest('.nav-demand-dropdown,.nav-availability-dropdown,.nav-settings-dropdown'))||active[0];
-  const current=$('headerCurrentPage');if(current){const text=selected?.textContent.trim()||'Home';if(current.textContent!==text)current.textContent=text;current.title=text;}
- };
- new MutationObserver(updateCurrent).observe(nav,{attributes:true,attributeFilter:['class'],subtree:true});updateCurrent();
  $('headerPersonalSettings')?.addEventListener('click',()=>{$('headerAccountMenu')?.removeAttribute('open');showPage('personalSettings')});
 }
 
@@ -1279,7 +1276,10 @@ function setStatus(s){$('connectionStatus').textContent=s;$('loginStatus').textC
 function setSync(s){$('syncStatus').textContent=s}
 function showRefreshFeedback(message,loading=false){
  const el=$('refreshFeedback');if(!el)return;
- el.textContent=message;el.classList.toggle('loading',loading);
+ headerRefreshLoading=loading;
+ const header=$('headerSlotRefreshed');
+ if(header){header.setAttribute('aria-busy',String(loading));if(loading){header.textContent=message;header.title=message;}else updateHeaderSlotReportTime(headerReportTimestamp);}
+ el.textContent=loading?'':message;el.classList.toggle('loading',loading);
  el.classList.toggle('header-feedback-quiet',!loading&&/^(Already up to date|Data refreshed successfully|Data refreshed ·)/.test(message));
  el.setAttribute('aria-busy',String(loading));
 }
