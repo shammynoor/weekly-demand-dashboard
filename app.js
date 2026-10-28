@@ -2226,6 +2226,8 @@ if(selectedUrgencyCount<=1&&additiveControl?.checked){additiveControl.checked=fa
 const additiveLines=selectedUrgencyCount>1&&additiveControl?.checked===true;
 const activeWeekSet=new Set();
 for(const r of records){if(includedRecord(r)){const key=periodKey(r);if(key)activeWeekSet.add(key)}}
+const reportClock=Number.isFinite(capacityCSVLatestModified)?dayView2LondonClock(new Date(Math.min(Date.now(),capacityCSVLatestModified))):null;
+if(showCurrentWeek&&reportClock&&periodKey({bookedDay:reportClock.date,bookedWeek:mondayOf(reportClock.date)})===(monthlyMode?thisMonth:thisWeek)&&(monthlyMode||!excludeBankHolidays||!bankHolidayWeeks.has(thisWeek)))activeWeekSet.add(monthlyMode?thisMonth:thisWeek);
 const activeWeeks=[...activeWeekSet].sort();
 const appointmentDates=availabilityRecords.filter(r=>String(r.availability||'').trim().toLowerCase()==='booked').map(r=>r.date).filter(Boolean).sort();
 const firstAppointmentDate=appointmentDates[0]||'';
@@ -2340,9 +2342,9 @@ function installDemandCardTooltip(target){
   target.removeAllListeners('plotly_hover');target.removeAllListeners('plotly_unhover');
  }
  target.on('plotly_hover',data=>{
-  const point=data.points?.find(p=>Number.isFinite(p.y)&&p.data?.line?.color&&typeof p.data?.name==='string');
+  const point=data.points?.find(p=>p.data?.meta?.nowcast||(Number.isFinite(p.y)&&p.data?.line?.color&&typeof p.data?.name==='string'));
   if(!point){card.hidden=true;return;}
-  const name=point.data.name;
+  const name=point.data.name,projection=point.data.meta?.nowcast;
   const index=Array.isArray(point.pointNumber)?point.pointNumber[0]:(point.pointIndex??point.pointNumber);
   const values=point.customdata??point.data?.customdata?.[index];
   const date=Array.isArray(values)?values[0]:(typeof values==='string'?values:'');
@@ -2356,12 +2358,13 @@ function installDemandCardTooltip(target){
   }
   card.replaceChildren();
   const heading=document.createElement('div');heading.className='availability-tooltip-heading';
-  heading.textContent=formatted||(name.match(/\d{4}$/)?.[0]||'Appointment demand');card.append(heading);
+  heading.textContent=projection?'Estimated finishing range':formatted||(name.match(/\d{4}$/)?.[0]||'Appointment demand');card.append(heading);
   const row=document.createElement('div');row.className='availability-tooltip-line';
   const dot=document.createElement('span');dot.className='availability-tooltip-dot';dot.style.backgroundColor=point.data.line.color;
   const value=document.createElement('span');value.textContent=name+': '+Number(Array.isArray(values)?values[1]:point.y).toLocaleString('en-GB')+' actual bookings';
   if(Array.isArray(values)&&adjustDemandForListSize)value.textContent+=' · Adjusted: '+Number(values[2]).toLocaleString('en-GB',{maximumFractionDigits:1});
   if(demandSmoothingLevel()&&!/\(incomplete\)$/.test(name))value.textContent+=' · Smoothed: '+Number(point.y).toLocaleString('en-GB',{maximumFractionDigits:1});
+  if(projection){value.textContent=projection.category+': '+Math.round(projection.low).toLocaleString('en-GB')+'–'+Math.round(projection.high).toLocaleString('en-GB')+' estimated bookings · '+Math.round(projection.rawObserved).toLocaleString('en-GB')+' actual bookings so far'+(adjustDemandForListSize?' · Range adjusted for list size':'')+' · Report: '+projection.asOfLabel+' · '+projection.samples+' complete historical '+(projection.mode==='month'?'months':'weeks')+(projection.intradayProfile?' · Historical booking-time profile':' · Uniform-time fallback; wider range');}
   row.append(dot,value);card.append(row);card.hidden=false;
   const rect=target.getBoundingClientRect(),event=data.event;
   const x=event?.clientX!=null?event.clientX-rect.left:rect.width/2;
@@ -2412,6 +2415,27 @@ function drawCombinedDemandChart(){
  if(additiveLines)for(const category of selected)for(const [date,count] of demandCategoryTotals[category]||[]){
   combinedTotals.set(date,(combinedTotals.get(date)||0)+count);
  }
+ const currentKey=monthlyMode?thisMonth:thisWeek;
+ const currentInView=showCurrentWeek&&visibleWeeks.includes(currentKey);
+ const nowcastCategories=additiveLines?['Combined']:selected;
+ const nowcastDaily=new Map(nowcastCategories.map(name=>[name,new Map()])),nowcastTimed=new Map(nowcastCategories.map(name=>[name,[]]));
+ const snapshot=Number.isFinite(capacityCSVLatestModified)?new Date(Math.min(Date.now(),capacityCSVLatestModified)):null;
+ const snapshotClock=snapshot?dayView2LondonClock(snapshot):null;
+ const asOfLabel=snapshot?snapshot.toLocaleString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Europe/London'})+' London time':'timestamp unavailable';
+ if(currentInView){
+  const oldest=GPCorrectness.shift(monthlyMode?thisMonth+'-01':thisWeek,-750);
+  for(const row of records){
+   if(!row.bookedDay||row.bookedDay<oldest||!includedRecord(row))continue;
+   const group=capacityUrgencyCategory(row.slot),category=additiveLines?(selected.includes(group)?'Combined':null):group,bucket=nowcastDaily.get(category);
+   if(!bucket)continue;const previous=bucket.get(row.bookedDay)||{date:row.bookedDay,count:0,rawCount:0};previous.count+=adjustedCount(row.bookedDay,row.count);previous.rawCount+=row.count;bucket.set(row.bookedDay,previous);
+  }
+  for(const row of bookingTimeRecords){
+   if(!row.bookedDay||row.bookedDay<oldest||!includedRecord({...row,status:'Booked',bookedWeek:mondayOf(row.bookedDay)}))continue;
+   const group=capacityUrgencyCategory(row.slot),category=additiveLines?(selected.includes(group)?'Combined':null):group,bucket=nowcastTimed.get(category);
+   if(bucket)bucket.push({date:row.bookedDay,minute:row.minute,count:adjustedCount(row.bookedDay,row.count)});
+  }
+ }
+ const nowcastErrors=[],nowcastReady=[];
  for(const category of additiveLines?['Combined']:selected){
   const totals=additiveLines?combinedTotals:demandCategoryTotals[category];
   const points=GPCorrectness.smoothDemandSeries([...totals].filter(([date])=>(!demandMonthStart||date.slice(0,7)>=demandMonthStart)&&(!demandMonthEnd||date.slice(0,7)<=demandMonthEnd)).map(([date,count])=>({date,rawCount:count,count:adjustedCount(date,count),year:Number(date.slice(0,4))})),{level:demandSmoothingLevel(),continuous:continuousMode,currentPeriod:showCurrentWeek?(monthlyMode?thisMonth:thisWeek):''});
@@ -2433,13 +2457,20 @@ function drawCombinedDemandChart(){
     type:'scatter',mode:'lines',connectgaps:false,opacity,
     line:{color:additiveLines?'#2678ad':urgencyGroupColour(category),width,shape:demandSmoothingLevel()?'spline':'linear',smoothing:0.5},
     hoverinfo:'text',text:plotPoints.map(p=>p.date)});
-   if(partial)traces.push({name:category+' '+year+' (incomplete)',showlegend:false,
-    x:complete.length?[x(complete[complete.length-1]),x(last)]:[x(last)],
-    customdata:complete.length?[complete[complete.length-1],last].map(p=>[p.date,p.rawCount,p.count]):[[last.date,last.rawCount,last.count]],
-    y:complete.length?[complete[complete.length-1].smoothed,last.count]:[last.count],
-    type:'scatter',mode:'lines+markers',opacity,
-    line:{color:additiveLines?'#2678ad':urgencyGroupColour(category),width,dash:'dot'},marker:{size:7,symbol:'circle-open'},
-    hoverinfo:'text',text:plotPoints.map(p=>p.date)});
+   if(partial){
+    const projection=GPCorrectness.currentPeriodNowcast({mode:monthlyMode?'month':'week',currentDate:todayLondon,clock:snapshotClock,daily:[...(nowcastDaily.get(category)?.values()||[])],timed:nowcastTimed.get(category)||[],coverage:slotReportCoverage,excludedPeriods:monthlyMode||!excludeBankHolidays?[]:[...bankHolidayWeeks]});
+    if(projection.error){nowcastErrors.push(category+': '+projection.error);continue;}
+    const anchor=complete.at(-1)||previousPoint,colour=additiveLines?'#2678ad':urgencyGroupColour(category);
+    const currentX=x(last),bandStart=anchor?x(anchor):currentX;
+    const bandEnd=anchor?currentX:(continuousMode?projection.periodEnd:(monthlyMode?currentX+0.35:monthPosition(projection.periodEnd)));
+    const anchorY=anchor?anchor.smoothed:projection.low;
+    const bandColour=/^#[0-9a-f]{6}$/i.test(colour)?'rgba('+[1,3,5].map(i=>parseInt(colour.slice(i,i+2),16)).join(',')+',0.22)':'rgba(38,120,173,0.22)';
+    const meta={...projection,category,asOfLabel};
+    traces.push({name:category+' '+year+' estimated range',legendgroup:String(year),showlegend:false,type:'scatter',mode:'lines',
+     x:[bandStart,bandEnd,bandEnd,bandStart],y:[anchorY,projection.low,projection.high,anchorY],fill:'toself',fillcolor:bandColour,
+     line:{color:colour,width:0},hoveron:'fills',hoverinfo:'text',text:category+' estimated finish: '+Math.round(projection.low).toLocaleString('en-GB')+'–'+Math.round(projection.high).toLocaleString('en-GB')+' · Actual so far: '+Math.round(projection.rawObserved).toLocaleString('en-GB')+' · Report: '+asOfLabel,meta:{nowcast:meta}});
+    maxCount=Math.max(maxCount,projection.high);nowcastReady.push(category);
+   }
   }
  }
  // One horizontal mean for each visible urgency group, calculated over the
@@ -2448,7 +2479,7 @@ function drawCombinedDemandChart(){
  const averageAnnotations=[];
  for(const category of additiveLines?['Combined']:selected){
   const totals=additiveLines?combinedTotals:demandCategoryTotals[category];
-  const values=visibleWeeks.map(w=>adjustedCount(w,totals.get(w)||0)).filter(Number.isFinite);
+  const values=visibleWeeks.filter(w=>!periodIsCurrent(w)).map(w=>adjustedCount(w,totals.get(w)||0)).filter(Number.isFinite);
   if(!values.length)continue;
   const average=values.reduce((sum,value)=>sum+value,0)/values.length;
   maxCount=Math.max(maxCount,average);
@@ -2458,6 +2489,11 @@ function drawCombinedDemandChart(){
   averageAnnotations.push({xref:'paper',yref:'y',x:1,y:average,xanchor:'left',yanchor:'middle',xshift:8,
    text:'Av. '+Math.round(average).toLocaleString('en-GB'),showarrow:false,
    font:{size:11,color:colour},bgcolor:'rgba(255,255,255,0.90)',bordercolor:'rgba(170,185,200,0.65)',borderwidth:1,borderpad:6});
+ }
+ const forecastStatus=$('demandNowcastStatus');if(forecastStatus){
+  const visibleCurrentMonth=(!demandMonthStart||thisMonth>=demandMonthStart)&&(!demandMonthEnd||thisMonth<=demandMonthEnd);
+  forecastStatus.hidden=!showCurrentWeek||!visibleCurrentMonth||!selected.length;
+  forecastStatus.textContent=nowcastReady.length?'Shaded area: estimated finishing range for the current '+(monthlyMode?'month':'week')+'. Report updated '+asOfLabel+'. Actual bookings so far are available on hover. Range is indicative.'+(nowcastErrors.length?' '+nowcastErrors.join(' '):''):nowcastErrors.length?'Current-period estimate unavailable. '+nowcastErrors.join(' '):'Current-period estimate unavailable: '+(!snapshotClock?'report timestamp unavailable.':snapshotClock.date<(monthlyMode?thisMonth+'-01':thisWeek)?'the latest report predates the current period.':'no current bookings match the displayed filters.');
  }
  // Fit the axis closely to the visible series and average lines, retaining a zero baseline.
  const yAxisTop=Math.max(5,Math.ceil(maxCount*1.08));

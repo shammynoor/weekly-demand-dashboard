@@ -10,3 +10,8 @@ Match the compact Clinician Groups sidebar switches: approximately 32.4 × 18 CS
 Use a compact discrete slider in the chart display-options row, beside Combine selected lines. Label its four stops Off, Low, Medium and High, without repeating the active value beside Smoothing. Retain native range keyboard behaviour, visible focus and an accessible value label. Reuse the existing blue rail/white-rimmed thumb styling.
 
 Keep 6 px between the Smoothing title and the bar. Add 24 px of separation before the smoothing group in addition to the toolbar gap, wrapping cleanly on narrow screens.
+
+
+## Current-period estimate band
+
+Use a translucent band in the series colour to show an indicative final-total range for the incomplete week/month. Keep historical lines solid, draw no precise projected endpoint, and label the shaded area and report timestamp next to the chart. Hover details distinguish actual bookings so far from estimated finishing bounds. If the report is stale or historical coverage is insufficient, explain why no range can be shown. The show-current control owns this visibility.

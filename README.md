@@ -435,3 +435,14 @@ The display-options row includes a discrete **Smoothing** slider: **Off**, **Low
 The former Additive Lines control is now labelled **Combine selected lines**. Off displays a separate coloured line for each enabled appointment type. On displays their combined total, with a **Combined:** heading identifying the included types. The clarified control has a new preference key so an old saved Additive Lines choice does not silently merge the lines on the next visit; subsequent explicit choices are remembered normally.
 
 Smoothing uses only its title and the four labels below the bar. The repeated current-value text is removed; accessible value announcements remain. The title sits 6 px from the bar, with extra separation from Combine selected lines.
+
+
+## Current-period finishing range
+
+When Show current week/month is enabled, Historic Booking Activity replaces the old dotted partial-count endpoint with a shaded range for the estimated final period total. The range follows the active appointment types, secondary filters, combined-line setting and list-size adjustment. It is independent of display smoothing. Historical mean lines exclude the incomplete current period.
+
+The model uses observed bookings through the latest imported Slot Report modification timestamp, capped at the current London date/time. It never advances an old report to the wall clock. A report from a previous period or a missing report timestamp produces an explicit unavailable message. The timestamp is a proxy for export freshness, not independently verified clinical-system extraction metadata.
+
+Complete covered historical periods provide weekday booking weights and analogue completion patterns (up to 104 weeks or 24 months; at least 8 weeks or 6 months). Current-day progress uses the comparable weekday's booking-time distribution when at least 90% of historical booking counts have usable times. Otherwise it uses a uniform-time fallback and widens the range. Early zero counts borrow a small historical prior rather than implying a zero finishing total. Coverage uses the existing unfiltered report spans; internal omissions remain indistinguishable from zero activity.
+
+The shaded area uses the historical analogue 5th–95th percentile spread plus a conservative uncertainty floor that grows with the remaining period, sparse samples and missing intraday data. It is an **indicative prediction range**, not a calibrated confidence guarantee. It does not model future service changes, exceptional closures or unexpected demand. It never places the lower bound below bookings already observed. Hover details show the finishing range, actual bookings so far, report timestamp, sample count and whether the intraday fallback was used. No precise projected endpoint is drawn.
