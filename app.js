@@ -2460,15 +2460,15 @@ function drawCombinedDemandChart(){
    if(partial){
     const projection=GPCorrectness.currentPeriodNowcast({mode:monthlyMode?'month':'week',currentDate:todayLondon,clock:snapshotClock,daily:[...(nowcastDaily.get(category)?.values()||[])],timed:nowcastTimed.get(category)||[],coverage:slotReportCoverage,excludedPeriods:monthlyMode||!excludeBankHolidays?[]:[...bankHolidayWeeks]});
     if(projection.error){nowcastErrors.push(category+': '+projection.error);continue;}
-    const anchor=complete.at(-1)||previousPoint,colour=additiveLines?'#2678ad':urgencyGroupColour(category);
-    const currentX=x(last),bandStart=anchor?x(anchor):currentX;
-    const bandEnd=anchor?currentX:(continuousMode?projection.periodEnd:(monthlyMode?currentX+0.35:monthPosition(projection.periodEnd)));
-    const anchorY=anchor?anchor.smoothed:projection.low;
+    const colour=additiveLines?'#2678ad':urgencyGroupColour(category),currentX=x(last);
     const bandColour=/^#[0-9a-f]{6}$/i.test(colour)?'rgba('+[1,3,5].map(i=>parseInt(colour.slice(i,i+2),16)).join(',')+',0.22)':'rgba(38,120,173,0.22)';
     const meta={...projection,category,asOfLabel};
+    const centre=(projection.low+projection.high)/2;
     traces.push({name:category+' '+year+' estimated range',legendgroup:String(year),showlegend:false,type:'scatter',mode:'lines',
-     x:[bandStart,bandEnd,bandEnd,bandStart],y:[anchorY,projection.low,projection.high,anchorY],fill:'toself',fillcolor:bandColour,
-     line:{color:colour,width:0},hoveron:'fills',hoverinfo:'text',text:category+' estimated finish: '+Math.round(projection.low).toLocaleString('en-GB')+'–'+Math.round(projection.high).toLocaleString('en-GB')+' · Actual so far: '+Math.round(projection.rawObserved).toLocaleString('en-GB')+' · Report: '+asOfLabel,meta:{nowcast:meta}});
+     x:[currentX,currentX,currentX],y:[projection.low,centre,projection.high],line:{color:bandColour,width:14},
+     hoverinfo:'text',text:category+' estimated finish: '+Math.round(projection.low).toLocaleString('en-GB')+'–'+Math.round(projection.high).toLocaleString('en-GB')+' · Actual so far: '+Math.round(projection.rawObserved).toLocaleString('en-GB')+' · Report: '+asOfLabel,meta:{nowcast:meta}});
+    traces.push({name:category+' range caps',showlegend:false,type:'scatter',mode:'markers',x:[currentX],y:[centre],marker:{size:0,opacity:0},
+     error_y:{type:'data',symmetric:false,array:[projection.high-centre],arrayminus:[centre-projection.low],color:colour,thickness:2,width:8},hoverinfo:'skip',meta:{rangeCaps:true}});
     maxCount=Math.max(maxCount,projection.high);nowcastReady.push(category);
    }
   }
@@ -2493,7 +2493,7 @@ function drawCombinedDemandChart(){
  const forecastStatus=$('demandNowcastStatus');if(forecastStatus){
   const visibleCurrentMonth=(!demandMonthStart||thisMonth>=demandMonthStart)&&(!demandMonthEnd||thisMonth<=demandMonthEnd);
   forecastStatus.hidden=!showCurrentWeek||!visibleCurrentMonth||!selected.length;
-  forecastStatus.textContent=nowcastReady.length?'Shaded area: estimated finishing range for the current '+(monthlyMode?'month':'week')+'. Report updated '+asOfLabel+'. Actual bookings so far are available on hover. Range is indicative.'+(nowcastErrors.length?' '+nowcastErrors.join(' '):''):nowcastErrors.length?'Current-period estimate unavailable. '+nowcastErrors.join(' '):'Current-period estimate unavailable: '+(!snapshotClock?'report timestamp unavailable.':snapshotClock.date<(monthlyMode?thisMonth+'-01':thisWeek)?'the latest report predates the current period.':'no current bookings match the displayed filters.');
+  forecastStatus.textContent=nowcastReady.length?'Range bars: estimated finishing range for the current '+(monthlyMode?'month':'week')+'. Report updated '+asOfLabel+'. Actual bookings so far are available on hover. Range is indicative.'+(nowcastErrors.length?' '+nowcastErrors.join(' '):''):nowcastErrors.length?'Current-period estimate unavailable. '+nowcastErrors.join(' '):'Current-period estimate unavailable: '+(!snapshotClock?'report timestamp unavailable.':snapshotClock.date<(monthlyMode?thisMonth+'-01':thisWeek)?'the latest report predates the current period.':'no current bookings match the displayed filters.');
  }
  // Fit the axis closely to the visible series and average lines, retaining a zero baseline.
  const yAxisTop=Math.max(5,Math.ceil(maxCount*1.08));

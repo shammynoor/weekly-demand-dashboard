@@ -64,17 +64,16 @@ function renameRole(metadata,dimension,oldName,newName){
  Object.defineProperty(map,newName,{value:map[oldName],writable:true,enumerable:true,configurable:true});if(oldName!==newName)delete map[oldName];
 }
 function smoothDemandSeries(points,{level=0,continuous=true,currentPeriod=''}={}){
- const radius=[0,1,2,4][Number.isInteger(Number(level))?Number(level):0]||0;
+ const kernels=[[1],[0.5,1,0.5],[1,1,1],[0.5,1,1,1,0.5]],kernel=kernels[Number(level)]||kernels[0],radius=(kernel.length-1)/2;
  const groups=new Map();
  for(const point of points){const key=continuous?'all':point.year;if(!groups.has(key))groups.set(key,[]);if(point.date!==currentPeriod)groups.get(key).push(point)}
  const values=new Map();
  for(const group of groups.values())for(let i=0;i<group.length;i++){
-  const neighbours=group.slice(Math.max(0,i-radius),Math.min(group.length,i+radius+1)).map(p=>p.count).filter(Number.isFinite);
-  values.set(group[i],neighbours.length?neighbours.reduce((a,b)=>a+b,0)/neighbours.length:group[i].count);
+  let sum=0,weight=0;for(let offset=-radius;offset<=radius;offset++){const count=group[i+offset]?.count,w=kernel[offset+radius];if(Number.isFinite(count)){sum+=count*w;weight+=w}}
+  values.set(group[i],weight?sum/weight:group[i].count);
  }
  return points.map(point=>({...point,smoothed:radius&&point.date!==currentPeriod?values.get(point):point.count}));
 }
-
 function periodBounds(key,mode){
  const start=mode==='month'?key.slice(0,7)+'-01':monday(key);
  const d=new Date(start+'T12:00:00Z');
