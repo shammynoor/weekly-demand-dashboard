@@ -428,3 +428,10 @@ Run deterministic regression checks with `node --test tests/correctness.test.cjs
 The chart now resolves each slot through the shared appointment-type mapping used by its toggles, including direct type assignments without redundant self-mappings. Default inclusion/purpose filters are applied before calculating chart totals, so the first draw uses the same state shown in the filter rail.
 
 The display-options row includes a discrete **Smoothing** slider: **Off**, **Low**, **Medium**, **High**. Off shows raw (or list-size-adjusted) values. Low, Medium and High use centred 3-, 5- and 9-period averages of completed observations. The period is a week or month according to the chart mode. Endpoints use the available neighbours. Continuous timelines smooth across year boundaries; superimposed timelines smooth within each year. The incomplete current period remains raw and is excluded from historical smoothing. Hover details retain actual booking counts and identify adjusted/smoothed values; horizontal mean lines use the underlying unsmoothed values. The setting is saved with existing per-account chart preferences.
+
+
+## Separate and combined activity lines
+
+The former Additive Lines control is now labelled **Combine selected lines**. Off displays a separate coloured line for each enabled appointment type. On displays their combined total, with a **Combined:** heading identifying the included types. The clarified control has a new preference key so an old saved Additive Lines choice does not silently merge the lines on the next visit; subsequent explicit choices are remembered normally.
+
+Smoothing uses only its title and the four labels below the bar. The repeated current-value text is removed; accessible value announcements remain. The title sits 6 px from the bar, with extra separation from Combine selected lines.
