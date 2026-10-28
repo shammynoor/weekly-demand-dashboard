@@ -15,7 +15,7 @@ const urgencyPlanningMode=new Map();
 let forecastPreferenceAccount=null;
 function syncForecastPreferences(){
  const api=window.gpChartPreferences,account=api?.account();if(!account||account===forecastPreferenceAccount)return;
- forecastPreferenceAccount=account;urgencyPlanningMode.clear();disabled.daily.clear();urgencyExplicitlyEnabled.clear();
+ forecastPreferenceAccount=account;urgencyPlanningMode.clear();disabled.daily.clear();disabled.weekly.clear();urgencyExplicitlyEnabled.clear();
  const saved=api.read();
  for(const [name,mode] of Object.entries(saved.forecastPlanningModes||{}))if(mode==='daily'||mode==='weekly')urgencyPlanningMode.set(name,mode);
  for(const [name,enabled] of Object.entries(saved.forecastEnabledGroups||{})){
@@ -30,6 +30,7 @@ function saveForecastPreferences(){
  api.write('forecastPlanningModes',modes);api.write('forecastEnabledGroups',enabled);
 }
 function render(mode){
+ syncForecastPreferences();
 const prefix=mode==='daily'?'dailyForecast':'weeklyForecast',root=$(prefix+'Chart'),filter=$(prefix+'Filters');if(!root||!filter)return;
 const names=prioritySort('urgency',groupUrgencyNames.filter(isDashboardToggleOption)).filter(n=>isDaily(n)===(mode==='daily'));
 if(filter.dataset.names!==names.join('|')){filter.dataset.names=names.join('|');filter.replaceChildren();for(const n of names){const row=document.createElement('label');row.className='filter-row';const sw=document.createElement('span');sw.className='switch';const inp=document.createElement('input');inp.type='checkbox';inp.checked=!disabled[mode].has(n);const track=document.createElement('span');track.className='switch-track';track.style.setProperty('--switch-on',urgencyGroupColour(n));sw.append(inp,track);row.append(sw,document.createTextNode(n));filter.append(row);inp.addEventListener('change',()=>{inp.checked?disabled[mode].delete(n):disabled[mode].add(n);scheduleForecastFilterRefresh(mode)})}}

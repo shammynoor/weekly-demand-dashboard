@@ -593,7 +593,7 @@ function formatSlotMonth(date){const [year,month]=date.split('-');return new Dat
 function ensureCoreConsultModes(){if(!consultCategoryNames.length)consultCategoryNames=['Phone','Face-to-face']}
 let slotMappingSort='name';
 function setSlotMappingSort(value){
- slotMappingSort=value;
+ slotMappingSort=value;writeChartPreference('settings:slotSort',value);
  renderSlotTable();
 }
 function renderSlotTable(){
@@ -938,8 +938,11 @@ function writeChartPreference(key,value){const storageKey=chartPreferenceKey();i
 window.gpChartPreferences={read:readChartPreferences,write:writeChartPreference,account:chartPreferenceAccount};
 function chartControlKey(el){
  if(!el||!el.matches?.('input,select'))return null;
+ // Month sliders restore both handles together after their data bounds are ready.
+ if(/^(demandRange|waitingRange|waitingTrendRange)(Start|End)$/.test(el.id))return null;
  const page=el.closest('[id$="Page"]');
- if(!page||['categoryPage','practiceSettingsPage','peoplePage','personalSettingsPage'].includes(page.id))return null;
+ if(!page||page.id==='personalSettingsPage')return null;
+ if(['categoryPage','practiceSettingsPage','peoplePage'].includes(page.id)&&!/(Search|Filter|UnassignedOnly)$/.test(el.id))return null;
  const type=el.tagName==='SELECT'?'select':el.type;
  if(!['checkbox','radio','select','range','date','month','number','search','text'].includes(type))return null;
  if(el.id)return (type==='checkbox'?'checkbox':type)+':'+page.id+':'+el.id;
@@ -956,7 +959,7 @@ function chartControlValue(el){
  return el.multiple?[...el.selectedOptions].map(option=>option.value):el.value;
 }
 let chartPreferenceRestoring=false,chartRestoredAccount=null;
-const chartRestoredValues=new Map();
+const chartRestoredValues=new Map(),chartControlDefaults=new Map();
 function restoreChartCheckboxes(){
  const account=chartPreferenceAccount();if(!account)return;
  if(account!==chartRestoredAccount){chartRestoredAccount=account;chartRestoredValues.clear();}
@@ -964,10 +967,11 @@ function restoreChartCheckboxes(){
  chartPreferenceRestoring=true;
  try{
   document.querySelectorAll('#dashboardShell input,#dashboardShell select').forEach(el=>{
-   const key=chartControlKey(el);if(!key||!(key in saved))return;
+   const key=chartControlKey(el);if(!key)return;
+   if(!chartControlDefaults.has(key))chartControlDefaults.set(key,chartControlValue(el));
    // Waiting sliders attach their state handlers only when first opened.
    if(el.type==='range'&&/^waiting/.test(el.id)&&!el.dataset.bound)return;
-   const value=saved[key],signature=JSON.stringify(value);
+   const value=key in saved?saved[key]:chartControlDefaults.get(key),signature=JSON.stringify(value);
    // A handler may reject a saved selection (for example, no matching data).
    // Replaying it after every chart DOM mutation causes a redraw/restore loop.
    // Renderers own rebuilt controls after the saved value has been attempted.
@@ -984,7 +988,13 @@ function restoreChartCheckboxes(){
    changes.push(el);
   });
   // Set both range handles before their handlers enforce ordering.
-  for(const el of changes)el.dispatchEvent(new Event(['range','search','text'].includes(el.type)?'input':'change',{bubbles:true}));
+  // A range handler can redraw its paired handle. Reapply the whole pending group
+  // before each dispatch so both handlers see the intended saved values.
+  const pending=changes.map(el=>[el,chartControlValue(el)]);
+  for(const el of changes){
+   for(const [input,value] of pending)if(input.type==='range')input.value=value;
+   el.dispatchEvent(new Event(['range','search','text'].includes(el.type)?'input':'change',{bubbles:true}));
+  }
  }finally{chartPreferenceRestoring=false}
 }
 window.gpChartPreferences.restore=restoreChartCheckboxes;
@@ -1000,7 +1010,7 @@ function chartExpansionKey(button){
  if(!page||['categoryPage','practiceSettingsPage','peoplePage','personalSettingsPage'].includes(page.id))return null;
  const target=button.getAttribute('aria-controls');return target?'expanded:'+page.id+':'+target:null;
 }
-const chartRestoredExpansions=new Map();
+const chartRestoredExpansions=new Map(),chartExpansionDefaults=new Map();
 let chartExpansionAccount=null;
 function setSecondaryFilterExpanded(button,expanded){
  button.setAttribute('aria-expanded',String(expanded));
@@ -1013,8 +1023,11 @@ function restoreChartExpansions(){
  if(account!==chartExpansionAccount){chartExpansionAccount=account;chartRestoredExpansions.clear();}
  const saved=readChartPreferences(),wasRestoring=chartPreferenceRestoring;chartPreferenceRestoring=true;
  try{document.querySelectorAll('#dashboardShell .collapse-filter-button').forEach(button=>{
-  const key=chartExpansionKey(button);if(!key||typeof saved[key]!=='boolean'||chartRestoredExpansions.get(key)===saved[key])return;
-  chartRestoredExpansions.set(key,saved[key]);setSecondaryFilterExpanded(button,saved[key]);
+  const key=chartExpansionKey(button);if(!key)return;
+  if(!chartExpansionDefaults.has(key))chartExpansionDefaults.set(key,button.getAttribute('aria-expanded')==='true');
+  const expanded=typeof saved[key]==='boolean'?saved[key]:chartExpansionDefaults.get(key);
+  if(chartRestoredExpansions.get(key)===expanded)return;
+  chartRestoredExpansions.set(key,expanded);setSecondaryFilterExpanded(button,expanded);
  });updateCollapsedFilterSummaries();}finally{chartPreferenceRestoring=wasRestoring}
 }
 
@@ -2267,27 +2280,46 @@ function yearBackgroundShapes(periods){
  }
  return shapes;
 }
+function monthRangeSelection(prefix,low,high){
+ const saved=readChartPreferences(),page=prefix==='demandRange'?'chartPage':prefix==='waitingRange'?'waitingTimesPage':'waitingOverTimePage';
+ const pair=saved['monthRange:'+prefix];
+ const index=value=>typeof value==='string'&&/^\d{4}-(0[1-9]|1[0-2])$/.test(value)?Number(value.slice(0,4))*12+Number(value.slice(5,7))-1:NaN;
+ const legacy=handle=>{const value=saved['range:'+page+':'+prefix+handle];return value!==undefined&&Number.isInteger(Number(value))?Number(value):NaN};
+ const from=index(pair?.start),to=index(pair?.end);
+ const first=Number.isFinite(from)?from:legacy('Start'),last=Number.isFinite(to)?to:legacy('End');
+ const a=Math.max(low,Math.min(high,Number.isFinite(first)?first:low));
+ return [a,Math.max(a,Math.min(high,Number.isFinite(last)?last:high))];
+}
+function saveMonthRange(prefix,start,end){writeChartPreference('monthRange:'+prefix,{start,end});}
+function reportRangeDate(){
+ return Number.isFinite(capacityCSVLatestModified)?GPCorrectness.londonDate(new Date(capacityCSVLatestModified)):null;
+}
+function reportRangeEndLabel(monthIndex){
+ const date=reportRangeDate(),month=new Date(Date.UTC(Math.floor(monthIndex/12),monthIndex%12,1));
+ const label=month.toLocaleDateString('en-GB',{month:'short',year:'numeric',timeZone:'UTC'});
+ if(!date)return label; // Completeness cannot be inferred without the report timestamp.
+ if(monthIndex===Number(date.slice(0,4))*12+Number(date.slice(5,7))-1)
+  return new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'});
+ return 'End of '+label;
+}
 function setupDemandMonthSlider(){
  const start=$('demandRangeStart'),end=$('demandRangeEnd');if(!start||!end)return;
  const months=[...new Set(availabilityRecords.map(r=>typeof r.date==='string'?r.date.slice(0,7):r.date instanceof Date&&!Number.isNaN(r.date.getTime())?r.date.toISOString().slice(0,7):null).filter(Boolean))].sort();
  if(!months.length)return;
- const today=new Date(),todayMonth=today.getFullYear()*12+today.getMonth();
+ const reportDate=reportRangeDate();
+ const reportMonth=reportDate?Number(reportDate.slice(0,4))*12+Number(reportDate.slice(5,7))-1:null;
  const first=months[0],last=months[months.length-1];
  const toIndex=m=>Number(m.slice(0,4))*12+Number(m.slice(5,7))-1;
  const toMonth=i=>String(Math.floor(i/12)).padStart(4,'0')+'-'+String(i%12+1).padStart(2,'0');
- const low=Math.min(toIndex(first),todayMonth),high=Math.max(low,Math.min(toIndex(last),todayMonth));
+ const limit=reportMonth??toIndex(last);
+ const low=Math.min(toIndex(first),limit),high=Math.max(low,Math.min(toIndex(last),limit));
  const bounds=first+'|'+toMonth(high);
- if(demandMonthBounds!==bounds){
-  demandMonthBounds=bounds;
-  demandMonthStart=toMonth(demandMonthStart?Math.max(low,Math.min(high,toIndex(demandMonthStart))):low);
-  demandMonthEnd=toMonth(demandMonthEnd?Math.max(low,Math.min(high,toIndex(demandMonthEnd))):high);
- }
+ const [a,b]=monthRangeSelection('demandRange',low,high);
+ demandMonthBounds=bounds;demandMonthStart=toMonth(a);demandMonthEnd=toMonth(b);
  for(const input of [start,end]){input.min=String(low);input.max=String(high);input.step='1';input.disabled=low===high;}
- let a=demandMonthStart?toIndex(demandMonthStart):low,b=demandMonthEnd?toIndex(demandMonthEnd):high;
- a=Math.max(low,Math.min(high,a));b=Math.max(a,Math.min(high,b));
  start.value=String(a);end.value=String(b);
  const label=i=>new Date(Date.UTC(Math.floor(i/12),i%12,1)).toLocaleDateString('en-GB',{month:'short',year:'numeric',timeZone:'UTC'});
- $('demandRangeFromLabel').textContent='Start of '+label(a);$('demandRangeToLabel').textContent=b===todayMonth?'End '+today.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}):'End of '+label(b);
+ $('demandRangeFromLabel').textContent='Start of '+label(a);$('demandRangeToLabel').textContent=reportRangeEndLabel(b);
  const span=Math.max(1,high-low),fill=$('demandRangeFill');
  // The native range thumb travels over the input width MINUS its own diameter.
  // Position the blue fill between the actual thumb centres, not the input edges.
@@ -2305,12 +2337,13 @@ function setupDemandMonthSlider(){
    if(which==='start'&&x>y){y=x;end.value=String(y)}
    if(which==='end'&&y<x){x=y;start.value=String(x)}
    demandMonthStart=toMonth(x);demandMonthEnd=toMonth(y);
+   saveMonthRange('demandRange',demandMonthStart,demandMonthEnd);
    setupDemandMonthSlider();
    scheduleDemandRefresh();
   };
   start.addEventListener('input',()=>changed('start'));
   end.addEventListener('input',()=>changed('end'));
-  start.dataset.bound='1';
+  start.dataset.bound=end.dataset.bound='1';
  }
 }
 function renderDemandUrgencyToggles(){
@@ -2697,6 +2730,7 @@ let practiceSettingsTab='users',practiceUsersLoading=false,practiceUserRemovalBu
 let practiceUsersSnapshot={base:'',permissions:[]};
 function selectPracticeSettingsTab(tab){
  practiceSettingsTab=tab==='list'?'list':'users';
+ writeChartPreference('practiceSettings:tab',practiceSettingsTab);
  for(const name of ['users','list']){
   const selected=practiceSettingsTab===name;
   $('practiceTab-'+name).setAttribute('aria-selected',String(selected));
@@ -2904,24 +2938,21 @@ function waitingRowDimensions(r){
 function setupWaitingAppointmentSlider(){
  const start=$('waitingRangeStart'),end=$('waitingRangeEnd'),fill=$('waitingRangeFill');
  if(!start||!end||!fill)return;
- const today=new Date(),todayMonth=today.getFullYear()*12+today.getMonth();
+ const reportDate=reportRangeDate();
+ const reportMonth=reportDate?Number(reportDate.slice(0,4))*12+Number(reportDate.slice(5,7))-1:null;
  const months=waitingRecordMonths(waitingTimeRecords);
  const first=months[0],last=months.at(-1);
  const toIndex=m=>Number(m.slice(0,4))*12+Number(m.slice(5,7))-1;
  const toMonth=i=>String(Math.floor(i/12)).padStart(4,'0')+'-'+String(i%12+1).padStart(2,'0');
  if(!first){$('waitingRangeFromLabel').textContent='—';$('waitingRangeToLabel').textContent='—';return}
- const low=Math.min(toIndex(first),todayMonth),high=Math.max(low,Math.min(toIndex(last),todayMonth)),bounds=first+'|'+toMonth(high);
- if(waitingAppointmentMonthBounds!==bounds){
-  waitingAppointmentMonthBounds=bounds;
-  waitingAppointmentMonthStart=toMonth(waitingAppointmentMonthStart?Math.max(low,Math.min(high,toIndex(waitingAppointmentMonthStart))):low);
-  waitingAppointmentMonthEnd=toMonth(waitingAppointmentMonthEnd?Math.max(low,Math.min(high,toIndex(waitingAppointmentMonthEnd))):high);
- }
- let a=Math.max(low,Math.min(high,toIndex(waitingAppointmentMonthStart))),b=Math.max(a,Math.min(high,toIndex(waitingAppointmentMonthEnd)));
- waitingAppointmentMonthStart=toMonth(a);waitingAppointmentMonthEnd=toMonth(b);
- for(const el of [start,end]){el.min=String(low);el.max=String(high);el.step='1';el.disabled=low===high}
+ const limit=reportMonth??toIndex(last);
+ const low=Math.min(toIndex(first),limit),high=Math.max(low,Math.min(toIndex(last),limit)),bounds=first+'|'+toMonth(high);
+ const [a,b]=monthRangeSelection('waitingRange',low,high);
+ waitingAppointmentMonthBounds=bounds;waitingAppointmentMonthStart=toMonth(a);waitingAppointmentMonthEnd=toMonth(b);
+ for(const input of [start,end]){input.min=String(low);input.max=String(high);input.step='1';input.disabled=low===high;}
  start.value=String(a);end.value=String(b);
  const label=i=>new Date(Date.UTC(Math.floor(i/12),i%12,1)).toLocaleDateString('en-GB',{month:'short',year:'numeric',timeZone:'UTC'});
- $('waitingRangeFromLabel').textContent='Start of '+label(a);$('waitingRangeToLabel').textContent=b===todayMonth?'End '+today.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}):'End of '+label(b);
+ $('waitingRangeFromLabel').textContent='Start of '+label(a);$('waitingRangeToLabel').textContent=reportRangeEndLabel(b);
  const trackWidth=fill.parentElement.clientWidth,thumb=20,sliderLeft=start.getBoundingClientRect().left-fill.parentElement.getBoundingClientRect().left;
  const travel=Math.max(0,start.clientWidth-thumb),span=Math.max(1,high-low);
  const left=sliderLeft+thumb/2+(a-low)/span*travel,right=sliderLeft+thumb/2+(b-low)/span*travel;
@@ -2932,6 +2963,7 @@ function setupWaitingAppointmentSlider(){
    if(which==='start'&&x>y)y=x;
    if(which==='end'&&y<x)x=y;
    waitingAppointmentMonthStart=toMonth(x);waitingAppointmentMonthEnd=toMonth(y);
+   saveMonthRange('waitingRange',waitingAppointmentMonthStart,waitingAppointmentMonthEnd);
    renderWaitingTimesChart();
   };
   start.addEventListener('input',()=>changed('start'));
@@ -2942,24 +2974,21 @@ function setupWaitingAppointmentSlider(){
 function setupWaitingTrendSlider(){
  const start=$('waitingTrendRangeStart'),end=$('waitingTrendRangeEnd'),fill=$('waitingTrendRangeFill');
  if(!start||!end||!fill)return;
- const today=new Date(),todayMonth=today.getFullYear()*12+today.getMonth();
+ const reportDate=reportRangeDate();
+ const reportMonth=reportDate?Number(reportDate.slice(0,4))*12+Number(reportDate.slice(5,7))-1:null;
  const months=waitingTrendAvailableMonths;
  const first=months[0],last=months.at(-1);
  const toIndex=m=>Number(m.slice(0,4))*12+Number(m.slice(5,7))-1;
  const toMonth=i=>String(Math.floor(i/12)).padStart(4,'0')+'-'+String(i%12+1).padStart(2,'0');
  if(!first){$('waitingTrendRangeFromLabel').textContent='—';$('waitingTrendRangeToLabel').textContent='—';return}
- const low=Math.min(toIndex(first),todayMonth),high=Math.max(low,Math.min(toIndex(last),todayMonth)),bounds=first+'|'+toMonth(high);
- if(waitingTrendMonthBounds!==bounds){
-  waitingTrendMonthBounds=bounds;
-  waitingTrendMonthStart=toMonth(waitingTrendMonthStart?Math.max(low,Math.min(high,toIndex(waitingTrendMonthStart))):low);
-  waitingTrendMonthEnd=toMonth(waitingTrendMonthEnd?Math.max(low,Math.min(high,toIndex(waitingTrendMonthEnd))):high);
- }
- let a=Math.max(low,Math.min(high,toIndex(waitingTrendMonthStart))),b=Math.max(a,Math.min(high,toIndex(waitingTrendMonthEnd)));
- waitingTrendMonthStart=toMonth(a);waitingTrendMonthEnd=toMonth(b);
- for(const el of [start,end]){el.min=String(low);el.max=String(high);el.step='1';el.disabled=low===high}
+ const limit=reportMonth??toIndex(last);
+ const low=Math.min(toIndex(first),limit),high=Math.max(low,Math.min(toIndex(last),limit)),bounds=first+'|'+toMonth(high);
+ const [a,b]=monthRangeSelection('waitingTrendRange',low,high);
+ waitingTrendMonthBounds=bounds;waitingTrendMonthStart=toMonth(a);waitingTrendMonthEnd=toMonth(b);
+ for(const input of [start,end]){input.min=String(low);input.max=String(high);input.step='1';input.disabled=low===high;}
  start.value=String(a);end.value=String(b);
  const label=i=>new Date(Date.UTC(Math.floor(i/12),i%12,1)).toLocaleDateString('en-GB',{month:'short',year:'numeric',timeZone:'UTC'});
- $('waitingTrendRangeFromLabel').textContent='Start of '+label(a);$('waitingTrendRangeToLabel').textContent=b===todayMonth?'End '+today.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}):'End of '+label(b);
+ $('waitingTrendRangeFromLabel').textContent='Start of '+label(a);$('waitingTrendRangeToLabel').textContent=reportRangeEndLabel(b);
  const trackWidth=fill.parentElement.clientWidth,thumb=20,sliderLeft=start.getBoundingClientRect().left-fill.parentElement.getBoundingClientRect().left;
  const travel=Math.max(0,start.clientWidth-thumb),span=Math.max(1,high-low);
  const left=sliderLeft+thumb/2+(a-low)/span*travel,right=sliderLeft+thumb/2+(b-low)/span*travel;
@@ -2970,6 +2999,7 @@ function setupWaitingTrendSlider(){
    if(which==='start'&&x>y)y=x;
    if(which==='end'&&y<x)x=y;
    waitingTrendMonthStart=toMonth(x);waitingTrendMonthEnd=toMonth(y);
+   saveMonthRange('waitingTrendRange',waitingTrendMonthStart,waitingTrendMonthEnd);
    renderWaitingTrendChart();
   };
   start.addEventListener('input',()=>changed('start'));
@@ -3244,8 +3274,13 @@ function syncDayView2Preferences(){
  const account=chartPreferenceAccount();if(account===dayView2PreferencesAccount)return;
  dayView2PreferencesAccount=account;dayView2DisabledUrgencies.clear();
  if(!account)return;
+ const date=readChartPreferences()['dayView2:selectedDate'];
+ $('dayView2Date').value=typeof date==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(date)?date:'';
  const saved=readChartPreferences()['dayView2:disabledUrgencies'];
  if(Array.isArray(saved))for(const name of saved)if(typeof name==='string')dayView2DisabledUrgencies.add(name);
+}
+function chooseDayView2Date(date){
+ $('dayView2Date').value=date;writeChartPreference('dayView2:selectedDate',date);closeDayView2Calendar();renderDayView2();
 }
 function saveDayView2Preferences(){writeChartPreference('dayView2:disabledUrgencies',[...dayView2DisabledUrgencies]);}
 let dayView2SegmentObserver=null;
@@ -3337,7 +3372,7 @@ function renderDayView2Calendar(){
   button.setAttribute('aria-label',dayView2DateLabel(date)+(button.disabled?' · weekend unavailable':''));
   button.setAttribute('aria-pressed',String(date===$('dayView2Date').value));
   button.dataset.date=date;
-  button.addEventListener('click',()=>{$('dayView2Date').value=date;closeDayView2Calendar();renderDayView2();$('dayView2DatePicker').focus();});
+  button.addEventListener('click',()=>{chooseDayView2Date(date);$('dayView2DatePicker').focus();});
   grid.append(button);
  }
 }
@@ -3539,7 +3574,7 @@ function createDayView2BookingPace(date,names,totals,context=dayView2PaceContext
   const summary=document.createElement('summary');summary.textContent='Show me more detail';
   const comparison=createDayView2PaceRail(totals.booked,baseline,total,clock);
   details.append(summary,comparison);box.append(details);
-  details.addEventListener('toggle',()=>{if(details.open)requestAnimationFrame(()=>layoutDayView2PaceRail(comparison.querySelector('.day-view2-pace-rail')));});
+  details.addEventListener('toggle',()=>{if(details.isConnected)writeChartPreference('dayView2:paceExpanded',details.open);if(details.open)requestAnimationFrame(()=>layoutDayView2PaceRail(comparison.querySelector('.day-view2-pace-rail')));});
  }
  return box;
 }
@@ -3605,7 +3640,7 @@ function renderDayView2(){
  const days=collectDayView2Capacity(date,names,dayView2DisabledUrgencies,availabilityRecords,snapshotClock),selected=days.get(date),totals=selected.totals;
  const slotTotals=collectDayView2Capacity(date,names,dayView2DisabledUrgencies,dayView2RowsForDates(availabilityRecords,days.keys()).filter(isDayView2SlotReportRecord),snapshotClock).get(date).totals;
  const paceContext=dayView2PaceContext(date,[...selected.groups.keys()],slotTotals);
- const paceExpanded=$('dayView2Lanes').querySelector('.day-view2-pace-details')?.open;
+ const paceExpanded=readChartPreferences()['dayView2:paceExpanded']===true;
  const statuses=['missedEmpty','booked','available','embargoed','blocked'];
  const number=n=>n.toLocaleString('en-GB');
  const total=statuses.reduce((sum,status)=>sum+totals[status],0);
@@ -3697,14 +3732,14 @@ function renderDayView2(){
   card.append(dateLabel,embargoed,blocked);
   if(!day.matched){const note=document.createElement('small');note.textContent='No capacity reported';card.append(note);}
   card.setAttribute('aria-label','View '+dateLabel.textContent+': '+embargoed.textContent+', '+blocked.textContent);
-  card.addEventListener('click',()=>{input.value=nextDate;renderDayView2();});upcoming.append(card);
+  card.addEventListener('click',()=>{chooseDayView2Date(nextDate);});upcoming.append(card);
  }
 }
 setInterval(()=>{if(!$('dayView2Page')?.classList.contains('hidden'))renderDayView2();},60000);
-$('dayView2Date')?.addEventListener('change',renderDayView2);
-$('dayView2Today')?.addEventListener('click',()=>{$('dayView2Date').value=dayView2WorkingDate(dayView2LocalDate());closeDayView2Calendar();renderDayView2();});
-$('dayView2Previous')?.addEventListener('click',()=>{$('dayView2Date').value=dayView2AddWorkingDays($('dayView2Date').value||dayView2LocalDate(),-1);closeDayView2Calendar();renderDayView2();});
-$('dayView2Next')?.addEventListener('click',()=>{$('dayView2Date').value=dayView2AddWorkingDays($('dayView2Date').value||dayView2LocalDate(),1);closeDayView2Calendar();renderDayView2();});
+$('dayView2Date')?.addEventListener('change',()=>chooseDayView2Date($('dayView2Date').value));
+$('dayView2Today')?.addEventListener('click',()=>{chooseDayView2Date(dayView2WorkingDate(dayView2LocalDate()));});
+$('dayView2Previous')?.addEventListener('click',()=>{chooseDayView2Date(dayView2AddWorkingDays($('dayView2Date').value||dayView2LocalDate(),-1));});
+$('dayView2Next')?.addEventListener('click',()=>{chooseDayView2Date(dayView2AddWorkingDays($('dayView2Date').value||dayView2LocalDate(),1));});
 
 function showPage(which){
  updateDashboardDateContext();refreshPrimaryApptTypeBoxes();
@@ -3730,8 +3765,8 @@ function showPage(which){
  else if(which==='signposting')setTimeout(renderSignpostingChart,0);
  else if(which==='people'){renderPeopleGroups();renderPeopleGroupFilter();renderPeople();}
  else if(which==='personalSettings'){renderPersonalSettings();}
- else if(which==='practiceSettings'){selectPracticeSettingsTab(practiceSettingsTab);}
- else if(which==='categories'){renderSlotGroupBoxes();renderSlotTable();renderEditor();renderGroupUrgencyEditor();renderClinicianEditor();renderClinicianGroupEditor();renderConsultEditor()}
+ else if(which==='practiceSettings'){selectPracticeSettingsTab(readChartPreferences()['practiceSettings:tab']);}
+ else if(which==='categories'){restorePersonalSettingsWorkspace();renderSlotGroupBoxes();renderSlotTable();renderEditor();renderGroupUrgencyEditor();renderClinicianEditor();renderClinicianGroupEditor();renderConsultEditor()}
 }document.getElementById('navHome').onclick=()=>showPage('home');document.getElementById('navRoutineCapacity').onclick=()=>showPage('routineCapacity');document.getElementById('navChart').onclick=()=>showPage('chart');document.getElementById('navWaitingTimes').onclick=()=>showPage('waitingTimes');document.getElementById('navWaitingTrend').onclick=()=>showPage('waitingTrend');document.getElementById('navCategories').onclick=()=>showPage('categories');document.getElementById('navAvailability').onclick=()=>showPage('availability');document.getElementById('navRoutineAvailability').onclick=()=>showPage('routineAvailability');
 document.getElementById('navPlannedAvailability').onclick=()=>showPage('plannedAvailability');document.getElementById('navDayView2').onclick=()=>showPage('dayView');document.getElementById('navBookingTimes').onclick=()=>showPage('bookingTimes');document.getElementById('navSignposting').onclick=()=>showPage('signposting');document.getElementById('navPeople').onclick=()=>showPage('people');document.getElementById('navPracticeSettings').onclick=()=>showPage('practiceSettings');document.getElementById('navPersonalSettings').onclick=()=>showPage('personalSettings');$('personalSettingsForm').addEventListener('submit',savePersonalSettings);$('demandCombineLines')?.addEventListener('change',()=>{const chart=$('combinedDemandChart');if(chart&&window.Plotly)Plotly.purge(chart);scheduleDemandRefresh();});$('slotTableSearch').addEventListener('input',renderSlotTable);for(const id of ['slotGroupFilter','slotModeFilter','slotPurposeFilter','slotCapacityFilter'])$(id)?.addEventListener('change',renderSlotTable);$('slotUnassignedOnly').addEventListener('change',renderSlotTable);$('slotModeUnassignedOnly').addEventListener('change',renderSlotTable);$('slotPurposeUnassignedOnly').addEventListener('change',renderSlotTable);$('slotCapacityUnassignedOnly').addEventListener('change',renderSlotTable);$('peopleSearch').addEventListener('input',renderPeople);$('peopleGroupFilter').addEventListener('change',renderPeople);$('peopleUnassignedOnly').addEventListener('change',()=>{const only=$('peopleUnassignedOnly').checked;$('peopleGroupFilter').disabled=only;renderPeople()});
 function renderClinicianEditor(){renderDropEditor('clinician');updateClinicianChartFilter()}
@@ -3754,11 +3789,24 @@ refresh();
 
 initAuth();
 
+function restorePersonalSettingsWorkspace(){
+ const saved=readChartPreferences();
+ const workspace=[...document.querySelectorAll('[data-slot-workspace]')].find(button=>button.dataset.slotWorkspace===(saved['settings:slotWorkspace']||'inclusion'));
+ workspace?.click();
+ const tab=[...document.querySelectorAll('[data-category-tab]')].find(button=>button.dataset.categoryTab===(saved['settings:categoryTab']||'tabUrgency'));
+ tab?.click();
+ const sort=saved['settings:slotSort'];setSlotMappingSort(['count-asc','count-desc','name'].includes(sort)?sort:'name');
+}
+document.addEventListener('click',event=>{
+ const button=event.target.closest?.('[data-slot-workspace]');
+ if(button)writeChartPreference('settings:slotWorkspace',button.dataset.slotWorkspace);
+});
 // Show one category classification at a time; the Save button stays visible.
 (function setupCategoryTabs(){
  const buttons=Array.from(document.querySelectorAll('[data-category-tab]'));
  const panels=Array.from(document.querySelectorAll('.category-tab-panel'));
  function activate(target){
+  writeChartPreference('settings:categoryTab',target);
   for(const button of buttons){
    const selected=button.dataset.categoryTab===target;
    button.classList.toggle('active',selected);

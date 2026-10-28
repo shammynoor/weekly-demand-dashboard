@@ -25,3 +25,8 @@ test('saved expansion is applied once per account and changes reload on account 
  f.setAccount('two');f.saved[f.key]=false;f.ctx.restoreChartExpansions();
  assert.equal(f.root.hidden,true);assert.equal(f.button.getAttribute('aria-expanded'),'false');
 });
+
+test('new account without an expansion preference gets the original default',()=>{
+ const f=fixture();f.saved[f.key]=false;f.ctx.restoreChartExpansions();assert.equal(f.root.hidden,true);
+ delete f.saved[f.key];f.setAccount('new');f.ctx.restoreChartExpansions();assert.equal(f.root.hidden,false);
+});

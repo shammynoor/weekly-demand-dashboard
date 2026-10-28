@@ -11,6 +11,13 @@ const londonToday=()=>{const p=Object.fromEntries(new Intl.DateTimeFormat('en-GB
 const fmt=n=>Math.round(n).toLocaleString('en-GB');
 const finite=n=>Number.isFinite(n)?n:0;
 const ui={target:2,disabledModes:new Set(),modeSignature:'',cached:null,signature:''};
+let preferenceAccount=null;
+function syncRoutineCapacityPreferences(){
+ const api=window.gpChartPreferences,account=api?.account();if(account===preferenceAccount)return;
+ preferenceAccount=account;
+ const target=api?.read()['routineCapacity:target'];ui.target=Number.isInteger(target)&&target>=1&&target<=6?target:2;
+ ui.disabledModes.clear();ui.modeSignature='';ui.cached=null;ui.signature='';
+}
 function isRoutine(group){return appointmentCalculationRole(group)==='routine'}
 function doctorGroups(){
  return (clinicianGroupNames||[]).filter(isDoctorPlanningGroup);
@@ -52,7 +59,7 @@ function renderModes(modes){
   const label=document.createElement('label');label.className='filter-row';
   const switcher=document.createElement('span');switcher.className='switch';
   const input=document.createElement('input');input.type='checkbox';input.checked=!ui.disabledModes.has(name);
-  input.setAttribute('role','switch');input.dataset.mode=name;input.setAttribute('aria-label','Include '+name);
+  input.setAttribute('role','switch');input.dataset.filterName=name;input.dataset.mode=name;input.setAttribute('aria-label','Include '+name);
   const track=document.createElement('span');track.className='switch-track';
   switcher.append(input,track);label.append(switcher,document.createTextNode(name));root.append(label);
   input.addEventListener('change',()=>{
@@ -147,7 +154,7 @@ function renderRows(model,horizon){
   for(const text of [target+' week'+(target===1?'':'s'),fmt(capacity),(difference>0?'+':'')+fmt(difference)]){
    const cell=document.createElement('td');cell.textContent=text;row.append(cell);
   }
-  row.addEventListener('click',()=>{ui.target=target;renderRows(model,horizon);drawChart(model,horizon)});
+  row.addEventListener('click',()=>{ui.target=target;window.gpChartPreferences?.write('routineCapacity:target',target);renderRows(model,horizon);drawChart(model,horizon)});
   row.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();row.click()}});
   root.append(row);
  }
@@ -159,6 +166,7 @@ function renderRows(model,horizon){
 window.renderRoutineCapacity=function(){
  const page=$('routineCapacityPage');if(!page||page.classList.contains('hidden'))return;
  try{
+  syncRoutineCapacityPreferences();
   const model=modelData();if(model.error){empty(model.error);return}
   const horizon=Number($('routineCapHorizon')?.value||12);
   setText('routineCapDemand',fmt(model.demand));

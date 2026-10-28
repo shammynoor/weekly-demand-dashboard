@@ -33,3 +33,9 @@ Use the historical booking-date/month axis for current observations and finishin
 ## Secondary toggle-box expansion
 
 Save an explicit expand/collapse choice before changing the DOM. Restore saved expansion state once per account/state, without replaying button clicks after every render. A minus click must hide the filter stack, show its selection summary, change to plus and remain collapsed after redraw on every analytics page.
+
+## Personal UI preferences and historical date ranges
+
+Keep sliders, filters, display options, secondary-panel expansion, forecast tabs, settings workspace tabs/sort, Day View dates/details and the routine-capacity target private to the signed-in account in this browser. Do not put personal UI choices in the shared practice-settings file. Restore both month-range handles atomically after data bounds are available, migrate legacy individual slider values, and keep a user's saved range when refreshed data temporarily narrows the available bounds. An account with no saved choice uses the original defaults.
+
+Historical slider limits and their To labels use the latest imported Slot Report timestamp in Europe/London. Show just the refresh date for its partial day (for example, 27 Oct 2026), without End. Earlier complete months retain End of month labels. Missing report timestamps must not imply a complete period or fall back to the wall-clock date.
