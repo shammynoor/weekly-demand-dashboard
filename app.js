@@ -2105,7 +2105,7 @@ function historicBookingHasData(){
   if(first&&p<(monthlyMode?first.slice(0,7):mondayOf(first)))return false;
   if(last&&p>(monthlyMode?last.slice(0,7):mondayOf(last)))return false;
   if((demandMonthStart&&m<demandMonthStart)||(demandMonthEnd&&m>demandMonthEnd))return false;
-  const group=groupUrgencyAssignments[assignments[r.slot]||''];
+  const group=capacityUrgencyCategory(r.slot);
   return !!group&&!disabledDemandUrgencyGroups.has(group);
  });
 }
@@ -2204,6 +2204,10 @@ const disabledDemandUrgencyGroups=new Set();
 let demandUrgencyDefaultsApplied=false;
 let lastDemandUrgencyGroupNames=[];
 let demandRefreshQueued=false;
+const DEMAND_SMOOTHING_LABELS=['Off','Low','Medium','High'];
+function demandSmoothingLevel(){const value=Number($('demandSmoothing')?.value||0);return Number.isInteger(value)&&value>=0&&value<=3?value:0}
+function updateDemandSmoothingControl(){const input=$('demandSmoothing'),label=DEMAND_SMOOTHING_LABELS[demandSmoothingLevel()];if(input)input.setAttribute('aria-valuetext',label);const output=$('demandSmoothingValue');if(output)output.textContent=label}
+$('demandSmoothing')?.addEventListener('input',()=>{updateDemandSmoothingControl();scheduleDemandRefresh()});
 function scheduleDemandRefresh(){
  if(demandRefreshQueued)return;
  demandRefreshQueued=true;
@@ -2211,6 +2215,7 @@ function scheduleDemandRefresh(){
 }
 function refresh(){
  updateDashboardDateContext();
+ renderDemandUrgencyToggles();applyDemandPurposeDefaults();updateDemandSmoothingControl();
  refreshBankHolidayWeeks();
  updateClinicianChartFilter();updateConsultChartFilter();
  demandFilterCache=new WeakMap();
@@ -2234,8 +2239,7 @@ for(const r of records){
  const key=periodKey(r);
  if(!sums.has(key)||!includedRecord(r))continue;
  sums.set(key,sums.get(key)+r.count);
- const detailed=assignments[r.slot]||'Uncategorised';
- const group=groupUrgencyAssignments[detailed];
+ const group=capacityUrgencyCategory(r.slot);
  const totals=demandCategoryTotals[group];
  if(totals)totals.set(key,totals.get(key)+r.count);
 }
@@ -2340,7 +2344,8 @@ function installDemandCardTooltip(target){
   if(!point){card.hidden=true;return;}
   const name=point.data.name;
   const index=Array.isArray(point.pointNumber)?point.pointNumber[0]:(point.pointIndex??point.pointNumber);
-  const date=typeof point.customdata==='string'?point.customdata:(typeof point.data?.customdata?.[index]==='string'?point.data.customdata[index]:'');
+  const values=point.customdata??point.data?.customdata?.[index];
+  const date=Array.isArray(values)?values[0]:(typeof values==='string'?values:'');
   const rawDate=date||((typeof point.x==='string'&&/^\d{4}-\d{2}/.test(point.x))?point.x:'');
   let formatted=rawDate;
   if(/^\d{4}-\d{2}(?:-\d{2})?$/.test(rawDate)){
@@ -2354,7 +2359,9 @@ function installDemandCardTooltip(target){
   heading.textContent=formatted||(name.match(/\d{4}$/)?.[0]||'Appointment demand');card.append(heading);
   const row=document.createElement('div');row.className='availability-tooltip-line';
   const dot=document.createElement('span');dot.className='availability-tooltip-dot';dot.style.backgroundColor=point.data.line.color;
-  const value=document.createElement('span');value.textContent=name+': '+Number(point.y).toLocaleString('en-GB')+' appointments';
+  const value=document.createElement('span');value.textContent=name+': '+Number(Array.isArray(values)?values[1]:point.y).toLocaleString('en-GB')+' actual bookings';
+  if(Array.isArray(values)&&adjustDemandForListSize)value.textContent+=' · Adjusted: '+Number(values[2]).toLocaleString('en-GB',{maximumFractionDigits:1});
+  if(demandSmoothingLevel()&&!/\(incomplete\)$/.test(name))value.textContent+=' · Smoothed: '+Number(point.y).toLocaleString('en-GB',{maximumFractionDigits:1});
   row.append(dot,value);card.append(row);card.hidden=false;
   const rect=target.getBoundingClientRect(),event=data.event;
   const x=event?.clientX!=null?event.clientX-rect.left:rect.width/2;
@@ -2372,8 +2379,6 @@ function installDemandCardTooltip(target){
 }
 function drawCombinedDemandChart(){
  const adjustmentStatus=$('demandAdjustmentStatus');if(adjustmentStatus)adjustmentStatus.textContent=adjustDemandForListSize?'Adjusted for list size':'Not adjusted for list size';
- renderDemandUrgencyToggles();
- applyDemandPurposeDefaults();
  renderDemandClassificationToggles('demandPurposeToggles',purposeCategoryNames,purposeAssignments,disabledDemandPurposes,purposeColours);
  renderDemandClassificationToggles('demandCapacityToggles',capacityCategoryNames,capacityAssignments,disabledDemandCapacities,capacityColours);
  setupDemandMonthSlider();
@@ -2409,7 +2414,7 @@ function drawCombinedDemandChart(){
  }
  for(const category of additiveLines?['Combined']:selected){
   const totals=additiveLines?combinedTotals:demandCategoryTotals[category];
-  const points=[...totals].map(([date,count])=>({date,count:adjustedCount(date,count),year:Number(date.slice(0,4))}));
+  const points=GPCorrectness.smoothDemandSeries([...totals].filter(([date])=>(!demandMonthStart||date.slice(0,7)>=demandMonthStart)&&(!demandMonthEnd||date.slice(0,7)<=demandMonthEnd)).map(([date,count])=>({date,rawCount:count,count:adjustedCount(date,count),year:Number(date.slice(0,4))})),{level:demandSmoothingLevel(),continuous:continuousMode,currentPeriod:showCurrentWeek?(monthlyMode?thisMonth:thisWeek):''});
   for(const [i,year] of years.entries()){
    const data=points.filter(p=>p.year===year&&(!demandMonthStart||p.date.slice(0,7)>=demandMonthStart)&&(!demandMonthEnd||p.date.slice(0,7)<=demandMonthEnd)).sort((a,b)=>a.date.localeCompare(b.date));
    if(!data.length)continue;
@@ -2424,14 +2429,14 @@ function drawCombinedDemandChart(){
    const opacity=year===latestYear?1:Math.max(0.4,0.78-(latestYear-year)*0.08);
    for(const p of data)maxCount=Math.max(maxCount,p.count);
    traces.push({name:category+' '+year,legendgroup:String(year),showlegend:false,
-    x:plotPoints.map(x),y:plotPoints.map(p=>p.count),customdata:plotPoints.map(p=>p.date),
+    x:plotPoints.map(x),y:plotPoints.map(p=>p.smoothed),customdata:plotPoints.map(p=>[p.date,p.rawCount,p.count]),
     type:'scatter',mode:'lines',connectgaps:false,opacity,
-    line:{color:additiveLines?'#2678ad':urgencyGroupColour(category),width,shape:'spline',smoothing:0.5},
+    line:{color:additiveLines?'#2678ad':urgencyGroupColour(category),width,shape:demandSmoothingLevel()?'spline':'linear',smoothing:0.5},
     hoverinfo:'text',text:plotPoints.map(p=>p.date)});
    if(partial)traces.push({name:category+' '+year+' (incomplete)',showlegend:false,
     x:complete.length?[x(complete[complete.length-1]),x(last)]:[x(last)],
-    customdata:complete.length?[complete[complete.length-1].date,last.date]:[last.date],
-    y:complete.length?[complete[complete.length-1].count,last.count]:[last.count],
+    customdata:complete.length?[complete[complete.length-1],last].map(p=>[p.date,p.rawCount,p.count]):[[last.date,last.rawCount,last.count]],
+    y:complete.length?[complete[complete.length-1].smoothed,last.count]:[last.count],
     type:'scatter',mode:'lines+markers',opacity,
     line:{color:additiveLines?'#2678ad':urgencyGroupColour(category),width,dash:'dot'},marker:{size:7,symbol:'circle-open'},
     hoverinfo:'text',text:plotPoints.map(p=>p.date)});
