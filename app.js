@@ -1000,18 +1000,24 @@ function chartExpansionKey(button){
  if(!page||['categoryPage','practiceSettingsPage','peoplePage','personalSettingsPage'].includes(page.id))return null;
  const target=button.getAttribute('aria-controls');return target?'expanded:'+page.id+':'+target:null;
 }
-document.addEventListener('click',event=>{
- const button=event.target.closest?.('.collapse-filter-button');if(!button||chartPreferenceRestoring)return;
- const key=chartExpansionKey(button);if(!key)return;
- queueMicrotask(()=>{if(!chartPreferenceRestoring)writeChartPreference(key,button.getAttribute('aria-expanded')==='true');});
-});
-function restoreChartExpansions(){
- const saved=readChartPreferences();chartPreferenceRestoring=true;
- try{document.querySelectorAll('#dashboardShell .collapse-filter-button').forEach(button=>{
-  const key=chartExpansionKey(button);if(!key||typeof saved[key]!=='boolean')return;
-  if((button.getAttribute('aria-expanded')==='true')!==saved[key])button.click();
- });}finally{chartPreferenceRestoring=false}
+const chartRestoredExpansions=new Map();
+let chartExpansionAccount=null;
+function setSecondaryFilterExpanded(button,expanded){
+ button.setAttribute('aria-expanded',String(expanded));
+ const sign=button.querySelector('.collapse-sign');if(sign)sign.textContent=expanded?'−':'+';
+ const root=$(button.getAttribute('aria-controls'));if(root)root.hidden=!expanded;
+ const summary=button.closest('.panel')?.querySelector('.collapsed-selection-summary');if(summary)summary.hidden=expanded;
 }
+function restoreChartExpansions(){
+ const account=chartPreferenceAccount();if(!account)return;
+ if(account!==chartExpansionAccount){chartExpansionAccount=account;chartRestoredExpansions.clear();}
+ const saved=readChartPreferences(),wasRestoring=chartPreferenceRestoring;chartPreferenceRestoring=true;
+ try{document.querySelectorAll('#dashboardShell .collapse-filter-button').forEach(button=>{
+  const key=chartExpansionKey(button);if(!key||typeof saved[key]!=='boolean'||chartRestoredExpansions.get(key)===saved[key])return;
+  chartRestoredExpansions.set(key,saved[key]);setSecondaryFilterExpanded(button,saved[key]);
+ });updateCollapsedFilterSummaries();}finally{chartPreferenceRestoring=wasRestoring}
+}
+
 document.addEventListener('DOMContentLoaded',()=>{
  const shell=$('dashboardShell');if(!shell)return;
  let queued=false;
@@ -2406,7 +2412,7 @@ function drawCombinedDemandChart(){
  const years=[...new Set(visibleWeeks.map(w=>Number(w.slice(0,4))))].sort((a,b)=>a-b);
  const latestYear=years.length?years[years.length-1]:null;
  const traces=[];
- const yearWidth=(year)=>year===latestYear?5.5:Math.max(1.1,2.8-(latestYear-year)*0.45);
+ const yearWidth=(year)=>year===latestYear?2.75:Math.max(0.65,1.4-(latestYear-year)*0.25);
  const x=p=>continuousMode?monthOfPeriod(p.date):(monthlyMode?Number(p.date.slice(5,7))-.5:monthPosition(p.date));
  // One legend entry per year; colour indicates urgency, thickness highlights the latest year.
  if(!continuousMode)for(const [i,year] of years.entries()){
@@ -2421,6 +2427,9 @@ function drawCombinedDemandChart(){
  const currentKey=monthlyMode?thisMonth:thisWeek;
  const currentInView=showCurrentWeek&&visibleWeeks.includes(currentKey);
  const nowcastCategories=additiveLines?['Combined']:selected;
+ const plotWidth=Math.max(24,($('combinedDemandChart')?.clientWidth||277)-157);
+ const markerLane=GPCorrectness.predictionLaneLayout(currentInView?nowcastCategories.length:0,plotWidth,10);
+ const historicalDomainEnd=markerLane.historyEnd;
  const nowcastDaily=new Map(nowcastCategories.map(name=>[name,new Map()])),nowcastTimed=new Map(nowcastCategories.map(name=>[name,[]]));
  const snapshot=Number.isFinite(capacityCSVLatestModified)?new Date(Math.min(Date.now(),capacityCSVLatestModified)):null;
  const snapshotClock=snapshot?dayView2LondonClock(snapshot):null;
@@ -2453,7 +2462,7 @@ function drawCombinedDemandChart(){
    const previousPoint=continuousMode?points.filter(p=>p.year===year-1&&(!demandMonthStart||p.date.slice(0,7)>=demandMonthStart)&&(!demandMonthEnd||p.date.slice(0,7)<=demandMonthEnd)).sort((a,b)=>a.date.localeCompare(b.date)).at(-1):null;
    const plotPoints=previousPoint&&complete.length?[previousPoint,...complete]:complete;
    const width=yearWidth(year);
-   const opacity=year===latestYear?1:Math.max(0.4,0.78-(latestYear-year)*0.08);
+   const opacity=year===latestYear?1:Math.max(0.25,0.62-(latestYear-year)*0.08);
    for(const p of data)maxCount=Math.max(maxCount,p.count);
    traces.push({name:category+' '+year,legendgroup:String(year),showlegend:false,
     x:plotPoints.map(x),y:plotPoints.map(p=>p.smoothed),customdata:plotPoints.map(p=>[p.date,p.rawCount,p.count]),
@@ -2463,26 +2472,20 @@ function drawCombinedDemandChart(){
    if(partial){
     const projection=GPCorrectness.currentPeriodNowcast({mode:monthlyMode?'month':'week',currentDate:todayLondon,clock:snapshotClock,daily:[...(nowcastDaily.get(category)?.values()||[])],timed:nowcastTimed.get(category)||[],coverage:slotReportCoverage,excludedPeriods:monthlyMode||!excludeBankHolidays?[]:[...bankHolidayWeeks]});
     const colour=additiveLines?'#2678ad':urgencyGroupColour(category),currentX=x(last);
-    const plotWidth=Math.max(24,($('combinedDemandChart')?.clientWidth||277)-157);
-    const firstMonth=demandMonthStart||visibleWeeks[0]?.slice(0,7)||thisMonth,lastMonth=demandMonthEnd||thisMonth;
-    const axisLow=continuousMode?Date.parse(firstMonth+'-01T00:00:00Z'):0;
-    const axisHigh=continuousMode?Date.UTC(Number(lastMonth.slice(0,4)),Number(lastMonth.slice(5,7)),0):12;
-    const value=continuousMode?Date.parse(currentX):currentX;
-    const shifted=GPCorrectness.dodgeSeriesPosition(value,nowcastCategories.indexOf(category),nowcastCategories.length,axisLow,axisHigh,plotWidth);
-    const markerX=continuousMode?new Date(shifted).toISOString():shifted;
+    const markerX=markerLane.positions[nowcastCategories.indexOf(category)];
     const observed=Number.isFinite(projection.observed)?projection.observed:last.count,rawObserved=Number.isFinite(projection.rawObserved)?projection.rawObserved:last.rawCount;
     const currentActual={category,mode:monthlyMode?'month':'week',observed,rawObserved,asOfLabel,logicalPeriod:last.date};
     traces.push({name:category+' current '+currentActual.mode+' so far',showlegend:false,type:'scatter',mode:'markers',
-     x:[markerX],y:[observed],customdata:[[last.date,rawObserved,observed]],cliponaxis:false,
+     xaxis:'x2',x:[markerX],y:[observed],customdata:[[last.date,rawObserved,observed]],cliponaxis:false,
      marker:{symbol:'circle-open',size:8,color:colour,line:{color:colour,width:1.7}},line:{color:colour,width:0},
      hoverinfo:'text',text:category+': '+Math.round(rawObserved).toLocaleString('en-GB')+' actual bookings so far',meta:{currentObserved:currentActual}});
     if(projection.error){nowcastErrors.push(category+': '+projection.error);continue;}
     const whiskerColour=/^#[0-9a-f]{6}$/i.test(colour)?'rgba('+[1,3,5].map(i=>parseInt(colour.slice(i,i+2),16)).join(',')+',0.4)':'rgba(38,120,173,0.4)';
     const meta={...projection,category,asOfLabel},centre=(projection.low+projection.high)/2;
     traces.push({name:category+' '+year+' estimated range',legendgroup:String(year),showlegend:false,type:'scatter',mode:'lines',
-     x:[markerX,markerX,markerX],y:[projection.low,centre,projection.high],line:{color:whiskerColour,width:1.2},
+     xaxis:'x2',x:[markerX,markerX,markerX],y:[projection.low,centre,projection.high],line:{color:whiskerColour,width:1.2},
      hoverinfo:'text',text:category+' estimated finish: '+Math.round(projection.low).toLocaleString('en-GB')+'–'+Math.round(projection.high).toLocaleString('en-GB')+' · Actual so far: '+Math.round(projection.rawObserved).toLocaleString('en-GB')+' · Report: '+asOfLabel,meta:{nowcast:meta}});
-    traces.push({name:category+' range caps',showlegend:false,type:'scatter',mode:'markers',x:[markerX],y:[centre],marker:{size:0,opacity:0},
+    traces.push({name:category+' range caps',showlegend:false,type:'scatter',mode:'markers',xaxis:'x2',x:[markerX],y:[centre],marker:{size:0,opacity:0},
      error_y:{type:'data',symmetric:false,array:[projection.high-centre],arrayminus:[centre-projection.low],color:whiskerColour,thickness:1.2,width:4},hoverinfo:'skip',meta:{rangeCaps:true}});
     maxCount=Math.max(maxCount,projection.high);nowcastReady.push(category);
    }
@@ -2499,7 +2502,7 @@ function drawCombinedDemandChart(){
   const average=values.reduce((sum,value)=>sum+value,0)/values.length;
   maxCount=Math.max(maxCount,average);
   const colour=additiveLines?'#2678ad':urgencyGroupColour(category);
-  averageShapes.push({type:'line',xref:'paper',yref:'y',x0:0,x1:1,y0:average,y1:average,
+  averageShapes.push({type:'line',xref:'paper',yref:'y',x0:0,x1:historicalDomainEnd,y0:average,y1:average,
    line:{color:colour,width:1.8,dash:'dot'},layer:'above'});
   averageAnnotations.push({xref:'paper',yref:'y',x:1,y:average,xanchor:'left',yanchor:'middle',xshift:8,
    text:'Av. '+Math.round(average).toLocaleString('en-GB'),showarrow:false,
@@ -2513,13 +2516,15 @@ function drawCombinedDemandChart(){
  // Fit the axis closely to the visible series and average lines, retaining a zero baseline.
  const yAxisTop=Math.max(5,Math.ceil(maxCount*1.08));
  const range=demandMonthStart&&demandMonthEnd?[demandMonthStart+'-01',new Date(Date.UTC(Number(demandMonthEnd.slice(0,4)),Number(demandMonthEnd.slice(5,7)),0)).toISOString().slice(0,10)]:null;
+ if(continuousMode&&currentInView&&range){const lastHistorical=traces.filter(t=>!t.meta?.nowcast&&!t.meta?.currentObserved&&!t.meta?.rangeCaps).flatMap(t=>t.x||[]).filter(v=>typeof v==='string'&&/^\d{4}-\d{2}-\d{2}/.test(v)).sort().at(-1);if(lastHistorical&&lastHistorical>range[0])range[1]=lastHistorical;}
  Plotly.react('combinedDemandChart',traces,{dragmode:false,autosize:true,height:535,
   margin:{l:62,r:95,t:55,b:65},paper_bgcolor:'white',plot_bgcolor:'white',
   shapes:[...yearBackgroundShapes(visibleWeeks),...averageShapes],
   showlegend:!continuousMode,legend:{orientation:'h',y:1.14,x:0,xanchor:'left',yanchor:'bottom',entrywidth:85,entrywidthmode:'pixels',traceorder:'normal'},
-  xaxis:continuousMode?{type:'date',title:monthlyMode?'Booking month':'Booking date',tickformat:'%b %Y',gridcolor:'#edf1f5',...(range?{range}: {})}:axis,
+  xaxis:continuousMode?{type:'date',domain:[0,historicalDomainEnd],title:monthlyMode?'Booking month':'Booking date',tickformat:'%b %Y',gridcolor:'#edf1f5',...(range?{range}: {})}:{...axis,domain:[0,historicalDomainEnd]},
+  xaxis2:{type:'linear',domain:markerLane.domain,anchor:'y',range:[0,1],visible:false,showticklabels:false,ticks:'',showline:false,showgrid:false,zeroline:false,fixedrange:true},
   yaxis:{title:'Appointments',range:[0,yAxisTop],nticks:6,gridcolor:'#edf1f5'},hovermode:'closest',
-  annotations:!selected.length?[{text:'Select an appointment type to display appointments',xref:'paper',yref:'paper',x:.5,y:.5,showarrow:false}]:averageAnnotations
+  annotations:!selected.length?[{text:'Select an appointment type to display appointments',xref:'paper',yref:'paper',x:.5,y:.5,showarrow:false}]:[...averageAnnotations,...(currentInView?[{xref:'paper',yref:'paper',x:(markerLane.domain[0]+1)/2,y:1.04,text:'Current',showarrow:false,xanchor:'center',yanchor:'bottom',font:{size:10,color:'#62788f'}}]:[])]
  },{responsive:true,displaylogo:false,displayModeBar:false,scrollZoom:false,doubleClick:false}).then(()=>{installDemandCardTooltip($('combinedDemandChart'));$('combinedDemandChart')?.querySelectorAll('.annotation rect').forEach(rect=>{rect.setAttribute('rx','14');rect.setAttribute('ry','14');});});
 }
 drawCombinedDemandChart();
@@ -3930,17 +3935,16 @@ function updateCollapsedFilterSummaries(){
  document.querySelectorAll('.collapsed-selection-summary[data-summary-for]').forEach(summary=>{
   const root=$(summary.dataset.summaryFor);if(!root)return;
   const selected=[...root.querySelectorAll('input[data-filter-name]')].filter(input=>input.checked&&!input.disabled&&!input.closest('.filter-row')?.hidden).map(input=>input.dataset.filterName);
-  summary.textContent=selected.length?selected.join(', '):'None selected';
+  const text=selected.length?selected.join(', '):'None selected';if(summary.textContent!==text)summary.textContent=text;
   const expanded=summary.parentElement.querySelector('.collapse-filter-button')?.getAttribute('aria-expanded')==='true';
   summary.hidden=expanded;root.hidden=!expanded;
  });
 }
 document.querySelectorAll('.collapse-filter-button').forEach(button=>{
  button.addEventListener('click',()=>{
-  const expanded=button.getAttribute('aria-expanded')==='true';
-  button.setAttribute('aria-expanded',String(!expanded));
-  button.querySelector('.collapse-sign').textContent=expanded?'+':'−';
-  updateCollapsedFilterSummaries();
+  const expanded=button.getAttribute('aria-expanded')!=='true',key=chartExpansionKey(button);
+  if(key&&!chartPreferenceRestoring){writeChartPreference(key,expanded);chartRestoredExpansions.set(key,expanded)}
+  setSecondaryFilterExpanded(button,expanded);updateCollapsedFilterSummaries();
  });
 });
 function installAvailabilityCardTooltip(target){

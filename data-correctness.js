@@ -141,16 +141,16 @@ function currentPeriodNowcast({mode='week',currentDate,clock,daily=[],timed=[],c
  return {key,mode,estimate,low:Math.max(observed,Math.floor(low)),high:Math.ceil(high),observed,rawObserved,fraction,samples:samples.length,intradayProfile,timedCoverage,asOf:{date:clock.date,minute},periodStart:bounds.start,periodEnd:bounds.end};
 }
 
-function dodgeSeriesPosition(value,index,count,min,max,width,gap=12){
- if(![value,min,max,width].every(Number.isFinite)||max<=min||width<=0)return value;
- const n=Number.isFinite(count)?Math.max(1,Math.floor(count)):1,i=Math.max(0,Math.min(n-1,Number.isFinite(index)?Math.floor(index):0));
- const spacing=Math.min(gap,Math.max(0,(width-12)/Math.max(1,n-1))),half=(n-1)*spacing/2;
- const centre=(value-min)/(max-min)*width;
- const clamped=Math.max(6+half,Math.min(width-6-half,centre));
- return min+(clamped+(i-(n-1)/2)*spacing)/width*(max-min);
+function predictionLaneLayout(count,width,gap=10){
+ const n=Number.isFinite(count)?Math.max(0,Math.floor(count)):0;
+ if(!n||!Number.isFinite(width)||width<=0)return {historyEnd:1,domain:[0,1],positions:[],spacing:0};
+ const usable=Math.max(24,width),laneWidth=Math.min(18+(n-1)*gap,Math.max(18,usable-11));
+ const gutter=Math.min(10,Math.max(0,usable-laneWidth-1)),spacing=n>1?(laneWidth-18)/(n-1):0;
+ return {historyEnd:(usable-laneWidth-gutter)/usable,domain:[(usable-laneWidth)/usable,1],
+  positions:Array.from({length:n},(_,i)=>n===1?0.5:(9+i*spacing)/laneWidth),spacing};
 }
 
-const api={dodgeSeriesPosition,currentPeriodNowcast,periodBounds,smoothDemandSeries,shift,monday,londonDate,dateContext,validDate,coverageFromEntries,completeWeeks,roles,renameRole};
+const api={predictionLaneLayout,currentPeriodNowcast,periodBounds,smoothDemandSeries,shift,monday,londonDate,dateContext,validDate,coverageFromEntries,completeWeeks,roles,renameRole};
 if(typeof module!=='undefined'&&module.exports)module.exports=api;
 else root.GPCorrectness=api;
 })(typeof window!=='undefined'?window:globalThis);
