@@ -113,7 +113,6 @@ function setupResponsiveHeader(){
  new MutationObserver(updateCurrent).observe(nav,{attributes:true,attributeFilter:['class'],subtree:true});updateCurrent();
  $('headerPersonalSettings')?.addEventListener('click',()=>{$('headerAccountMenu')?.removeAttribute('open');showPage('personalSettings')});
 }
-setupResponsiveHeader();
 
 function applyAccessMode(){
  document.body.classList.toggle('viewer-mode',!isOwner);
@@ -971,6 +970,7 @@ const $=id=>document.getElementById(id);
 let auth,authInitPromise=null,activeAccount=null,authenticatedOnce=false,selectedFolder=null,folderView={id:'root',name:'OneDrive',trail:[]},busy=false,lastFingerprint='';
 let cloudReady=false, cloudSaveTimer=null, cloudVersion=null, cloudBusy=false;
 let cloudFolder=null;
+setupResponsiveHeader();
 // Per-account chart preferences stay local to this browser and are never included
 // in the shared OneDrive settings JSON.
 function chartPreferenceAccount(){return activeAccount?.homeAccountId||activeAccount?.localAccountId||activeAccount?.username||null}

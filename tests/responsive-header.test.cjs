@@ -12,7 +12,7 @@ function fixture(){
  for(const id of ['accountLabel','headerSlotRefreshed','headerMenuToggle','headerCurrentPage','headerPersonalSettings','headerAccountMenu'])nodes[id]=new Node(id);
  const nav=new Node('nav');let closeCount=0,page;
  const ctx={$:id=>nodes[id],activeAccount:{name:'Microsoft Name',username:'user@example.com'},readPersonalSettings:()=>({}),window:{matchMedia:()=>media},document:{querySelector:()=>nav,addEventListener:(name,fn)=>{events[name]=fn}},MutationObserver:class{observe(){}},closeDashboardMenus(){closeCount++},showPage:p=>{page=p}};
- vm.createContext(ctx);vm.runInContext(source.slice(start,end),ctx);
+ vm.createContext(ctx);vm.runInContext(source.slice(start,end),ctx);ctx.setupResponsiveHeader();
  return {ctx,nodes,nav,events,media,Node,closeCount:()=>closeCount,page:()=>page};
 }
 test('wide navigation stays expanded by CSS while narrow windows can toggle and select pages',()=>{
@@ -47,4 +47,13 @@ test('opening the responsive Menu does not dismiss a visible Forecast page',()=>
  let hides=0;const buttons=['headerMenuToggle','navHome'].map(id=>({id,handlers:{},matches:selector=>selector.split(',').includes('#'+id),addEventListener(name,fn){this.handlers[name]=fn}}));
  const ctx={document:{querySelectorAll:()=>buttons},$:()=>({classList:{add:()=>hides++}})};vm.createContext(ctx);vm.runInContext(forecast.slice(a,b),ctx);
  assert.equal(buttons[0].handlers.click,undefined);buttons[1].handlers.click();assert.equal(hides,2);
+});
+
+
+test('header startup initializes the element lookup before executing responsive setup',()=>{
+ const lookup=source.match(/^const \$=.+$/m)[0];
+ const call='setupResponsiveHeader();';
+ const pieces=[{at:start,code:source.slice(start,end)},{at:source.indexOf(lookup),code:lookup},{at:source.indexOf('\n'+call),code:call}].sort((a,b)=>a.at-b.at);
+ const ctx={document:{querySelector:()=>null,getElementById:()=>null}};vm.createContext(ctx);
+ assert.doesNotThrow(()=>vm.runInContext(pieces.map(p=>p.code).join('\n'),ctx));
 });
