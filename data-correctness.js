@@ -141,16 +141,24 @@ function currentPeriodNowcast({mode='week',currentDate,clock,daily=[],timed=[],c
  return {key,mode,estimate,low:Math.max(observed,Math.floor(low)),high:Math.ceil(high),observed,rawObserved,fraction,samples:samples.length,intradayProfile,timedCoverage,asOf:{date:clock.date,minute},periodStart:bounds.start,periodEnd:bounds.end};
 }
 
-function predictionLaneLayout(count,width,gap=10){
+// Nudge coincident current-period columns in pixels on the existing time axis.
+// The caller reuses each position for the line endpoint, observation and range.
+function currentPeriodPositions(value,range,width,count){
  const n=Number.isFinite(count)?Math.max(0,Math.floor(count)):0;
- if(!n||!Number.isFinite(width)||width<=0)return {historyEnd:1,domain:[0,1],positions:[],spacing:0};
- const usable=Math.max(24,width),laneWidth=Math.min(18+(n-1)*gap,Math.max(18,usable-11));
- const gutter=Math.min(10,Math.max(0,usable-laneWidth-1)),spacing=n>1?(laneWidth-18)/(n-1):0;
- return {historyEnd:(usable-laneWidth-gutter)/usable,domain:[(usable-laneWidth)/usable,1],
-  positions:Array.from({length:n},(_,i)=>n===1?0.5:(9+i*spacing)/laneWidth),spacing};
+ const date=typeof value==='string',number=v=>date?Date.parse(v):v;
+ const start=number(range[0]),end=number(range[1]),centre=number(value);
+ if(!n)return [];
+ if(!Number.isFinite(width)||width<=0||!(end>start))return Array(n).fill(value);
+ const spacing=n>1?Math.min(6,24/(n-1),width/(n+1)):0;
+ const half=(n-1)*spacing/2,scale=(end-start)/width;
+ const anchor=Math.max(start+half*scale,Math.min(end-half*scale,centre));
+ return Array.from({length:n},(_,i)=>{
+  const position=anchor+(i-(n-1)/2)*spacing*scale;
+  return date?new Date(position).toISOString():position;
+ });
 }
 
-const api={predictionLaneLayout,currentPeriodNowcast,periodBounds,smoothDemandSeries,shift,monday,londonDate,dateContext,validDate,coverageFromEntries,completeWeeks,roles,renameRole};
+const api={currentPeriodPositions,currentPeriodNowcast,periodBounds,smoothDemandSeries,shift,monday,londonDate,dateContext,validDate,coverageFromEntries,completeWeeks,roles,renameRole};
 if(typeof module!=='undefined'&&module.exports)module.exports=api;
 else root.GPCorrectness=api;
 })(typeof window!=='undefined'?window:globalThis);

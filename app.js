@@ -2428,8 +2428,9 @@ function drawCombinedDemandChart(){
  const currentInView=showCurrentWeek&&visibleWeeks.includes(currentKey);
  const nowcastCategories=additiveLines?['Combined']:selected;
  const plotWidth=Math.max(24,($('combinedDemandChart')?.clientWidth||277)-157);
- const markerLane=GPCorrectness.predictionLaneLayout(currentInView?nowcastCategories.length:0,plotWidth,10);
- const historicalDomainEnd=markerLane.historyEnd;
+ const range=demandMonthStart&&demandMonthEnd?[demandMonthStart+'-01',new Date(Date.UTC(Number(demandMonthEnd.slice(0,4)),Number(demandMonthEnd.slice(5,7)),0)).toISOString().slice(0,10)]:null;
+ const currentPosition=x({date:currentKey});
+ const markerPositions=GPCorrectness.currentPeriodPositions(currentPosition,continuousMode?(range||[monthOfPeriod(visibleWeeks[0]||currentKey),monthOfPeriod(visibleWeeks.at(-1)||currentKey)]):axis.range,plotWidth,currentInView?nowcastCategories.length:0);
  const nowcastDaily=new Map(nowcastCategories.map(name=>[name,new Map()])),nowcastTimed=new Map(nowcastCategories.map(name=>[name,[]]));
  const snapshot=Number.isFinite(capacityCSVLatestModified)?new Date(Math.min(Date.now(),capacityCSVLatestModified)):null;
  const snapshotClock=snapshot?dayView2LondonClock(snapshot):null;
@@ -2471,22 +2472,27 @@ function drawCombinedDemandChart(){
     hoverinfo:'text',text:plotPoints.map(p=>p.date)});
    if(partial){
     const projection=GPCorrectness.currentPeriodNowcast({mode:monthlyMode?'month':'week',currentDate:todayLondon,clock:snapshotClock,daily:[...(nowcastDaily.get(category)?.values()||[])],timed:nowcastTimed.get(category)||[],coverage:slotReportCoverage,excludedPeriods:monthlyMode||!excludeBankHolidays?[]:[...bankHolidayWeeks]});
-    const colour=additiveLines?'#2678ad':urgencyGroupColour(category),currentX=x(last);
-    const markerX=markerLane.positions[nowcastCategories.indexOf(category)];
+    const colour=additiveLines?'#2678ad':urgencyGroupColour(category);
+    const markerX=markerPositions[nowcastCategories.indexOf(category)];
     const observed=Number.isFinite(projection.observed)?projection.observed:last.count,rawObserved=Number.isFinite(projection.rawObserved)?projection.rawObserved:last.rawCount;
     const currentActual={category,mode:monthlyMode?'month':'week',observed,rawObserved,asOfLabel,logicalPeriod:last.date};
     traces.push({name:category+' current '+currentActual.mode+' so far',showlegend:false,type:'scatter',mode:'markers',
-     xaxis:'x2',x:[markerX],y:[observed],customdata:[[last.date,rawObserved,observed]],cliponaxis:false,
+     x:[markerX],y:[observed],customdata:[[last.date,rawObserved,observed]],cliponaxis:false,
      marker:{symbol:'circle-open',size:8,color:colour,line:{color:colour,width:1.7}},line:{color:colour,width:0},
      hoverinfo:'text',text:category+': '+Math.round(rawObserved).toLocaleString('en-GB')+' actual bookings so far',meta:{currentObserved:currentActual}});
     if(projection.error){nowcastErrors.push(category+': '+projection.error);continue;}
     const whiskerColour=/^#[0-9a-f]{6}$/i.test(colour)?'rgba('+[1,3,5].map(i=>parseInt(colour.slice(i,i+2),16)).join(',')+',0.4)':'rgba(38,120,173,0.4)';
     const meta={...projection,category,asOfLabel},centre=(projection.low+projection.high)/2;
     traces.push({name:category+' '+year+' estimated range',legendgroup:String(year),showlegend:false,type:'scatter',mode:'lines',
-     xaxis:'x2',x:[markerX,markerX,markerX],y:[projection.low,centre,projection.high],line:{color:whiskerColour,width:1.2},
+     x:[markerX,markerX,markerX],y:[projection.low,centre,projection.high],line:{color:whiskerColour,width:1.2},
      hoverinfo:'text',text:category+' estimated finish: '+Math.round(projection.low).toLocaleString('en-GB')+'–'+Math.round(projection.high).toLocaleString('en-GB')+' · Actual so far: '+Math.round(projection.rawObserved).toLocaleString('en-GB')+' · Report: '+asOfLabel,meta:{nowcast:meta}});
-    traces.push({name:category+' range caps',showlegend:false,type:'scatter',mode:'markers',xaxis:'x2',x:[markerX],y:[centre],marker:{size:0,opacity:0},
+    traces.push({name:category+' range caps',showlegend:false,type:'scatter',mode:'markers',x:[markerX],y:[centre],marker:{size:0,opacity:0},
      error_y:{type:'data',symmetric:false,array:[projection.high-centre],arrayminus:[centre-projection.low],color:whiskerColour,thickness:1.2,width:4},hoverinfo:'skip',meta:{rangeCaps:true}});
+    // Keep the finishing estimate and its range at the same nudged date, joined to history.
+    const bridge=complete.at(-1)||previousPoint;
+    traces.push({name:category+' '+year+' estimated finish',legendgroup:String(year),showlegend:false,type:'scatter',mode:'lines',
+     x:bridge?[x(bridge),markerX]:[markerX],y:bridge?[bridge.smoothed,projection.estimate]:[projection.estimate],
+     line:{color:colour,width,dash:'dash'},hoverinfo:'skip',meta:{estimateConnector:true}});
     maxCount=Math.max(maxCount,projection.high);nowcastReady.push(category);
    }
   }
@@ -2502,7 +2508,7 @@ function drawCombinedDemandChart(){
   const average=values.reduce((sum,value)=>sum+value,0)/values.length;
   maxCount=Math.max(maxCount,average);
   const colour=additiveLines?'#2678ad':urgencyGroupColour(category);
-  averageShapes.push({type:'line',xref:'paper',yref:'y',x0:0,x1:historicalDomainEnd,y0:average,y1:average,
+  averageShapes.push({type:'line',xref:'paper',yref:'y',x0:0,x1:1,y0:average,y1:average,
    line:{color:colour,width:1.8,dash:'dot'},layer:'above'});
   averageAnnotations.push({xref:'paper',yref:'y',x:1,y:average,xanchor:'left',yanchor:'middle',xshift:8,
    text:'Av. '+Math.round(average).toLocaleString('en-GB'),showarrow:false,
@@ -2515,16 +2521,13 @@ function drawCombinedDemandChart(){
  }
  // Fit the axis closely to the visible series and average lines, retaining a zero baseline.
  const yAxisTop=Math.max(5,Math.ceil(maxCount*1.08));
- const range=demandMonthStart&&demandMonthEnd?[demandMonthStart+'-01',new Date(Date.UTC(Number(demandMonthEnd.slice(0,4)),Number(demandMonthEnd.slice(5,7)),0)).toISOString().slice(0,10)]:null;
- if(continuousMode&&currentInView&&range){const lastHistorical=traces.filter(t=>!t.meta?.nowcast&&!t.meta?.currentObserved&&!t.meta?.rangeCaps).flatMap(t=>t.x||[]).filter(v=>typeof v==='string'&&/^\d{4}-\d{2}-\d{2}/.test(v)).sort().at(-1);if(lastHistorical&&lastHistorical>range[0])range[1]=lastHistorical;}
  Plotly.react('combinedDemandChart',traces,{dragmode:false,autosize:true,height:535,
   margin:{l:62,r:95,t:55,b:65},paper_bgcolor:'white',plot_bgcolor:'white',
   shapes:[...yearBackgroundShapes(visibleWeeks),...averageShapes],
   showlegend:!continuousMode,legend:{orientation:'h',y:1.14,x:0,xanchor:'left',yanchor:'bottom',entrywidth:85,entrywidthmode:'pixels',traceorder:'normal'},
-  xaxis:continuousMode?{type:'date',domain:[0,historicalDomainEnd],title:monthlyMode?'Booking month':'Booking date',tickformat:'%b %Y',gridcolor:'#edf1f5',...(range?{range}: {})}:{...axis,domain:[0,historicalDomainEnd]},
-  xaxis2:{type:'linear',domain:markerLane.domain,anchor:'y',range:[0,1],visible:false,showticklabels:false,ticks:'',showline:false,showgrid:false,zeroline:false,fixedrange:true},
+  xaxis:continuousMode?{type:'date',domain:[0,1],title:monthlyMode?'Booking month':'Booking date',tickformat:'%b %Y',gridcolor:'#edf1f5',...(range?{range}: {})}:{...axis,domain:[0,1]},
   yaxis:{title:'Appointments',range:[0,yAxisTop],nticks:6,gridcolor:'#edf1f5'},hovermode:'closest',
-  annotations:!selected.length?[{text:'Select an appointment type to display appointments',xref:'paper',yref:'paper',x:.5,y:.5,showarrow:false}]:[...averageAnnotations,...(currentInView?[{xref:'paper',yref:'paper',x:(markerLane.domain[0]+1)/2,y:1.04,text:'Current',showarrow:false,xanchor:'center',yanchor:'bottom',font:{size:10,color:'#62788f'}}]:[])]
+  annotations:!selected.length?[{text:'Select an appointment type to display appointments',xref:'paper',yref:'paper',x:.5,y:.5,showarrow:false}]:averageAnnotations
  },{responsive:true,displaylogo:false,displayModeBar:false,scrollZoom:false,doubleClick:false}).then(()=>{installDemandCardTooltip($('combinedDemandChart'));$('combinedDemandChart')?.querySelectorAll('.annotation rect').forEach(rect=>{rect.setAttribute('rx','14');rect.setAttribute('ry','14');});});
 }
 drawCombinedDemandChart();
