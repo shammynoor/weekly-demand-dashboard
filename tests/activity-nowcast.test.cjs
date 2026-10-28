@@ -48,3 +48,11 @@ test('range respects the bookings already observed and does not mutate input',()
  const input=fixture();input.daily=input.daily.map(r=>({...r,count:r.count*1.2345}));input.timed=input.timed.map(r=>({...r,count:r.count*1.2345}));const before=JSON.stringify(input),result=core.currentPeriodNowcast(input);
  assert.ok(result.low>=result.observed);assert.ok(result.high>=result.estimate);assert.equal(JSON.stringify(input),before);assert.equal(result.rawObserved,250);
 });
+
+
+test('70 percent indicative interval is narrower while retaining the finishing estimate',()=>{
+ const result=core.currentPeriodNowcast(fixture());
+ assert.equal(result.predictionCoverage,0.7);assert.equal(result.estimate,500);
+ assert.equal(result.low,444);assert.equal(result.high,556);
+ assert.ok(result.low<=result.estimate&&result.high>=result.estimate&&result.low>=result.observed);
+});

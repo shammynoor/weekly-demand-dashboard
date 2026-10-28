@@ -14,21 +14,21 @@ Keep 6 px between the Smoothing title and the bar. Add 24 px of separation befor
 
 ## Current-period range bar
 
-Use a translucent capped vertical range bar in the series colour to show an indicative final-total range for the incomplete week/month. Keep historical lines solid, draw no precise projected endpoint, and label the shaded area and report timestamp next to the chart. Hover details distinguish actual bookings so far from estimated finishing bounds. If the report is stale or historical coverage is insufficient, explain why no range can be shown. The show-current control owns this visibility.
+Use a translucent capped vertical range bar in the series colour to show an indicative final-total range for the incomplete week/month. Keep completed historical lines solid and use a fine dotted connector to the predicted finish. Keep the report timestamp and indicative prediction coverage in hover details. Hover details distinguish actual bookings so far from estimated finishing bounds. If the report is stale or historical coverage is insufficient, explain why no range can be shown. The show-current control owns this visibility.
 
 The range bar has no permanent numeric or upper/lower text labels. Keep figures in hover details. Smoothing uses a two-row layout: title centred with the track, four tick labels below. Align each tick centre with the thumb travel, including the half-thumb inset at both ends.
 
 
 ## Fine whisker with current-period circle
 
-Use a 1.2 px whisker in the series colour at 40% opacity, short 4 px caps, and an 8 px open circle in the same series colour for the observed count. Show no permanent numbers beside either marker. Keep each series pair in one column and offset separate pairs horizontally by up to 6 px where space permits; clamp the group inside the plot. Recompute spacing on resize. Distinguish observation and estimate in hover details.
+Use a 1.1 px whisker in the series colour at 65% opacity, short 3 px caps, and a 7 px open circle in the same series colour for the observed count. Show no permanent numbers beside either marker. Keep each series pair in one column and keep all series at the same current-period x coordinate; overlap is allowed. Recompute spacing on resize. Distinguish observation and estimate in hover details.
 
 Smoothing must share the neighbouring toolbar label font family, size, weight and line height. Keep the label/track row centred with the toggle labels, reserving tick-label space below it.
 
 
 ## Current-period continuity
 
-Use the historical booking-date/month axis for current observations and finishing ranges. Join the last completed historical point to the finishing estimate with a dashed segment. Keep its endpoint, observed circle, whisker and caps at one shared x position. For multiple current-period series, use a small horizontal nudge (up to 6 px between columns, 24 px overall), recomputed on resize. Keep the full historical axis and mean lines continuous; do not reserve a separate prediction lane. Current-year line width is 2.75 px; earlier-year lines are thinner and more transparent.
+Use the historical booking-date/month axis for current observations and finishing ranges. Join the last completed historical point to the finishing estimate with a fine 1.35 px dotted segment (1 px dots, 3 px gaps). Keep its endpoint, observed circle, whisker and caps at one shared x position. All current-period series share the same booking date/month position; whiskers may overlap. Use 1.1 px whiskers at 65% opacity with 3 px caps and indicative 70% prediction coverage. Keep the full historical axis and mean lines continuous; do not reserve a separate prediction lane. Current-year line width is 2.75 px; earlier-year lines are thinner and more transparent.
 
 ## Secondary toggle-box expansion
 
@@ -44,3 +44,8 @@ Historical slider limits and their To labels use the latest imported Slot Report
 ## Slate blue navigation
 
 Use the slate blue (#3c6487) bar with 36 px desktop buttons and 4 px vertical bar padding. Retain the existing module icons at 21 px, use 14 px module names and 9 px IQ superscripts with a 1 px gap and no preceding whitespace. Use a white active module with blue text. Keep 44 px touch targets and the existing in-flow mobile dropdowns.
+
+
+## Average capsules
+
+Place small Average capsules inside the plot, along their dotted average lines. Use horizontal staggering and collision-aware nearby rows on crowded narrow plots, recalculating after Plotly redraw/resize. Use explicit HTML pill backgrounds with fully rounded ends, 10 px text and 4 px by 9 px padding. The background is 75% opaque, with a 2 px fully opaque strip exactly where the average line passes behind the pill. Keep category names in accessible labels. Do not show the category legend, the Year-on-year comparison subtitle or the Fine whiskers explanatory block. Retain year legends for overlaid historical years.

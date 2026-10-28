@@ -135,30 +135,39 @@ function currentPeriodNowcast({mode='week',currentDate,clock,daily=[],timed=[],c
  const remaining=Math.max(0,estimate-observed),samplePenalty=Math.max(1,Math.sqrt(12/samples.length));
  // Empirical analogue spread plus a conservative uncertainty floor. This is an
  // indicative finishing range, not a calibrated statistical confidence guarantee.
- const spread=Math.max(1.645*Math.sqrt(remaining),estimate*(intradayProfile?0.25:0.35)*Math.sqrt(1-fraction))*samplePenalty;
- const low=Math.max(observed,Math.min(quantile(candidates,0.05),estimate-spread));
- const high=Math.max(low,quantile(candidates,0.95),estimate+spread);
- return {key,mode,estimate,low:Math.max(observed,Math.floor(low)),high:Math.ceil(high),observed,rawObserved,fraction,samples:samples.length,intradayProfile,timedCoverage,asOf:{date:clock.date,minute},periodStart:bounds.start,periodEnd:bounds.end};
+ const z70=1.036433389,floorScale=z70/1.644853627;
+ const spread=Math.max(z70*Math.sqrt(remaining),estimate*(intradayProfile?0.25:0.35)*floorScale*Math.sqrt(1-fraction))*samplePenalty;
+ const low=Math.max(observed,Math.min(quantile(candidates,0.15),estimate-spread));
+ const high=Math.max(low,quantile(candidates,0.85),estimate+spread);
+ return {key,mode,estimate,predictionCoverage:0.7,low:Math.max(observed,Math.floor(low)),high:Math.ceil(high),observed,rawObserved,fraction,samples:samples.length,intradayProfile,timedCoverage,asOf:{date:clock.date,minute},periodStart:bounds.start,periodEnd:bounds.end};
 }
 
-// Nudge coincident current-period columns in pixels on the existing time axis.
-// The caller reuses each position for the line endpoint, observation and range.
-function currentPeriodPositions(value,range,width,count){
- const n=Number.isFinite(count)?Math.max(0,Math.floor(count)):0;
- const date=typeof value==='string',number=v=>date?Date.parse(v):v;
- const start=number(range[0]),end=number(range[1]),centre=number(value);
- if(!n)return [];
- if(!Number.isFinite(width)||width<=0||!(end>start))return Array(n).fill(value);
- const spacing=n>1?Math.min(6,24/(n-1),width/(n+1)):0;
- const half=(n-1)*spacing/2,scale=(end-start)/width;
- const anchor=Math.max(start+half*scale,Math.min(end-half*scale,centre));
- return Array.from({length:n},(_,i)=>{
-  const position=anchor+(i-(n-1)/2)*spacing*scale;
-  return date?new Date(position).toISOString():position;
- });
+// Prefer labels on their average lines, spreading close averages horizontally.
+// Very crowded narrow plots use nearby vertical rows to keep capsules readable.
+function averageCapsuleLayout(labels,width,height){
+ const placed=[],gap=6,clamp=(v,low,high)=>Math.max(low,Math.min(high,v));
+ for(const [i,label] of labels.entries()){
+  const w=Math.min(width,label.width),h=Math.min(height,label.height);
+  const preferred=labels.length===1?width/2:width*(0.14+0.68*i/(labels.length-1));
+  const xs=[clamp(preferred,w/2,width-w/2)];
+  for(let x=w/2;x<=width-w/2;x+=Math.max(8,w/4))xs.push(x);
+  let position=null;
+  for(let row=0;row<=Math.ceil(height/(h+gap))&&!position;row++){
+   for(const offset of row?[row*(h+gap),-row*(h+gap)]:[0]){
+    const cy=clamp(label.y+offset,h/2,height-h/2);
+    for(const cx of xs){
+     const box={left:cx-w/2,top:cy-h/2,width:w,height:h};
+     if(!placed.some(p=>box.left<p.left+p.width+gap&&box.left+w+gap>p.left&&box.top<p.top+p.height+gap&&box.top+h+gap>p.top)){position=box;break;}
+    }
+    if(position)break;
+   }
+  }
+  placed.push(position||{left:xs[0]-w/2,top:clamp(label.y-h/2,0,height-h),width:w,height:h});
+ }
+ return placed;
 }
 
-const api={currentPeriodPositions,currentPeriodNowcast,periodBounds,smoothDemandSeries,shift,monday,londonDate,dateContext,validDate,coverageFromEntries,completeWeeks,roles,renameRole};
+const api={averageCapsuleLayout,currentPeriodNowcast,periodBounds,smoothDemandSeries,shift,monday,londonDate,dateContext,validDate,coverageFromEntries,completeWeeks,roles,renameRole};
 if(typeof module!=='undefined'&&module.exports)module.exports=api;
 else root.GPCorrectness=api;
 })(typeof window!=='undefined'?window:globalThis);
