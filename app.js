@@ -1002,6 +1002,7 @@ function writeChartPreference(key,value){const storageKey=chartPreferenceKey();i
 window.gpChartPreferences={read:readChartPreferences,write:writeChartPreference,account:chartPreferenceAccount};
 function chartControlKey(el){
  if(!el||!el.matches?.('input,select'))return null;
+ if(el.dataset?.chartProxy)return null;
  // Month sliders restore both handles together after their data bounds are ready.
  if(/^(demandRange|waitingRange|waitingTrendRange)(Start|End)$/.test(el.id))return null;
  const page=el.closest('[id$="Page"]');
@@ -1336,6 +1337,7 @@ function setButtons(){
  $('signIn').disabled=authChecking||(logged&&folderAccessVerified&&!folderAccessDenied);
  $('signIn').textContent='Sign in with Microsoft';
  if(logged)updateHeaderIdentity();
+ window.gpChartOptions?.restore?.();
  $('signOut').disabled=!logged;
  $('chooseFolder').disabled=!logged||!isOwner;
  $('refreshData').disabled=!logged||!selectedFolder||busy;
@@ -2643,7 +2645,7 @@ function drawCombinedDemandChart(){
  // Fit the axis closely to the visible series and average lines, retaining a zero baseline.
  const yAxisTop=Math.max(5,Math.ceil(maxCount*1.08));
  Plotly.react('combinedDemandChart',traces,{dragmode:false,autosize:true,height:535,
-  margin:{l:62,r:24,t:55,b:65},paper_bgcolor:'white',plot_bgcolor:'white',
+  margin:{l:62,r:24,t:continuousMode?28:50,b:65},paper_bgcolor:'white',plot_bgcolor:'white',
   shapes:[...yearBackgroundShapes(visibleWeeks),...averageShapes],
   showlegend:!continuousMode,legend:{orientation:'h',y:1.14,x:0,xanchor:'left',yanchor:'bottom',entrywidth:85,entrywidthmode:'pixels',traceorder:'normal'},
   xaxis:continuousMode?{type:'date',domain:[0,1],title:monthlyMode?'Booking month':'Booking date',tickformat:'%b %Y',gridcolor:'#edf1f5',...(range?{range}: {})}:{...axis,domain:[0,1]},
@@ -5117,6 +5119,74 @@ function validateCloudCategories(data){
  const names=data[namesKey]===undefined?fallback:validCategoryNames(data[namesKey]);if(mapKey&&data[mapKey])validAssignments(data[mapKey],names);
  }
 }
+// Shared chart disclosure and rounded select menus. Native controls remain the source of truth.
+let chartOptionsAccount=null;
+const chartOptionsApplied=new Map();
+function chartOptionsPreferenceKey(button){return 'displayOptions:'+(button.closest('[id$="Page"]')?.id||'chart')+':'+button.getAttribute('aria-controls');}
+function setChartDisplayOptions(button,expanded,save=false){
+ const panel=$(button.getAttribute('aria-controls'));if(!panel)return;
+ button.setAttribute('aria-expanded',String(expanded));panel.hidden=!expanded;
+ if(!expanded)panel.querySelectorAll('.chart-select-picker').forEach(picker=>picker._chartClose?.());
+ if(save){const key=chartOptionsPreferenceKey(button);writeChartPreference(key,expanded);chartOptionsApplied.set(key,expanded);}
+ scheduleChartResize();
+}
+function restoreChartDisplayOptions(){
+ const account=chartPreferenceAccount();if(!account)return;
+ if(account!==chartOptionsAccount){chartOptionsAccount=account;chartOptionsApplied.clear();}
+ const saved=readChartPreferences();
+ document.querySelectorAll('.chart-display-options-button[aria-controls]').forEach(button=>{
+  if(button.dataset.chartOptionsBound!=='1')return;
+  const key=chartOptionsPreferenceKey(button),expanded=saved[key]===true;
+  if(chartOptionsApplied.get(key)===expanded)return;
+  chartOptionsApplied.set(key,expanded);setChartDisplayOptions(button,expanded);
+ });
+}
+function initializeChartSelect(select){
+ if(select.dataset.chartSelectBound==='1')return;
+ const model=select.dataset.chartProxy?$(select.dataset.chartProxy):null;if(select.dataset.chartProxy&&!model)return;
+ select.dataset.chartSelectBound='1';
+ const picker=document.createElement('div');picker.className='chart-select-picker';
+ const button=document.createElement('button');button.type='button';button.className='chart-select-trigger';
+ button.setAttribute('role','combobox');button.setAttribute('aria-haspopup','listbox');button.setAttribute('aria-expanded','false');button.setAttribute('aria-label',select.getAttribute('aria-label')||'Display option');
+ const list=document.createElement('div');list.className='chart-select-list';list.id=select.id+'Options';list.hidden=true;list.setAttribute('role','listbox');list.setAttribute('aria-label',select.getAttribute('aria-label')||'Display option');button.setAttribute('aria-controls',list.id);
+ const close=()=>{list.hidden=true;button.setAttribute('aria-expanded','false')};picker._chartClose=close;
+ const sync=()=>{
+  button.textContent=select.options[select.selectedIndex]?.textContent||'';button.disabled=select.disabled;
+  [...list.children].forEach((option,i)=>option.setAttribute('aria-selected',String(i===select.selectedIndex)));
+ };
+ const fromModel=()=>{select.value=model.checked?select.dataset.checkedValue:[...select.options].find(option=>option.value!==select.dataset.checkedValue).value;select.disabled=model.disabled;sync();};
+ const open=()=>{document.querySelectorAll('.chart-select-picker').forEach(other=>{if(other!==picker)other._chartClose?.()});list.hidden=false;button.setAttribute('aria-expanded','true');};
+ [...select.options].forEach((option,i)=>{
+  const item=document.createElement('button');item.type='button';item.className='chart-select-option';item.tabIndex=-1;item.textContent=option.textContent;item.setAttribute('role','option');
+  item.addEventListener('click',()=>{select.value=option.value;select.dispatchEvent(new Event('change',{bubbles:true}));close();button.focus();});
+  item.addEventListener('keydown',event=>{
+   const items=[...list.children];
+   if(['ArrowDown','ArrowUp','Home','End'].includes(event.key)){event.preventDefault();const next=event.key==='Home'?0:event.key==='End'?items.length-1:(i+(event.key==='ArrowDown'?1:-1)+items.length)%items.length;items[next].focus();}
+   if(event.key==='Escape'){event.preventDefault();event.stopPropagation();close();button.focus();}
+   if(event.key==='Tab')close();
+   if(event.key.length===1&&/\S/.test(event.key)){const next=items.find(item=>item.textContent.toLowerCase().startsWith(event.key.toLowerCase()));if(next){event.preventDefault();next.focus();}}
+  });list.append(item);
+ });
+ button.addEventListener('click',()=>{if(list.hidden)open();else close();});
+ button.addEventListener('keydown',event=>{
+  if(['ArrowDown','ArrowUp','Home','End'].includes(event.key)){event.preventDefault();open();list.children[event.key==='Home'?0:event.key==='End'?list.children.length-1:select.selectedIndex]?.focus();}
+  if(event.key==='Escape'){event.preventDefault();event.stopPropagation();close();}if(event.key==='Tab')close();
+ });
+ select.addEventListener('change',()=>{if(model){model.checked=select.value===select.dataset.checkedValue;model.dispatchEvent(new Event('change',{bubbles:true}));}sync();});if(model)model.addEventListener('change',fromModel);
+ picker.append(button,list);select.after(picker);select.hidden=true;if(model)fromModel();else sync();
+ document.addEventListener('pointerdown',event=>{if(!picker.contains(event.target))close();});
+}
+function initializeChartDisplayOptions(){
+ document.querySelectorAll('.chart-display-options-button[aria-controls]').forEach(button=>{
+  if(button.dataset.chartOptionsBound==='1')return;button.dataset.chartOptionsBound='1';
+  button.addEventListener('click',()=>setChartDisplayOptions(button,button.getAttribute('aria-expanded')!=='true',true));
+  $(button.getAttribute('aria-controls'))?.addEventListener('keydown',event=>{if(event.key==='Escape'){setChartDisplayOptions(button,false,true);button.focus();}});
+ });
+ document.querySelectorAll('select[data-chart-proxy],select[data-chart-select]').forEach(initializeChartSelect);restoreChartDisplayOptions();
+}
+window.gpChartOptions={restore:restoreChartDisplayOptions};
+initializeChartDisplayOptions();
+
 async function refreshDashboardData(force=true){
  if(settingsRefreshing||busy||!activeAccount||!selectedFolder)return;
  settingsRefreshing=true;
@@ -5129,3 +5199,4 @@ async function refreshDashboardData(force=true){
  }catch(e){showRefreshFeedback('Refresh failed: '+e.message)}
  finally{settingsRefreshing=false;setButtons()}
 }
+

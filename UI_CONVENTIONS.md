@@ -7,9 +7,9 @@ Match the compact Clinician Groups sidebar switches: approximately 32.4 × 18 CS
 
 ## Historic Booking Activity smoothing
 
-Use a compact discrete slider in the chart display-options row, beside Combine selected lines. Label its four stops Off, Low, Medium and High, without repeating the active value beside Smoothing. Retain native range keyboard behaviour, visible focus and an accessible value label. Reuse the existing blue rail/white-rimmed thumb styling.
+Use a compact discrete slider in the right column of the chart Display options panel, beneath the Data and Timeline dropdowns. Label its four stops Off, Low, Medium and High, without repeating the active value beside Smoothing. Retain native range keyboard behaviour, visible focus and an accessible value label. Reuse the existing blue rail/white-rimmed thumb styling.
 
-Keep 6 px between the Smoothing title and the bar. Add 24 px of separation before the smoothing group in addition to the toolbar gap, wrapping cleanly on narrow screens.
+Use an aligned 65 px label column and 9 px gap to the short smoothing track. Stack the toggle and dropdown/smoothing columns on narrow screens; do not use a full-width smoothing slider or negative spacing.
 
 
 ## Current-period range bar
@@ -76,3 +76,8 @@ Under Last clinical system download, display Refreshed with hours and minutes wh
 ## Urgent Forecast bank-holiday policy
 
 Appointment Number Suggestions must not read the analytics day-of-week selection. Fit normal daily suggestions and weekly allocations using the selected historical window with bank-holiday weeks excluded. Use the separate before/after-bank-holiday models for holiday-adjacent suggestion dates, retaining all available adjacent-day history. Analytics Monday–Friday automatically exclude bank-holiday weeks; before/after-bank-holiday analytics automatically include them and use all available adjacent-day history. Remove the Ignore bank holiday weeks checkbox; obsolete saved values have no effect. Prediction cache keys exclude the analytics weekday.
+
+
+## Shared chart layout memory
+
+See [CHART_LAYOUT.md](CHART_LAYOUT.md) for the user-approved title-left, Display-options-right, timeline-below, full-width-chart layout. Historic Booking Activity uses this theme first. Preserve the flow-based options panel, tight toggle column, aligned dropdown/smoothing column, rounded open dropdown menus, non-overlapping tick labels and per-account preferences when applying it to other requested charts.
