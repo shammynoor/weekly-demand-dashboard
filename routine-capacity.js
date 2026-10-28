@@ -11,9 +11,9 @@ const londonToday=()=>{const p=Object.fromEntries(new Intl.DateTimeFormat('en-GB
 const fmt=n=>Math.round(n).toLocaleString('en-GB');
 const finite=n=>Number.isFinite(n)?n:0;
 const ui={target:2,disabledModes:new Set(),modeSignature:'',cached:null,signature:''};
-function isRoutine(group){return /^routine(\b|$)/i.test(String(group||'').trim())}
+function isRoutine(group){return appointmentCalculationRole(group)==='routine'}
 function doctorGroups(){
- return (clinicianGroupNames||[]).filter(n=>/^(doctors?|gps?|general practitioners?|medical practitioners?)$/i.test(String(n).trim()));
+ return (clinicianGroupNames||[]).filter(isDoctorPlanningGroup);
 }
 function rowMode(slot){const assigned=consultAssignments[slot];return consultCategoryNames.includes(assigned)?assigned:(suggestConsultMode(slot)||'')}
 function included(r,doctors){
@@ -47,11 +47,11 @@ function renderModes(modes){
  const root=$('routineCapConsult');if(!root)return;
  const signature=modes.join('|');
  if(signature===ui.modeSignature)return;
- ui.modeSignature=signature;ui.disabledModes.clear();root.replaceChildren();
+ ui.modeSignature=signature;ui.disabledModes=new Set([...ui.disabledModes].filter(n=>modes.includes(n)));if(modes.length&&ui.disabledModes.size===modes.length)ui.disabledModes.delete(modes[0]);root.replaceChildren();
  for(const name of modes){
   const label=document.createElement('label');label.className='filter-row';
   const switcher=document.createElement('span');switcher.className='switch';
-  const input=document.createElement('input');input.type='checkbox';input.checked=true;
+  const input=document.createElement('input');input.type='checkbox';input.checked=!ui.disabledModes.has(name);
   input.setAttribute('role','switch');input.dataset.mode=name;input.setAttribute('aria-label','Include '+name);
   const track=document.createElement('span');track.className='switch-track';
   switcher.append(input,track);label.append(switcher,document.createTextNode(name));root.append(label);
@@ -66,40 +66,29 @@ function renderModes(modes){
 function modelData(){
  if(typeof records==='undefined'||typeof availabilityRecords==='undefined'||typeof waitingTrendRecords==='undefined')return {error:'Appointment data has not loaded.'};
  const doctors=doctorGroups();
- if(!doctors.length)return {error:'Please assign GP clinician types to a Doctors clinician group in People Settings.'};
+ if(!doctors.length)return {error:'Please enable a doctor group for routine capacity in People Settings and assign GP clinician types to it.'};
  const modes=availableModes(doctors);renderModes(modes);
  if(!modes.length)return {error:'No booked routine doctor appointments with mapped consultation modes.'};
  const allowed=r=>included(r,doctors)&&!ui.disabledModes.has(rowMode(r.slot))&&modes.includes(rowMode(r.slot));
- const today=londonToday(),lastSunday=shift(monday(today),-1);
- const mostRecent=availabilityRecords.reduce((s,r)=>{
-  if(String(r.availability).toLowerCase()!=='booked'||!allowed(r)||r.date>lastSunday)return s;
-  return r.date>s?r.date:s;
- },'');
- if(!mostRecent)return {error:'There are no completed routine doctor appointments in the loaded Slot Reports.'};
- // The most recent partially covered week is excluded unless the latest record is Sunday.
- const lastDay=new Date(mostRecent+'T12:00:00Z').getUTCDay();
- // GP routine clinics usually run Monday–Friday. A week ending on Friday
- // is complete even when there are no weekend doctor appointments.
- const end=(lastDay===0||lastDay>=5)?shift(monday(mostRecent),6):shift(monday(mostRecent),-1);
- const weeks=Number($('routineCapHistory')?.value||52);
- const start=shift(end,1-weeks*7);
+ const allWeeks=GPCorrectness.completeWeeks(slotReportCoverage,londonToday(),Number($('routineCapHistory')?.value||52));
+ if(allWeeks.length<8)return {error:'At least eight complete covered weeks of routine doctor history are needed.'};
+ const includedWeeks=new Set(allWeeks),start=allWeeks[0],end=shift(allWeeks.at(-1),6);
  const appts=new Map(),bookings=new Map(),leads=[];
- let oldest='';
+ const oldest=start;
  for(const r of availabilityRecords){
-  if(String(r.availability).toLowerCase()!=='booked'||r.date<start||r.date>end||!allowed(r))continue;
+  if(String(r.availability).toLowerCase()!=='booked'||r.date<start||r.date>end||!includedWeeks.has(monday(r.date))||!allowed(r))continue;
   const key=monday(r.date);appts.set(key,(appts.get(key)||0)+r.count);
-  if(!oldest||key<oldest)oldest=key;
+
  }
  for(const r of records){
-  if(r.bookedDay<start||r.bookedDay>end||!allowed(r))continue;
+  if(r.bookedDay<start||r.bookedDay>end||!includedWeeks.has(monday(r.bookedDay))||!allowed(r))continue;
   const key=monday(r.bookedDay);bookings.set(key,(bookings.get(key)||0)+r.count);
  }
  for(const r of waitingTrendRecords){
-  if(r.appointmentDate<start||r.appointmentDate>end||!allowed(r)||r.leadMinutes<0)continue;
+  if(r.appointmentDate<start||r.appointmentDate>end||!includedWeeks.has(monday(r.appointmentDate))||!allowed(r)||!Number.isFinite(r.leadMinutes)||r.leadMinutes<0)continue;
   leads.push([r.leadMinutes/10080,r.count]);
  }
  if(!oldest||!leads.length)return {error:'Not enough routine doctor appointments with valid booking-to-appointment times.'};
- const allWeeks=[];for(let d=oldest;d<=end;d=shift(d,7))allWeeks.push(d);
  if(allWeeks.length<8)return {error:'At least eight complete weeks of routine doctor history are needed.'};
  const delivered=allWeeks.reduce((total,w)=>total+(appts.get(w)||0),0)/allWeeks.length;
  const demand=allWeeks.reduce((total,w)=>total+(bookings.get(w)||0),0)/allWeeks.length;

@@ -115,6 +115,15 @@ async function readSharedSettings(){
 let records=[],weeks=[],types=[],statuses=[],clinicianTypes=[],bookingTimeRecords=[],appointmentTimeRecords=[];
 let availabilityRecords=[];
 let capacityCSVLatestModified=null;
+let slotReportCoverage=[],settingsRefreshing=false;
+let analyticsRoles={};
+try{analyticsRoles=JSON.parse(localStorage.getItem("appointment-dashboard-categories-v1")||"{}").analyticsRoles||{}}catch(_){}
+function ensureAnalyticsRoles(){return analyticsRoles=GPCorrectness.roles(analyticsRoles,groupUrgencyNames,clinicianGroupNames,appointmentCategoryFor)}
+function appointmentCalculationRole(name){if(!groupUrgencyNames.includes(name))return "other";if(!Object.hasOwn(analyticsRoles.appointmentTypes||{},name))ensureAnalyticsRoles();return analyticsRoles.appointmentTypes[name]?.kind||"other"}
+function isDoctorPlanningGroup(name){if(!Object.hasOwn(analyticsRoles.clinicianGroups||{},name))ensureAnalyticsRoles();return !!analyticsRoles.clinicianGroups[name]?.doctor}
+function renameAnalyticsRole(dimension,oldName,newName){ensureAnalyticsRoles();GPCorrectness.renameRole(analyticsRoles,dimension,oldName,newName)}
+function refreshPrimaryApptTypeBoxes(){for(const id of PRIMARY_APPT_ROOT_IDS)enhancePrimaryApptTypeBox($(id))}
+
 let capacityPaceCache=null;
 let waitingTimeRecords=[],waitingTrendRecords=[];
 let waitingTrendDimensionCache=new WeakMap();
@@ -310,6 +319,11 @@ function appointmentCategoryFor(type){
  const fallback=defaultAppointmentCategory(type);
  return appointmentCategoryNames.includes(fallback)?fallback:'';
 }
+function calculationRoleSelect(name){
+ const select=document.createElement('select');select.className='appointment-category-select';select.setAttribute('aria-label','Calculation role for '+name);
+ for(const [value,label] of [['urgent','Urgent forecast'],['routine','Routine doctor planning'],['other','Other weekly forecast']]){const o=document.createElement('option');o.value=value;o.textContent=label;select.append(o)}
+ select.value=appointmentCalculationRole(name);select.onchange=()=>{analyticsRoles.appointmentTypes[name].kind=select.value;saveCategories()};return select;
+}
 function renderAppointmentCategorySettings(){
  const root=$('appointmentCategorySettings');if(!root)return;
  root.replaceChildren();
@@ -346,6 +360,7 @@ function renderSlotGroupBoxes(){
    const name=input.value.trim();
    if(!name||name.toLowerCase()==='uncategorised'||groupUrgencyNames.some(x=>x.toLowerCase()===name.toLowerCase()&&x!==oldName)){alert('Enter a unique Appointment Types name.');return}
    if(oldName){
+    renameAnalyticsRole('appointmentTypes',oldName,name);
     groupUrgencyNames=groupUrgencyNames.map(x=>x===oldName?name:x);
     if(Object.prototype.hasOwnProperty.call(appointmentCategoryAssignments,oldName)){appointmentCategoryAssignments[name]=appointmentCategoryAssignments[oldName];delete appointmentCategoryAssignments[oldName];}
     for(const slot of Object.keys(assignments))if(assignments[slot]===oldName)assignments[slot]=name;
@@ -364,7 +379,7 @@ function renderSlotGroupBoxes(){
   const label=document.createElement('span');label.textContent=name;row.append(label);
   const category=document.createElement('select');category.className='appointment-category-select';category.setAttribute('aria-label','Category for '+name);
   for(const optionName of ['',...appointmentCategoryNames]){const option=document.createElement('option');option.value=optionName;option.textContent=optionName||'Unassigned category';category.append(option)}
-  category.value=appointmentCategoryFor(name);category.addEventListener('change',()=>{appointmentCategoryAssignments[name]=category.value;saveCategories()});row.append(category);
+  category.value=appointmentCategoryFor(name);category.addEventListener('change',()=>{appointmentCategoryAssignments[name]=category.value;saveCategories()});row.append(category,calculationRoleSelect(name));
   const rename=document.createElement('button');rename.type='button';rename.textContent='✎';rename.title='Rename '+name;
   rename.addEventListener('click',()=>{const edit=editor(name);row.replaceWith(edit.row);edit.input.focus();edit.input.select()});
   const remove=document.createElement('button');remove.type='button';remove.textContent='×';remove.title='Delete '+name;
@@ -430,6 +445,7 @@ function renderPeopleGroups(){
    const {wrap,input}=editor(group,'Clinician group',value=>{
     if(value===group){renderPeopleGroups();return}
     if(!nameValid(value,clinicianGroupNames)){alert('Please enter a unique clinician group name.');return}
+    renameAnalyticsRole('clinicianGroups',group,value);
     clinicianGroupNames=clinicianGroupNames.map(n=>n===group?value:n);
     if(clinicianGroupColours[group]){clinicianGroupColours[value]=clinicianGroupColours[group];delete clinicianGroupColours[group]}
     for(const type of Object.keys(clinicianGroupAssignments))if(clinicianGroupAssignments[type]===group)clinicianGroupAssignments[type]=value;
@@ -465,6 +481,12 @@ function renderPeopleGroups(){
   colourWrap.append(dot,picker);installDashboardColourPicker(colourWrap,picker);
   header.append(colourWrap,title,count,actions);
   card.append(header);
+  const roleLabel=el('label','filter-row');
+  const roleInput=document.createElement('input');roleInput.type='checkbox';roleInput.checked=isDoctorPlanningGroup(group);
+  roleInput.setAttribute('aria-label','Doctor group for routine capacity: '+group);
+  roleInput.onchange=()=>{analyticsRoles.clinicianGroups[group].doctor=roleInput.checked;saveCategories()};
+  const roleSwitch=el('span','switch'),roleTrack=el('span','switch-track');roleInput.setAttribute('role','switch');roleSwitch.append(roleInput,roleTrack);
+  roleLabel.append(roleSwitch,document.createTextNode('Doctor group for routine capacity'));card.append(roleLabel);
   const list=el('div','people-group-types');
   list.dataset.group=group;
   list.addEventListener('dragover',event=>{if(event.dataTransfer.types.includes('text/plain')){event.preventDefault();event.dataTransfer.dropEffect='move';card.classList.add('people-drop-target')}});
@@ -1017,13 +1039,17 @@ function validAssignments(values,names){
  }
  return result;
 }
-async function loadCloudCategories(){
+async function loadCloudCategories(options={}){
+ const readSerial=cloudChangeSerial,previousReady=cloudReady;
  if(!activeAccount)return;
  cloudReady=false;
  cloudNotice('Loading all categories from OneDrive…');
  try{
   const data=await cloudFile();
+  if(options.protectEdits&&(categoryDirty||cloudBusy||readSerial!==cloudChangeSerial))throw Error('Settings changed during refresh; local edits were preserved.');
   if(data){
+   validateCloudCategories(data);
+   analyticsRoles=data.analyticsRoles||{};
    if(data.practiceSettings&&typeof data.practiceSettings==='object'){
     const p=data.practiceSettings;
     practiceSettings={name:typeof p.name==='string'?p.name:'',anchors:p.anchors&&typeof p.anchors==='object'&&!Array.isArray(p.anchors)?Object.fromEntries(Object.entries(p.anchors).filter(([month,value])=>/^\d{4}-\d{2}$/.test(month)&&Number.isFinite(Number(value))&&Number(value)>=0).map(([month,value])=>[month,Number(value)])): {}};
@@ -1094,7 +1120,9 @@ async function loadCloudCategories(){
   renderPeople();
  }catch(e){
   cloudNotice('Could not load cloud categories: '+e.message+' (local settings retained)');
-  cloudReady=false;
+  cloudReady=options.protectEdits?previousReady:false;
+  if(options.protectEdits&&cloudReady&&categoryDirty)markCategoryDirty();
+  if(options.strict)throw e;
  }
 }
 let categoryDirty=false, cloudChangeSerial=0, cloudRetryTimer=null;
@@ -1120,7 +1148,8 @@ async function saveCloudCategories(options={}){
  const saveSerial=cloudChangeSerial;
  if(manual)cloudNotice('Saving all categories and slot assignments to OneDrive…');
  const snapshot=JSON.stringify({
-  version:8,
+  version:9,
+  analyticsRoles:ensureAnalyticsRoles(),
    togglePriority:{...togglePriority},
   practiceSettings:{name:practiceSettings.name,anchors:{...practiceSettings.anchors}},
   peopleLocum:{...peopleLocum},
@@ -1157,18 +1186,8 @@ async function saveCloudCategories(options={}){
    });
    if(!sharedSave.ok)throw Error('Shared settings publishing failed (HTTP '+sharedSave.status+')');
   }
-  if(manual){
-   // Only clear the dirty flag if the user has not changed anything during the save.
-   const current=JSON.stringify({categories:categoryNames,assignments,clinicianCategories:clinicianCategoryNames,clinicianAssignments,consultCategories:consultCategoryNames,consultAssignments});
-   const saved=JSON.parse(snapshot);
-   if(current===JSON.stringify({categories:saved.categories,assignments:saved.assignments,clinicianCategories:saved.clinicianCategories,clinicianAssignments:saved.clinicianAssignments,consultCategories:saved.consultCategories,consultAssignments:saved.consultAssignments})){
-    categoryDirty=false;
-    cloudNotice('Saved to OneDrive successfully. Other computers will see these categories after refreshing.');
-   }else{
-    categoryDirty=true;
-    cloudNotice('Saved, but further edits are unsaved. Click Save again.');
-   }
-  }
+  categoryDirty=cloudChangeSerial!==saveSerial;
+  cloudNotice(categoryDirty?'Saved; newer edits are waiting to sync.':'Saved to OneDrive successfully.');
   return true;
  }catch(e){
   categoryDirty=true;
@@ -1471,6 +1490,8 @@ function renderDropEditor(dimension){
     if(next===name)return;
     // Update both the category and all existing assignments atomically.
     const index=cfg.names.indexOf(name);if(index<0)return;
+    if(dimension==='urgency'||dimension==='groupUrgency')renameAnalyticsRole('appointmentTypes',name,next);
+    if(dimension==='clinicianGroup')renameAnalyticsRole('clinicianGroups',name,next);
     cfg.names[index]=next;
     if(dimension==='clinician'&&Object.prototype.hasOwnProperty.call(clinicianGroupAssignments,name)){clinicianGroupAssignments[next]=clinicianGroupAssignments[name];delete clinicianGroupAssignments[name];}
     if(dimension==='urgency'&&Object.prototype.hasOwnProperty.call(groupUrgencyAssignments,name)){groupUrgencyAssignments[next]=groupUrgencyAssignments[name];delete groupUrgencyAssignments[name];}
@@ -1781,7 +1802,7 @@ function parseCSVContribution(csvText,name){
 async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;setButtons();showRefreshFeedback('Refreshing data…',true);setSync('Checking OneDrive CSV files…');try{
  const items=(await children(selectedFolder.id)).filter(f=>f.file&&/\.csv$/i.test(f.name)).sort((a,b)=>a.name.localeCompare(b.name));if(!items.length)throw Error('No CSV files found directly inside this folder.');updateHomeReportDates(items);
  const cacheScope=await restoreCSVCache();
- const fingerprint=JSON.stringify(items.map(f=>[f.id,f.name,f.lastModifiedDateTime,f.size]));if(!force&&fingerprint===lastFingerprint){showRefreshFeedback('Already up to date');setSync(`No changes detected · ${items.length} CSV files · Checked ${new Date().toLocaleTimeString('en-GB')}`);return}
+ const fingerprint=JSON.stringify(items.map(f=>[f.id,f.name,f.lastModifiedDateTime,f.size]));if(!force&&fingerprint===lastFingerprint){await renderActiveAnalyticsPage();showRefreshFeedback('Already up to date');setSync(`No changes detected · ${items.length} CSV files · Checked ${new Date().toLocaleTimeString('en-GB')}`);return}
  const aggregate=new Map(),availabilityAggregate=new Map(),bookingTimeAggregate=new Map(),appointmentTimeAggregate=new Map(),waitingAggregate=new Map(),waitingTrendAggregate=new Map(),peopleAggregate=new Map(),newSlotTypeStats=new Map();let valid=0,skipped=0;const newSignposting=[];let newSignpostingFiles=0,newSlotFiles=0;
  const activeIds=new Set(items.map(f=>f.id));
  const removedCachedFiles=[...csvContributionCache.keys()].some(id=>!activeIds.has(id));
@@ -1820,6 +1841,7 @@ async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;
  // after every changed file has downloaded and parsed successfully.
  const capacityFileDates=items.filter(file=>pendingCache.get(file.id)?.kind==='slot').map(file=>Date.parse(file.lastModifiedDateTime||'')).filter(Number.isFinite);
  capacityCSVLatestModified=capacityFileDates.length?Math.max(...capacityFileDates):null;
+ slotReportCoverage=GPCorrectness.coverageFromEntries(pendingCache);
  slotTypeFileStats=newSlotTypeStats;renderSlotInclusion();
  signpostingRecords=newSignposting;signpostingFileCount=newSignpostingFiles;signpostingSlotNames=new Set(newSignposting.map(event=>event.destination));
  // Each dated signposting event is also a booked appointment for the main
@@ -1876,14 +1898,9 @@ const drawingErrors=[];
   ['clinician categories',()=>renderClinicianEditor()],
   ['clinician groups',()=>renderClinicianGroupEditor()],
   ['consult categories',()=>renderConsultEditor()],
-  ['weekly charts',()=>refresh()],
-  ['availability chart',()=>renderAvailabilityChart()],
-  ['Day View',()=>renderDayView2()],
-  ['routine availability chart',()=>renderRoutineAvailabilityChart()],
-  ['booking times chart',()=>renderBookingTimesChart()],
-  ['signposting chart',()=>renderSignpostingChart()]
+  ['active chart',()=>renderActiveAnalyticsPage()]
  ]){
-  try{draw()}catch(error){drawingErrors.push(label+': '+(error?.message||String(error)));console.error('Dashboard rendering error in '+label,error)}
+  try{await draw()}catch(error){drawingErrors.push(label+': '+(error?.message||String(error)));console.error('Dashboard rendering error in '+label,error)}
  }
  showRefreshFeedback(drawingErrors.length?'Data loaded; chart issue: '+drawingErrors.join('; '):(!isOwner?'Data refreshed · shared slot assignments: '+Object.keys(assignments).length:'Data refreshed successfully'));
  scheduleChartResize();setSync(`Downloaded ${downloaded} changed CSV file(s), reused ${reused} cached · ${newSlotFiles} Slot Report CSV files · ${newSignpostingFiles} Signposting CSV files · ${valid.toLocaleString('en-GB')} booked Slot Report rows + ${newSignposting.length.toLocaleString('en-GB')} signposting events · ${skipped.toLocaleString('en-GB')} skipped · ${Object.keys(assignments).length} assigned slot types · Updated ${new Date().toLocaleString('en-GB')}`)
@@ -1907,8 +1924,8 @@ $('sourceSetup').onclick=()=>{if(isOwner)showFolderPicker()};
 $('cancelFolder').onclick=()=>$('folderPicker').classList.add('hidden');
 $('pickerUp').onclick=async()=>{if(!folderView.trail.length)return;const parent=folderView.trail.at(-1);folderView={...parent,trail:folderView.trail.slice(0,-1)};await showFolderContents()};
 $('selectFolder').onclick=async()=>{if(!isOwner)return;selectedFolder={id:folderView.id,name:[...folderView.trail.map(x=>x.name),folderView.name].join(' / ')};localStorage.setItem(FOLDER_KEY,JSON.stringify(selectedFolder));$('folderStatus').textContent='Selected folder: '+selectedFolder.name;$('folderPicker').classList.add('hidden');$('onedrivePanel').classList.add('hidden');$('sourceSetup').classList.add('hidden');cloudFolder=selectedFolder;await saveCloudCategories();lastFingerprint='';await loadFolder(true)};
-$('refreshData').onclick=()=>loadFolder(true);
-setInterval(()=>{if(activeAccount&&selectedFolder&&!busy)loadFolder(false)},5*60*1000);
+$('refreshData').onclick=()=>refreshDashboardData(true);
+setInterval(()=>{if(activeAccount&&selectedFolder&&!busy)refreshDashboardData(false)},5*60*1000);
 // England and Wales bank holidays, calculated for every year present in the booking data.
 // Includes regular holidays, weekend substitute days and recent exceptional changes.
 function englandWalesBankHolidays(year){
@@ -2015,8 +2032,12 @@ document.getElementById('excludeBH').onchange=e=>{excludeBankHolidays=!e.target.
 function isoWeek(weekStart){const d=new Date(weekStart+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+3);const year=d.getUTCFullYear();const jan4=new Date(Date.UTC(year,0,4,12));jan4.setUTCDate(jan4.getUTCDate()-((jan4.getUTCDay()+6)%7));const week=1+Math.round((d-jan4)/604800000);return {year,week}}
 const colours=['#1475b8','#e57a28','#159a78','#9053b4','#c64c69','#65748b'];
 let current=[];let continuousMode=true;let showCurrentWeek=true;let monthlyMode=false;
-const todayLondon=(()=>{const parts=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/London',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());const v=Object.fromEntries(parts.map(p=>[p.type,p.value]));return `${v.year}-${v.month}-${v.day}`})();
-const thisWeek=mondayOf(todayLondon),thisMonth=todayLondon.slice(0,7);
+let todayLondon,thisWeek,thisMonth;
+function updateDashboardDateContext(now=new Date()){
+ const next=GPCorrectness.dateContext(now),changed=todayLondon!==next.today;
+ todayLondon=next.today;thisWeek=next.week;thisMonth=next.month;return changed;
+}
+updateDashboardDateContext();
 let savedWeeklyIncludeBankHolidays=document.getElementById('excludeBH').checked;
 document.getElementById('periodMode').onchange=e=>{
  monthlyMode=e.target.checked;
@@ -2189,6 +2210,7 @@ function scheduleDemandRefresh(){
  requestAnimationFrame(()=>{demandRefreshQueued=false;refresh()});
 }
 function refresh(){
+ updateDashboardDateContext();
  refreshBankHolidayWeeks();
  updateClinicianChartFilter();updateConsultChartFilter();
  demandFilterCache=new WeakMap();
@@ -2522,7 +2544,7 @@ function setupTogglePriority(){
  refreshPriorityToggles();
 }
 
-function ensureFollowUpCategory(){if(!categoryNames.some(c=>c.toLowerCase().replace(/[\s-]+/g,'')==='followup'))categoryNames.push('Follow up')}ensureFollowUpCategory();function guessCategory(t){return /RED|YELLOW|AMBER|URGENT|SAME DAY|ACUTE/i.test(t)?'Urgent':/GREEN|FOLLOW UP|ROUTINE/i.test(t)?'Routine':null}function saveCategories(sync=true){capacityPaceCache=null;lastConsultFilterNames=[];try{localStorage.setItem(STORAGE_KEY,JSON.stringify({categories:categoryNames,assignments,clinicianCategories:clinicianCategoryNames,clinicianAssignments,consultCategories:consultCategoryNames,consultAssignments,groupUrgencyCategories:groupUrgencyNames,groupUrgencyAssignments,urgencyGroupColours,appointmentCategoryNames,appointmentCategoryAssignments,appointmentCategoryColours,clinicianGroupCategories:clinicianGroupNames,clinicianGroupAssignments,peopleLocum,peopleClinicianType,clinicianGroupColours,clinicianTypeColours,urgencyTypeColours,purposeCategories:purposeCategoryNames,purposeColours,purposeAssignments,capacityCategories:capacityCategoryNames,capacityColours,capacityAssignments,consultModeColours,togglePriority:{...togglePriority},excludedSlotTypes:[...excludedSlotTypes]}));}catch(e){alert('Could not save settings in this browser. Please try again.')}if(sync)markCategoryDirty()}function allCategories(){return [...categoryNames,'Uncategorised']}function rebuildCategoryFilter(){const old=new Set([...slots.selectedOptions].map(o=>o.value));slots.replaceChildren();for(const c of allCategories()){const o=document.createElement('option');o.value=c;o.textContent=c;o.selected=old.has(c);slots.append(o)}}function renderEditor(){renderDropEditor('urgency');updateAvailabilityUrgencyFilter()}
+function ensureFollowUpCategory(){if(!categoryNames.some(c=>c.toLowerCase().replace(/[\s-]+/g,'')==='followup'))categoryNames.push('Follow up')}ensureFollowUpCategory();function guessCategory(t){return /RED|YELLOW|AMBER|URGENT|SAME DAY|ACUTE/i.test(t)?'Urgent':/GREEN|FOLLOW UP|ROUTINE/i.test(t)?'Routine':null}function saveCategories(sync=true){ensureAnalyticsRoles();queueMicrotask(refreshPrimaryApptTypeBoxes);capacityPaceCache=null;lastConsultFilterNames=[];try{localStorage.setItem(STORAGE_KEY,JSON.stringify({categories:categoryNames,assignments,clinicianCategories:clinicianCategoryNames,clinicianAssignments,consultCategories:consultCategoryNames,consultAssignments,groupUrgencyCategories:groupUrgencyNames,groupUrgencyAssignments,urgencyGroupColours,appointmentCategoryNames,appointmentCategoryAssignments,appointmentCategoryColours,clinicianGroupCategories:clinicianGroupNames,clinicianGroupAssignments,peopleLocum,peopleClinicianType,clinicianGroupColours,clinicianTypeColours,urgencyTypeColours,purposeCategories:purposeCategoryNames,purposeColours,purposeAssignments,capacityCategories:capacityCategoryNames,capacityColours,capacityAssignments,consultModeColours,togglePriority:{...togglePriority},excludedSlotTypes:[...excludedSlotTypes]}));}catch(e){alert('Could not save settings in this browser. Please try again.')}if(sync)markCategoryDirty()}function allCategories(){return [...categoryNames,'Uncategorised']}function rebuildCategoryFilter(){const old=new Set([...slots.selectedOptions].map(o=>o.value));slots.replaceChildren();for(const c of allCategories()){const o=document.createElement('option');o.value=c;o.textContent=c;o.selected=old.has(c);slots.append(o)}}function renderEditor(){renderDropEditor('urgency');updateAvailabilityUrgencyFilter()}
 function renderGroupUrgencyEditor(){renderDropEditor('groupUrgency');updateAvailabilityUrgencyFilter()}document.getElementById('addCategory').onclick=()=>{const el=document.getElementById('newCategory');const c=el.value.trim();if(!c)return;if(c.toLowerCase()==='uncategorised'||categoryNames.some(x=>x.toLowerCase()===c.toLowerCase())){alert('This category name already exists or is reserved.');return}categoryNames.push(c);el.value='';saveCategories();rebuildCategoryFilter();renderEditor();renderGroupUrgencyEditor()};document.getElementById('newCategory').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('addCategory').click()});document.getElementById('slotSearch').addEventListener('input',renderEditor);
 
 /* Personal profile is private to this signed-in account and browser. */
@@ -3621,6 +3643,7 @@ $('dayView2Previous')?.addEventListener('click',()=>{$('dayView2Date').value=day
 $('dayView2Next')?.addEventListener('click',()=>{$('dayView2Date').value=dayView2AddWorkingDays($('dayView2Date').value||dayView2LocalDate(),1);closeDayView2Calendar();renderDayView2();});
 
 function showPage(which){
+ updateDashboardDateContext();refreshPrimaryApptTypeBoxes();
  if(which==='dayView2')which='dayView';
  closeDayView2Calendar();
  closeDashboardMenus();hideDayView2Tooltip();
@@ -4727,7 +4750,7 @@ const PRIMARY_APPT_ROOT_IDS=['demandUrgencyToggles','urgentCategoryToggles','rou
 function enhancePrimaryApptTypeBox(root){
  if(!root)return;
  root.classList.add('appointment-type-toggle-box');
- const rows=[...root.children].filter(row=>row.matches?.('label.filter-row')&&row.querySelector('input[type="checkbox"]'));
+ const rows=[...root.querySelectorAll('label.filter-row')].filter(row=>row.querySelector('input[type="checkbox"]'));
  if(!rows.length)return;
  const entries=rows.map(row=>{
   const input=row.querySelector('input[type="checkbox"]');
@@ -4740,8 +4763,12 @@ function enhancePrimaryApptTypeBox(root){
   if(!buckets.has(category))buckets.set(category,[]);
   buckets.get(category).push(entry);
  }
+ const order=[...new Set([...appointmentCategoryNames,'Other',...buckets.keys()])].filter(c=>buckets.get(c)?.length);
+ const existing=[...root.children];
+ if(existing.length===order.length&&existing.every((section,i)=>section.matches('fieldset.primary-appt-category')&&section.querySelector('legend')?.textContent===order[i]&&[...section.querySelectorAll('label.filter-row')].length===buckets.get(order[i]).length&&[...section.querySelectorAll('label.filter-row')].every((row,j)=>row===buckets.get(order[i])[j].row)))return;
+ const focused=document.activeElement;
  const fragment=document.createDocumentFragment();
- for(const category of [...new Set([...appointmentCategoryNames,'Other',...buckets.keys()])]){
+ for(const category of order){
   const items=buckets.get(category);if(!items?.length)continue;
   const section=document.createElement('fieldset');section.className='primary-appt-category';
   const title=document.createElement('legend');title.className='primary-appt-category-heading';title.textContent=category;
@@ -4751,6 +4778,7 @@ function enhancePrimaryApptTypeBox(root){
   section.append(title,children);fragment.append(section);
  }
  root.replaceChildren(fragment);
+ if(root.contains(focused))focused.focus();
 }
 function installPrimaryApptTypeBoxConvention(){
  // Observe only the small set of appointment-type filter roots, never the whole
@@ -4870,3 +4898,32 @@ window.addEventListener('storage',event=>{
  if(event.key===state.key){const value=Number(event.newValue);if(Number.isFinite(value))state.lastActivity=Math.max(state.lastActivity,value);checkDashboardInactivity();}
  if(event.key===personalSettingsKey())checkDashboardInactivity();
 });
+
+async function renderActiveAnalyticsPage(){
+ updateDashboardDateContext();refreshPrimaryApptTypeBoxes();
+ const renderers={chartPage:refresh,waitingTimesPage:renderWaitingTimesChart,waitingOverTimePage:renderWaitingTrendChart,availabilityPage:renderAvailabilityChart,routineAvailabilityPage:renderRoutineAvailabilityChart,plannedAvailabilityPage:renderPlannedAvailabilityChart,dayView2Page:renderDayView2,bookingTimesPage:renderBookingTimesChart,signpostingPage:renderSignpostingChart,dailyForecastPage:()=>window.refreshForecastCharts?.(),weeklyForecastPage:()=>window.refreshForecastCharts?.(),routineCapacityPage:()=>window.renderRoutineCapacity?.()};
+ for(const [id,draw] of Object.entries(renderers)){const page=$(id);if(page&&!page.classList.contains("hidden"))await draw()}
+}
+function refreshOnDateRollover(){if(document.hidden||!folderAccessVerified)return;if(updateDashboardDateContext())void renderActiveAnalyticsPage().catch(e=>showRefreshFeedback("Chart refresh failed: "+e.message))}
+setInterval(refreshOnDateRollover,60000);
+document.addEventListener("visibilitychange",refreshOnDateRollover);
+window.addEventListener("focus",refreshOnDateRollover);
+
+function validateCloudCategories(data){
+ validAssignments(data.assignments,validCategoryNames(data.categories));
+ for(const [namesKey,mapKey,fallback] of [['categories','assignments',categoryNames],['clinicianCategories','clinicianAssignments',clinicianCategoryNames],['consultCategories','consultAssignments',[]],['purposeCategories','purposeAssignments',purposeCategoryNames],['capacityCategories','capacityAssignments',capacityCategoryNames],['clinicianGroupCategories','clinicianGroupAssignments',clinicianGroupNames],['groupUrgencyCategories','groupUrgencyAssignments',groupUrgencyNames],['appointmentCategoryNames',null,appointmentCategoryNames]]){
+ const names=data[namesKey]===undefined?fallback:validCategoryNames(data[namesKey]);if(mapKey&&data[mapKey])validAssignments(data[mapKey],names);
+ }
+}
+async function refreshDashboardData(force=true){
+ if(settingsRefreshing||busy||!activeAccount||!selectedFolder)return;
+ settingsRefreshing=true;
+ try{
+  if(cloudBusy)throw Error('Settings are still saving. Please retry shortly.');
+  if(categoryDirty&&(!(await saveCloudCategories())||categoryDirty))throw Error('Settings could not finish saving; local edits were preserved.');
+  await loadCloudCategories({strict:true,protectEdits:true});
+  if(cloudFolder)selectedFolder=cloudFolder;
+  await loadFolder(force);
+ }catch(e){showRefreshFeedback('Refresh failed: '+e.message)}
+ finally{settingsRefreshing=false;setButtons()}
+}
