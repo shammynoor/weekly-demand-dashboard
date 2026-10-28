@@ -1642,14 +1642,14 @@ body .soft-time-toggle .switch:has(input:focus-visible){outline:2px solid #367aa
 @media(max-width:620px){:is(#availabilityPage,#routineAvailabilityPage) .capacity-chart-layout.analytics-chart-layout .urgent-dual-control{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:3px 12px}:is(#availabilityPage,#routineAvailabilityPage) .capacity-chart-layout.analytics-chart-layout .urgent-dual-track{grid-column:1/-1;grid-row:2}:is(#availabilityPage,#routineAvailabilityPage) .capacity-chart-layout.analytics-chart-layout .urgent-range-end-label{grid-column:2;grid-row:1}:is(#availabilityPage,#routineAvailabilityPage) .capacity-chart-layout.analytics-chart-layout .urgent-range-edge-label{white-space:normal}}
 @media(pointer:coarse){:is(#availabilityPage,#routineAvailabilityPage) .capacity-chart-layout.analytics-chart-layout .chart-options-toggles>.filter-row{min-height:32px}}
 
-/* Historical timeline: rounded outlined rail and white-rimmed blue handles. */
-#chartPage .analytics-chart-layout .demand-range-track{height:44px;min-height:44px;border:1px solid #bfd2e4;border-radius:13px;background:linear-gradient(#d5e2ec,#d5e2ec) center/calc(100% - 34px) 12px no-repeat}
-#chartPage .analytics-chart-layout .demand-range-fill{top:50%;transform:translateY(-50%);height:12px;border-radius:999px;background:#1c75b4}
-#chartPage .analytics-chart-layout .demand-range-track input[type=range]{height:42px;top:0;left:0;width:100%}
-#chartPage .analytics-chart-layout .demand-range-track input[type=range]::-webkit-slider-runnable-track{height:12px}
-#chartPage .analytics-chart-layout .demand-range-track input[type=range]::-moz-range-track{height:12px}
-#chartPage .analytics-chart-layout .demand-range-track input[type=range]::-webkit-slider-thumb{width:34px;height:34px;box-sizing:border-box;border:4px solid #fff;margin-top:-11px;box-shadow:0 2px 7px #526b8059}
-#chartPage .analytics-chart-layout .demand-range-track input[type=range]::-moz-range-thumb{width:34px;height:34px;box-sizing:border-box;border:4px solid #fff;box-shadow:0 2px 7px #526b8059}
+/* Historical timeline uses the same dimensions as Urgent and Routine capacity. */
+#chartPage .analytics-chart-layout .demand-range-track{height:30px;min-height:30px;border:0;border-radius:9px;background:linear-gradient(#d5e1ea,#d5e1ea) center/calc(100% - 24px) 8px no-repeat}
+#chartPage .analytics-chart-layout .demand-range-fill{top:50%;transform:translateY(-50%);height:8px;border-radius:999px;background:#1c75b4}
+#chartPage .analytics-chart-layout .demand-range-track input[type=range]{height:30px;top:0;left:0;width:100%}
+#chartPage .analytics-chart-layout .demand-range-track input[type=range]::-webkit-slider-runnable-track{height:8px}
+#chartPage .analytics-chart-layout .demand-range-track input[type=range]::-moz-range-track{height:8px}
+#chartPage .analytics-chart-layout .demand-range-track input[type=range]::-webkit-slider-thumb{width:24px;height:24px;box-sizing:border-box;border:3px solid #fff;margin-top:-8px;box-shadow:0 1px 4px #526b8066}
+#chartPage .analytics-chart-layout .demand-range-track input[type=range]::-moz-range-thumb{width:24px;height:24px;box-sizing:border-box;border:3px solid #fff;box-shadow:0 1px 4px #526b8066}
 #chartPage .analytics-chart-layout .demand-range-track input[type=range]:focus-visible::-webkit-slider-thumb{outline:2px solid #155f98;outline-offset:2px}
 #chartPage .analytics-chart-layout .demand-range-track input[type=range]:focus-visible::-moz-range-thumb{outline:2px solid #155f98;outline-offset:2px}
 #combinedDemandChart .scatterlayer .trace .js-line{filter:drop-shadow(0 1.5px 1.5px rgba(32,65,94,.20))}

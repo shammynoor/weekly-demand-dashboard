@@ -2377,7 +2377,7 @@ function yearBackgroundShapes(periods){
  const years=periods.map(v=>Number(v.slice(0,4)));
  const shapes=[];
  for(let year=Math.min(...years);year<=Math.max(...years);year++){
-  if(year%2===0)shapes.push({type:'rect',xref:'x',yref:'paper',x0:year+'-01-01',x1:(year+1)+'-01-01',y0:0,y1:1,fillcolor:'#e1eaf1',opacity:0.8,line:{width:0},layer:'below'});
+  if(year%2===0)shapes.push({type:'rect',xref:'x',yref:'paper',x0:year+'-01-01',x1:(year+1)+'-01-01',y0:0,y1:1,fillcolor:'#e0e0e0',opacity:1,line:{width:0},layer:'below'});
  }
  return shapes;
 }
@@ -2403,7 +2403,7 @@ function setupDemandMonthSlider(){
  // The native range thumb travels over the input width MINUS its own diameter.
  // Position the blue fill between the actual thumb centres, not the input edges.
  const trackWidth=fill.parentElement.clientWidth;
- const thumbDiameter=34;
+ const thumbDiameter=24;
  const sliderLeft=start.getBoundingClientRect().left-fill.parentElement.getBoundingClientRect().left;
  const travel=Math.max(0,start.clientWidth-thumbDiameter);
  const startCentre=sliderLeft+thumbDiameter/2+((a-low)/span)*travel;
@@ -2645,7 +2645,7 @@ function drawCombinedDemandChart(){
  // Fit the axis closely to the visible series and average lines, retaining a zero baseline.
  const yAxisTop=Math.max(5,Math.ceil(maxCount*1.08));
  Plotly.react('combinedDemandChart',traces,{dragmode:false,autosize:true,height:535,
-  margin:{l:62,r:24,t:continuousMode?28:50,b:65},paper_bgcolor:'white',plot_bgcolor:'white',
+  margin:{l:62,r:24,t:continuousMode?28:50,b:65},paper_bgcolor:'white',plot_bgcolor:'#f0f0f0',
   shapes:[...yearBackgroundShapes(visibleWeeks),...averageShapes],
   showlegend:!continuousMode,legend:{orientation:'h',y:1.14,x:0,xanchor:'left',yanchor:'bottom',entrywidth:85,entrywidthmode:'pixels',traceorder:'normal'},
   xaxis:continuousMode?{type:'date',domain:[0,1],title:monthlyMode?'Booking month':'Booking date',tickformat:'%b %Y',gridcolor:'#edf1f5',...(range?{range}: {})}:{...axis,domain:[0,1]},
