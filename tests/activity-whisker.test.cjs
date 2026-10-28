@@ -1,5 +1,14 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),core=require('../data-correctness.js');
 const source=fs.readFileSync(__dirname+'/../app.js','utf8');
+test('historical reading grid preserves the Y-axis position and separates major and minor guides',()=>{
+ for(const monthly of [false,true]){
+  const {layout}=render({monthly});
+  assert.equal(layout.margin.l,62);assert.deepEqual(Array.from(layout.xaxis.domain),[0,1]);assert.equal(layout.yaxis.automargin,false);
+  assert.equal(layout.yaxis.title.text,monthly?'Appointments per month':'Appointments per week');
+  assert.equal(layout.yaxis.gridcolor,'#b0b0b0');assert.equal(layout.yaxis.minor.gridcolor,'#e3e3e3');
+  assert.equal(layout.yaxis.minor.dtick,layout.yaxis.dtick/2);assert.equal(layout.yaxis.linewidth,2);assert.equal(layout.xaxis.linewidth,2);
+ }
+});
 const draw=source.slice(source.indexOf('function drawCombinedDemandChart(){'),source.indexOf('\ndrawCombinedDemandChart();',source.indexOf('function drawCombinedDemandChart(){')));
 function render({continuous=true,monthly=false,count=2,width=800,show=true,error=false,combined=false}={}){
  const categories=Array.from({length:count},(_,i)=>'Type '+i),dates=monthly?['2026-08','2026-09','2026-10']:['2026-10-12','2026-10-19','2026-10-26'];

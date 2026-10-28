@@ -85,4 +85,6 @@ See [CHART_LAYOUT.md](CHART_LAYOUT.md) for the user-approved title-left, Display
 
 ## Historical timeline and line finish
 
-Match the capacity timeline dimensions: 30 px track container, 8 px rail and 24 px white-rimmed handles, without the oversized outlined container. Fill geometry must use the actual 24 px thumb diameter. Historical years alternate between neutral grey #f0f0f0 and #e0e0e0 at full opacity; apply a subtle neutral shadow only to historical data-line paths, preserving average lines and uncertainty markers.
+Match the capacity timeline dimensions: 30 px track container, 8 px rail and 24 px white-rimmed handles, without the oversized outlined container. Fill geometry must use the actual 24 px thumb diameter. Historical years alternate between neutral grey #fafafa and #f1f1f1 at full opacity; apply a subtle neutral shadow only to historical data-line paths, preserving average lines and uncertainty markers.
+
+Historical reading grid: major horizontal guides #b0b0b0, lighter minor guides #e3e3e3, sparse quarterly vertical guides #e4e4e4 and 2 px axis lines. Keep the original 62 px left margin and Y-axis domain/anchor; do not enable axis automargins. Place the weekly/monthly appointment title beside the Y-axis, not above the chart.

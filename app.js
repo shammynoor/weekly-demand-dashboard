@@ -2377,7 +2377,7 @@ function yearBackgroundShapes(periods){
  const years=periods.map(v=>Number(v.slice(0,4)));
  const shapes=[];
  for(let year=Math.min(...years);year<=Math.max(...years);year++){
-  if(year%2===0)shapes.push({type:'rect',xref:'x',yref:'paper',x0:year+'-01-01',x1:(year+1)+'-01-01',y0:0,y1:1,fillcolor:'#e0e0e0',opacity:1,line:{width:0},layer:'below'});
+  if(year%2===0)shapes.push({type:'rect',xref:'x',yref:'paper',x0:year+'-01-01',x1:(year+1)+'-01-01',y0:0,y1:1,fillcolor:'#f1f1f1',opacity:1,line:{width:0},layer:'below'});
  }
  return shapes;
 }
@@ -2644,13 +2644,21 @@ function drawCombinedDemandChart(){
  }
  // Fit the axis closely to the visible series and average lines, retaining a zero baseline.
  const yAxisTop=Math.max(5,Math.ceil(maxCount*1.08));
+ const rawGridStep=yAxisTop/5,gridMagnitude=10**Math.floor(Math.log10(rawGridStep));
+ const majorGridStep=[1,2,5,10].map(n=>n*gridMagnitude).find(n=>n>=rawGridStep);
+ const historicalAxisStyle={showline:true,linecolor:'#597080',linewidth:2,automargin:false};
+ const yearLabels=continuousMode?[...new Set(visibleWeeks.map(w=>w.slice(0,4)))].map(year=>{
+  const a=Math.max(Date.parse(year+'-01-01'),Date.parse(visibleWeeks[0]));
+  const b=Math.min(Date.parse((Number(year)+1)+'-01-01'),Date.parse(visibleWeeks.at(-1)));
+  return {xref:'x',yref:'paper',x:new Date((a+b)/2).toISOString(),y:1,yshift:7,text:year,showarrow:false,yanchor:'bottom',font:{size:11,color:'#597080'}};
+ }):[];
  Plotly.react('combinedDemandChart',traces,{dragmode:false,autosize:true,height:535,
-  margin:{l:62,r:24,t:continuousMode?28:50,b:65},paper_bgcolor:'white',plot_bgcolor:'#f0f0f0',
+  margin:{l:62,r:24,t:continuousMode?28:50,b:65},paper_bgcolor:'white',plot_bgcolor:'#fafafa',
   shapes:[...yearBackgroundShapes(visibleWeeks),...averageShapes],
   showlegend:!continuousMode,legend:{orientation:'h',y:1.14,x:0,xanchor:'left',yanchor:'bottom',entrywidth:85,entrywidthmode:'pixels',traceorder:'normal'},
-  xaxis:continuousMode?{type:'date',domain:[0,1],title:monthlyMode?'Booking month':'Booking date',tickformat:'%b %Y',gridcolor:'#edf1f5',...(range?{range}: {})}:{...axis,domain:[0,1]},
-  yaxis:{title:'Appointments',range:[0,yAxisTop],nticks:6,gridcolor:'#edf1f5'},hovermode:'closest',
-  annotations:!selected.length?[{text:'Select an appointment type to display appointments',xref:'paper',yref:'paper',x:.5,y:.5,showarrow:false}]:[]
+  xaxis:continuousMode?{...historicalAxisStyle,type:'date',domain:[0,1],title:monthlyMode?'Booking month':'Booking date',tickformat:'%b %Y',dtick:'M3',showgrid:true,gridcolor:'#e4e4e4',gridwidth:1,...(range?{range}: {})}:{...axis,...historicalAxisStyle,domain:[0,1],showgrid:true,gridcolor:'#e4e4e4',gridwidth:1,dtick:3},
+  yaxis:{...historicalAxisStyle,title:{text:monthlyMode?'Appointments per month':'Appointments per week',standoff:8,font:{size:11}},range:[0,yAxisTop],tick0:0,dtick:majorGridStep,showgrid:true,gridcolor:'#b0b0b0',gridwidth:1,zeroline:false,minor:{tick0:0,dtick:majorGridStep/2,showgrid:true,gridcolor:'#e3e3e3',gridwidth:0.6,ticks:''}},hovermode:'closest',
+  annotations:!selected.length?[{text:'Select an appointment type to display appointments',xref:'paper',yref:'paper',x:.5,y:.5,showarrow:false}]:yearLabels
  },{responsive:true,displaylogo:false,displayModeBar:false,scrollZoom:false,doubleClick:false}).then(()=>{installDemandCardTooltip($('combinedDemandChart'));installDemandAverageCapsules($('combinedDemandChart'),averageCapsules);});
 }
 drawCombinedDemandChart();
