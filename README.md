@@ -450,6 +450,15 @@ The range bar uses the historical analogue 5th–95th percentile spread plus a c
 
 ## Range bars and smoothing alignment
 
-Current-period estimates are displayed as a translucent 14 px vertical range bar with coloured caps. No endpoint values or Upper/Lower estimate labels are drawn on the chart; the range figures and actual bookings remain available on hover. The statistical model and bounds are unchanged.
+Current-period estimates are displayed as fine semi-transparent 1.2 px whiskers with short caps, alongside an open circle for the observed bookings so far. No endpoint values or Upper/Lower estimate labels are drawn on the chart; the range figures and actual bookings remain available on hover. The statistical model and bounds are unchanged.
 
 The smoothing label is aligned with the 20 px input row, while tick labels use a second row. Tick centres are inset by half the thumb diameter and spaced over the actual native-thumb travel, aligning Off, Low, Medium and High with the four handle positions. The four choices remain keyboard accessible and account preferences retain their existing levels.
+
+
+## Fine whiskers and current observations
+
+The current-period display uses a fine 40%-opacity whisker with short caps and an 8 px open circle for actual bookings so far. Hover details distinguish actual observations from the estimated finishing range; current observations are never labelled as smoothed. Circles remain available when there is not enough history for a forecast.
+
+Separate appointment types receive stable horizontal offsets at 12 px spacing where space permits. Each circle and its own whisker use the same offset. The marker group is kept inside the plotting area, and spacing is recalculated after resizing. Offsets are visual only; period keys, counts and estimated bounds remain unchanged. Combined mode uses one marker column.
+
+The Smoothing label matches the neighbouring toolbar labels: inherited font family, 12 px, weight 700 and 1.2 line height. Its label and track align with the other controls; the tick labels occupy reserved space below the final control rather than shifting its row centre.

@@ -141,7 +141,16 @@ function currentPeriodNowcast({mode='week',currentDate,clock,daily=[],timed=[],c
  return {key,mode,estimate,low:Math.max(observed,Math.floor(low)),high:Math.ceil(high),observed,rawObserved,fraction,samples:samples.length,intradayProfile,timedCoverage,asOf:{date:clock.date,minute},periodStart:bounds.start,periodEnd:bounds.end};
 }
 
-const api={currentPeriodNowcast,periodBounds,smoothDemandSeries,shift,monday,londonDate,dateContext,validDate,coverageFromEntries,completeWeeks,roles,renameRole};
+function dodgeSeriesPosition(value,index,count,min,max,width,gap=12){
+ if(![value,min,max,width].every(Number.isFinite)||max<=min||width<=0)return value;
+ const n=Number.isFinite(count)?Math.max(1,Math.floor(count)):1,i=Math.max(0,Math.min(n-1,Number.isFinite(index)?Math.floor(index):0));
+ const spacing=Math.min(gap,Math.max(0,(width-12)/Math.max(1,n-1))),half=(n-1)*spacing/2;
+ const centre=(value-min)/(max-min)*width;
+ const clamped=Math.max(6+half,Math.min(width-6-half,centre));
+ return min+(clamped+(i-(n-1)/2)*spacing)/width*(max-min);
+}
+
+const api={dodgeSeriesPosition,currentPeriodNowcast,periodBounds,smoothDemandSeries,shift,monday,londonDate,dateContext,validDate,coverageFromEntries,completeWeeks,roles,renameRole};
 if(typeof module!=='undefined'&&module.exports)module.exports=api;
 else root.GPCorrectness=api;
 })(typeof window!=='undefined'?window:globalThis);
