@@ -57,3 +57,14 @@ test('header startup initializes the element lookup before executing responsive 
  const ctx={document:{querySelector:()=>null,getElementById:()=>null}};vm.createContext(ctx);
  assert.doesNotThrow(()=>vm.runInContext(pieces.map(p=>p.code).join('\n'),ctx));
 });
+
+test('compact dropdowns are kept within the navigation bounds',()=>{
+ const begin=source.indexOf('function positionDashboardSubmenu('),finish=source.indexOf('function setDashboardMenuOpen(',begin);
+ let narrow=true,settings=false,position={left:200,right:450};const style={setProperty:(key,value)=>{style[key]=value}};
+ const menu={classList:{contains:()=>settings},querySelector:()=>({style,getBoundingClientRect:()=>position}),closest:()=>({getBoundingClientRect:()=>({left:40,right:300})})};
+ const ctx={window:{matchMedia:()=>({matches:narrow})}};vm.createContext(ctx);vm.runInContext(source.slice(begin,finish),ctx);
+ ctx.positionDashboardSubmenu(menu);assert.equal(style['--nav-dropdown-shift'],'-154px');
+ position={left:30,right:280};ctx.positionDashboardSubmenu(menu);assert.equal(style['--nav-dropdown-shift'],'14px');
+ style['--nav-dropdown-shift']='untouched';narrow=false;ctx.positionDashboardSubmenu(menu);assert.equal(style['--nav-dropdown-shift'],'untouched');
+ narrow=true;settings=true;ctx.positionDashboardSubmenu(menu);assert.equal(style['--nav-dropdown-shift'],'untouched');
+});

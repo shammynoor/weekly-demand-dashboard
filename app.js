@@ -26,15 +26,25 @@ function sharedPath(){return '/shares/'+SHARED_TOKEN+'/driveItem'}
 function sourceItemUrl(id){return isOwner?'/me/drive/items/'+encodeURIComponent(id):'/drives/'+encodeURIComponent(sharedDriveId)+'/items/'+encodeURIComponent(id)}
 // One menu lifecycle for Activity, Capacity, Forecast and Settings.
 const dashboardMenus=[...document.querySelectorAll('.dashboard-nav > .nav-demand-menu,.dashboard-nav > .nav-availability-menu,.dashboard-nav > .nav-settings-menu')];
+function positionDashboardSubmenu(menu){
+ if(!window.matchMedia('(max-width:1100px)').matches||menu.classList.contains('nav-settings-menu'))return;
+ const panel=menu.querySelector(':scope > div'),nav=menu.closest('.dashboard-nav');if(!panel||!nav)return;
+ panel.style.setProperty('--nav-dropdown-shift','0px');
+ const bounds=nav.getBoundingClientRect(),popup=panel.getBoundingClientRect();
+ const shift=Math.max(bounds.left+4-popup.left,Math.min(0,bounds.right-4-popup.right));
+ panel.style.setProperty('--nav-dropdown-shift',shift+'px');
+}
 function setDashboardMenuOpen(menu,open){
  menu.classList.toggle('open',open);
  menu.querySelector(':scope > button')?.setAttribute('aria-expanded',String(open));
  if(!open)delete menu.dataset.clickOpen;
+ else positionDashboardSubmenu(menu);
 }
 function closeDashboardMenus(except=null){
  for(const menu of dashboardMenus)if(menu!==except)setDashboardMenuOpen(menu,false);
 }
 window.closeDashboardMenus=closeDashboardMenus;
+window.addEventListener('resize',()=>{for(const menu of dashboardMenus)if(menu.classList.contains('open'))positionDashboardSubmenu(menu)});
 for(const menu of dashboardMenus){
  const trigger=menu.querySelector(':scope > button');
  if(!trigger)continue;
