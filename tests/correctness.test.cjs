@@ -59,8 +59,8 @@ test('invalid leads excluded and capacity floor preserved',()=>{
 });
 test('every active chart gets an awaited refresh',async()=>{
  const renderer=app.slice(app.indexOf('async function renderActiveAnalyticsPage()'),app.indexOf('function refreshOnDateRollover()'));
- const ids=['chartPage','waitingTimesPage','waitingOverTimePage','availabilityPage','routineAvailabilityPage','plannedAvailabilityPage','dayView2Page','bookingTimesPage','signpostingPage','dailyForecastPage','weeklyForecastPage','routineCapacityPage'];
- const names=['refresh','renderWaitingTimesChart','renderWaitingTrendChart','renderAvailabilityChart','renderRoutineAvailabilityChart','renderPlannedAvailabilityChart','renderDayView2','renderBookingTimesChart','renderSignpostingChart'];
+ const ids=['chartPage','waitingTimesPage','waitingOverTimePage','availabilityPage','routineAvailabilityPage','dayView2Page','bookingTimesPage','signpostingPage','dailyForecastPage','weeklyForecastPage','routineCapacityPage'];
+ const names=['refresh','renderWaitingTimesChart','renderWaitingTrendChart','renderAvailabilityChart','renderRoutineAvailabilityChart','renderDayView2','renderBookingTimesChart','renderSignpostingChart'];
  let visible='',calls=0;const draw=async()=>{await Promise.resolve();calls++};
  const ctx={updateDashboardDateContext(){},refreshPrimaryApptTypeBoxes(){},$:id=>({classList:{contains:()=>id!==visible}}),window:{refreshForecastCharts:draw,renderRoutineCapacity:draw}};
  names.forEach(n=>ctx[n]=draw);vm.createContext(ctx);vm.runInContext(renderer,ctx);

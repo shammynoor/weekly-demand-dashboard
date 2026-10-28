@@ -3716,6 +3716,7 @@ function createDayView2FurtherBooking(context){
 function renderDayView2(){
  const page=$('dayView2Page'),input=$('dayView2Date'),filters=$('dayView2UrgencyToggles');
  if(!page||page.classList.contains('hidden')||!input||!filters)return;
+ syncDayView2Preferences();
  input.value=dayView2WorkingDate(input.value||dayView2LocalDate());
  $('dayView2DatePicker').textContent=new Date(input.value+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'});
  syncDayView2Preferences();
@@ -3850,7 +3851,7 @@ function showPage(which){
  for(const id of ['dailyForecastPage','weeklyForecastPage'])$(id)?.classList.add('hidden');
  for(const id of ['navDailyForecast','navWeeklyForecast'])$(id)?.classList.remove('active');
  if(!isOwner&&(which==='categories'||which==='people'||which==='practiceSettings'))return;
- for(const [page,nav,name] of [['workforceNeedPage','navWorkforceNeed','workforceNeed'],['homePage','navHome','home'],['routineCapacityPage','navRoutineCapacity','routineCapacity'],['chartPage','navChart','chart'],['waitingTimesPage','navWaitingTimes','waitingTimes'],['waitingOverTimePage','navWaitingTrend','waitingTrend'],['categoryPage','navCategories','categories'],['availabilityPage','navAvailability','availability'],['routineAvailabilityPage','navRoutineAvailability','routineAvailability'],['plannedAvailabilityPage','navPlannedAvailability','plannedAvailability'],['dayView2Page','navDayView2','dayView'],['bookingTimesPage','navBookingTimes','bookingTimes'],['signpostingPage','navSignposting','signposting'],['peoplePage','navPeople','people'],['practiceSettingsPage','navPracticeSettings','practiceSettings'],['personalSettingsPage','navPersonalSettings','personalSettings']]){
+ for(const [page,nav,name] of [['workforceNeedPage','navWorkforceNeed','workforceNeed'],['homePage','navHome','home'],['routineCapacityPage','navRoutineCapacity','routineCapacity'],['chartPage','navChart','chart'],['waitingTimesPage','navWaitingTimes','waitingTimes'],['waitingOverTimePage','navWaitingTrend','waitingTrend'],['categoryPage','navCategories','categories'],['availabilityPage','navAvailability','availability'],['routineAvailabilityPage','navRoutineAvailability','routineAvailability'],['dayView2Page','navDayView2','dayView'],['bookingTimesPage','navBookingTimes','bookingTimes'],['signpostingPage','navSignposting','signposting'],['peoplePage','navPeople','people'],['practiceSettingsPage','navPracticeSettings','practiceSettings'],['personalSettingsPage','navPersonalSettings','personalSettings']]){
   $(page).classList.toggle('hidden',which!==name);$(nav).classList.toggle('active',which===name);
  }
  if(which==='home')updateHomePracticeName();
@@ -3860,7 +3861,7 @@ function showPage(which){
  else if(which==='waitingTrend')setTimeout(renderWaitingTrendChart,0);
  else if(which==='availability')setTimeout(renderAvailabilityChart,0);
  else if(which==='routineAvailability')setTimeout(renderRoutineAvailabilityChart,0);
- else if(which==='plannedAvailability')setTimeout(renderPlannedAvailabilityChart,0);
+
  else if(which==='dayView')setTimeout(renderDayView2,0);
  else if(which==='bookingTimes')setTimeout(renderBookingTimesChart,0);
  else if(which==='signposting')setTimeout(renderSignpostingChart,0);
@@ -3869,7 +3870,7 @@ function showPage(which){
  else if(which==='practiceSettings'){selectPracticeSettingsTab(readChartPreferences()['practiceSettings:tab']);}
  else if(which==='categories'){restorePersonalSettingsWorkspace();renderSlotGroupBoxes();renderSlotTable();renderEditor();renderGroupUrgencyEditor();renderClinicianEditor();renderClinicianGroupEditor();renderConsultEditor()}
 }document.getElementById('navWorkforceNeed').onclick=()=>showPage('workforceNeed');document.getElementById('navHome').onclick=()=>showPage('home');document.getElementById('navRoutineCapacity').onclick=()=>showPage('routineCapacity');document.getElementById('navChart').onclick=()=>showPage('chart');document.getElementById('navWaitingTimes').onclick=()=>showPage('waitingTimes');document.getElementById('navWaitingTrend').onclick=()=>showPage('waitingTrend');document.getElementById('navCategories').onclick=()=>showPage('categories');document.getElementById('navAvailability').onclick=()=>showPage('availability');document.getElementById('navRoutineAvailability').onclick=()=>showPage('routineAvailability');
-document.getElementById('navPlannedAvailability').onclick=()=>showPage('plannedAvailability');document.getElementById('navDayView2').onclick=()=>showPage('dayView');document.getElementById('navBookingTimes').onclick=()=>showPage('bookingTimes');document.getElementById('navSignposting').onclick=()=>showPage('signposting');document.getElementById('navPeople').onclick=()=>showPage('people');document.getElementById('navPracticeSettings').onclick=()=>showPage('practiceSettings');document.getElementById('navPersonalSettings').onclick=()=>showPage('personalSettings');$('personalSettingsForm').addEventListener('submit',savePersonalSettings);$('demandCombineLines')?.addEventListener('change',()=>{const chart=$('combinedDemandChart');if(chart&&window.Plotly)Plotly.purge(chart);scheduleDemandRefresh();});$('slotTableSearch').addEventListener('input',renderSlotTable);for(const id of ['slotGroupFilter','slotModeFilter','slotPurposeFilter','slotCapacityFilter'])$(id)?.addEventListener('change',renderSlotTable);$('slotUnassignedOnly').addEventListener('change',renderSlotTable);$('slotModeUnassignedOnly').addEventListener('change',renderSlotTable);$('slotPurposeUnassignedOnly').addEventListener('change',renderSlotTable);$('slotCapacityUnassignedOnly').addEventListener('change',renderSlotTable);$('peopleSearch').addEventListener('input',renderPeople);$('peopleGroupFilter').addEventListener('change',renderPeople);$('peopleUnassignedOnly').addEventListener('change',()=>{const only=$('peopleUnassignedOnly').checked;$('peopleGroupFilter').disabled=only;renderPeople()});
+document.getElementById('navDayView2').onclick=()=>showPage('dayView');document.getElementById('navBookingTimes').onclick=()=>showPage('bookingTimes');document.getElementById('navSignposting').onclick=()=>showPage('signposting');document.getElementById('navPeople').onclick=()=>showPage('people');document.getElementById('navPracticeSettings').onclick=()=>showPage('practiceSettings');document.getElementById('navPersonalSettings').onclick=()=>showPage('personalSettings');$('personalSettingsForm').addEventListener('submit',savePersonalSettings);$('demandCombineLines')?.addEventListener('change',()=>{const chart=$('combinedDemandChart');if(chart&&window.Plotly)Plotly.purge(chart);scheduleDemandRefresh();});$('slotTableSearch').addEventListener('input',renderSlotTable);for(const id of ['slotGroupFilter','slotModeFilter','slotPurposeFilter','slotCapacityFilter'])$(id)?.addEventListener('change',renderSlotTable);$('slotUnassignedOnly').addEventListener('change',renderSlotTable);$('slotModeUnassignedOnly').addEventListener('change',renderSlotTable);$('slotPurposeUnassignedOnly').addEventListener('change',renderSlotTable);$('slotCapacityUnassignedOnly').addEventListener('change',renderSlotTable);$('peopleSearch').addEventListener('input',renderPeople);$('peopleGroupFilter').addEventListener('change',renderPeople);$('peopleUnassignedOnly').addEventListener('change',()=>{const only=$('peopleUnassignedOnly').checked;$('peopleGroupFilter').disabled=only;renderPeople()});
 function renderClinicianEditor(){renderDropEditor('clinician');updateClinicianChartFilter()}
 function renderClinicianGroupEditor(){renderDropEditor('clinicianGroup');if(!$('peoplePage')?.classList.contains('hidden'))renderPeopleGroups()}
 $('addClinicianCategory').onclick=()=>{const el=$('newClinicianCategory');const c=el.value.trim();if(!c)return;if(c.toLowerCase()==='uncategorised'||clinicianCategoryNames.some(x=>x.toLowerCase()===c.toLowerCase())){alert('This clinician category name already exists or is reserved.');return}clinicianCategoryNames.push(c);el.value='';saveCategories();renderClinicianEditor();renderClinicianGroupEditor()};
@@ -4343,7 +4344,6 @@ function applyFlatAvailabilityBars(target,isDaily=false,separateGroups=false){
 let urgentGroupWithheld=false;
 let routineGroupWithheld=false;
 let plannedGroupWithheld=false;
-$('plannedAvailabilityPageGroupWithheld')?.addEventListener('change',event=>{plannedGroupWithheld=event.target.checked;renderPlannedAvailabilityChart();});
 for(const [id,isUrgent] of [['availabilityPageGroupWithheld',true],['routineAvailabilityPageGroupWithheld',false]]){
  const input=$(id);
  if(input)input.addEventListener('change',()=>{
@@ -4655,174 +4655,7 @@ window.addEventListener('resize',()=>{if(!$('routineAvailabilityPage').classList
 setupRoutineRangeControls();
 
 
-// Independent filters for Planned Appointment Availability.
-const plannedDisabledTypes=new Set();
-let plannedUrgencyDefaultsApplied=false;
-function applyPlannedUrgencyDefaults(){
- if(plannedUrgencyDefaultsApplied||!plannedDetailedTypes().length)return;
- plannedDisabledTypes.clear();
- for(const name of plannedDetailedTypes())if(!['planned','follow-up','follow up','followup'].includes(name.trim().toLowerCase()))plannedDisabledTypes.add(name);
- plannedUrgencyDefaultsApplied=true;
-}
-function plannedDetailedTypes(){
- return groupUrgencyNames.filter(isDashboardToggleOption);
-}
-function renderPlannedCategoryToggles(){
- const root=$('plannedCategoryToggles');if(!root)return;
- applyPlannedUrgencyDefaults();
- const names=prioritySort('urgency',plannedDetailedTypes().filter(isDashboardToggleOption));
- const old=[...root.querySelectorAll('input[data-filter-name]')].map(el=>el.dataset.filterName);
- if(old.length===names.length&&names.every((name,i)=>name===old[i])){
-  root.querySelectorAll('input[data-filter-name]').forEach(input=>input.nextElementSibling?.style.setProperty('--switch-on',urgencyGroupColour(input.dataset.filterName)));
-  return;
- }
- root.replaceChildren();
- if(!names.length){root.textContent='Create Appointment Types in Slot Settings.';return}
- for(const name of names){
-  const row=document.createElement('label');row.className='filter-row';
-  const sw=document.createElement('span');sw.className='switch';
-  const input=document.createElement('input');input.type='checkbox';input.setAttribute('role','switch');input.dataset.filterName=name;
-  input.checked=!plannedDisabledTypes.has(name);input.setAttribute('aria-label','Include '+name);
-  const track=document.createElement('span');track.className='switch-track';
-  track.style.setProperty('--switch-on',urgencyGroupColour(name));
-  const caption=document.createElement('span');caption.textContent=name;
-  sw.append(input,track);row.append(sw,caption);root.append(row);
-  input.addEventListener('change',()=>{input.checked?plannedDisabledTypes.delete(name):plannedDisabledTypes.add(name);renderPlannedAvailabilityChart()});
- }
-}
-const plannedDisabledClinicianGroups=new Set();
-const plannedDisabledConsultModes=new Set();
-function renderPlannedAvailabilityFilters(){
- const build=(id,names,disabled,empty)=>{
-  names=names.filter(isDashboardToggleOption);
-  const root=$(id);if(!root)return;
-  const previous=[...root.querySelectorAll('input')].map(el=>el.getAttribute('data-filter-name'));
-  if(previous.length===names.length&&names.every((name,i)=>name===previous[i])){root.querySelectorAll('input[data-filter-name]').forEach(input=>input.nextElementSibling?.style.setProperty('--switch-on',id==='plannedClinicianFilters'?clinicianGroupColour(input.dataset.filterName):(consultModeColours[input.dataset.filterName]||'#638fac')));return;}
-  root.replaceChildren();
-  if(!names.length){const note=document.createElement('span');note.className='hint';note.textContent=empty;root.append(note);return}
-  for(const name of names){
-   const row=document.createElement('label');row.className='filter-row';
-   const switchEl=document.createElement('span');switchEl.className='switch';
-   const input=document.createElement('input');input.type='checkbox';input.setAttribute('role','switch');input.setAttribute('data-filter-name',name);
-   input.checked=!disabled.has(name);input.setAttribute('aria-label','Include '+name);
-   const track=document.createElement('span');track.className='switch-track';track.style.setProperty('--switch-on',id==='plannedClinicianFilters'?clinicianGroupColour(name):(consultModeColours[name]||'#638fac'));
-   const title=document.createElement('span');title.textContent=name;
-   switchEl.append(input,track);row.append(switchEl,title);root.append(row);
-   input.addEventListener('change',()=>{
-    changeAvailabilityFilter('planned',disabled,name,input.checked,input);
-   });
-  }
- };
- build('plannedClinicianFilters',clinicianGroupNames,plannedDisabledClinicianGroups,'Create clinician groups in Manage categories.');
- build('plannedConsultFilters',consultCategoryNames,plannedDisabledConsultModes,'Create consult modes in Manage categories.');
-}
-function plannedClinicianMatches(clinician,person){
- if(clinician==='Signposting (no clinician recorded)')return true;
- const detailed=effectiveClinicianType(clinician,person);
- const group=clinicianGroupAssignments[detailed];
- return clinicianGroupNames.includes(group)&&!plannedDisabledClinicianGroups.has(group)&&!plannedDisabledClinicianTypes.has(detailed);
-}
-function plannedConsultMatches(slot){
- if(signpostingSlotNames.has(slot))return true;
- const mode=consultAssignments[slot];
- return consultCategoryNames.includes(mode)&&!plannedDisabledConsultModes.has(mode);
-}
-let plannedStartWeek=-1,plannedEndWeek=6;
-let plannedAvailabilityGranularity='week';
-function setPlannedAvailabilityGranularity(mode){
- plannedAvailabilityGranularity=mode==='day'?'day':'week';
- const switchInput=$('plannedDaysWeeksSwitch');if(switchInput)switchInput.checked=plannedAvailabilityGranularity==='week';
- renderPlannedAvailabilityChart();
-}
-$('plannedDaysWeeksSwitch')?.addEventListener('change',event=>setPlannedAvailabilityGranularity(event.target.checked?'week':'day'));
 
-function setupPlannedRangeControls(){
- const start=$('plannedWeeksStart'),end=$('plannedWeeksEnd');
- if(!start||!end)return;
- const label=n=>n===0?'This week':n===-1?'Last week':n<0?Math.abs(n)+' weeks ago':n===1?'Next week':n+' weeks ahead';
- const update=changed=>{
-  let a=Number(start.value),b=Number(end.value);
-  a=Math.max(-2,Math.min(0,a));
-  b=Math.max(1,Math.min(7,b));
-  start.value=a;end.value=b;
-  plannedStartWeek=a;plannedEndWeek=b;
-  $('plannedWeeksStartValue').textContent=label(a);
-  $('plannedWeeksEndValue').textContent=label(b);
-  const left=(a+2)/9*100,right=(b+2)/9*100;
-  const active=$('plannedRangeActive');active.style.left='calc(12px + (100% - 24px)*'+(left/100)+')';active.style.width='calc((100% - 24px)*'+((right-left)/100)+')';
-  renderPlannedAvailabilityChart();
- };
- start.addEventListener('input',()=>update('start'));
- end.addEventListener('input',()=>update('end'));
- update('start');
-}
-// Visual-only finish for the Planned stacked bars. The original Plotly data,
-// hover targets, shading and Today geometry are left untouched.
-function renderPlannedAvailabilityChart(){
- const target=$('plannedAvailabilityChart');
- if(!target||$('plannedAvailabilityPage').classList.contains('hidden')||!window.Plotly)return;
- renderPlannedAvailabilityFilters();
- renderPlannedCategoryToggles();
- refreshAvailabilityOptionStates('planned');
- renderClinicianTypeFilters('planned');
- updateCollapsedFilterSummaries();
- const isDaily=plannedAvailabilityGranularity==='day';
- const start=new Date(thisWeek+'T12:00:00Z');start.setUTCDate(start.getUTCDate()+7*plannedStartWeek);
- const weeks=[];
- for(let i=0;i<=plannedEndWeek-plannedStartWeek;i++){const d=new Date(start);d.setUTCDate(start.getUTCDate()+7*i);weeks.push(d.toISOString().slice(0,10));}
- const dates=[];
- if(isDaily){
-  for(const w of weeks)for(let d=0;d<7;d++){const dt=new Date(w+'T12:00:00Z');dt.setUTCDate(dt.getUTCDate()+d);dates.push(dt.toISOString().slice(0,10));}
- }else dates.push(...weeks);
- const byBucket=new Map();
- const clock=capacitySnapshotClock();
- let matched=0;
- const bucketSet=new Set(dates);
- const activeTypes=new Set(plannedDetailedTypes().filter(name=>!plannedDisabledTypes.has(name)));
- const firstDate=weeks[0],lastDate=dayView2AddDays(weeks[weeks.length-1],7);
- const weekForDate=new Map();
- for(const r of availabilityRecords){
-  if(r.date<firstDate||r.date>=lastDate||excludedSlotTypes.has(r.slot))continue;
-  const group=capacityUrgencyCategory(r.slot);
-  if(!activeTypes.has(group)||!plannedClinicianMatches(r.clinician,r.person)||!plannedConsultMatches(r.slot))continue;
-  let bucket=r.date;
-  if(!isDaily){if(!weekForDate.has(r.date))weekForDate.set(r.date,mondayOf(r.date));bucket=weekForDate.get(r.date);}
-  if(!bucketSet.has(bucket))continue;
-  const label=capacityChartStatus(r,plannedGroupWithheld,clock);
-  if(!label)continue;
-  matched+=r.count;
-  const key=JSON.stringify([bucket,group,label]);byBucket.set(key,(byBucket.get(key)||0)+r.count);
- }
- const heading=date=>isDaily?new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'short',timeZone:'UTC'}):'Week commencing '+new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',timeZone:'UTC'});
- const plotBackground='#e1eaf1';
- const types=plannedDetailedTypes().filter(name=>!plannedDisabledTypes.has(name));
- const {traces,totals}=capacityGroupedSeries(dates,types,byBucket,plannedGroupWithheld,heading);
- const max=Math.max(1,...totals);
- const annotations=totals.flatMap((total,i)=>total?[{xref:'x',x:i,y:total,text:total.toLocaleString('en-GB'),showarrow:false,yshift:15,font:{size:isDaily?10:13,color:'#425b70'}}]:[]);
- const weekTitles=weeks.map((_,i)=>{const offset=plannedStartWeek+i;return offset===0?'This Week':offset===-1?'Last Week':offset<0?Math.abs(offset)+' weeks ago':offset===1?'Next Week':offset+' weeks'});
- for(let i=0;i<weeks.length;i++)annotations.push({xref:'x',yref:'paper',x:isDaily?i*7+3:i,y:1.105,text:weekTitles[i],showarrow:false,font:{family:'Arial',size:13,color:'#344b60'}});
- const dayIndex=(new Date(todayLondon+'T12:00:00Z').getUTCDay()+6)%7;
- const weekIndex=weeks.indexOf(thisWeek);
- const todayX=weekIndex<0?null:isDaily?dates.indexOf(todayLondon):weekIndex-0.5+(Math.min(dayIndex,4)*0.2+0.05);
- const shapes=todayX===null?[]:[
-  {type:'rect',xref:'x',yref:'paper',x0:-0.5,x1:todayX,y0:0,y1:1,fillcolor:'rgba(97,112,130,0.12)',line:{width:0},layer:'above'},
-  {type:'line',xref:'x',yref:'paper',x0:todayX,x1:todayX,y0:0,y1:1,line:{color:'#257cb6',width:2.5,dash:'dot'},layer:'above'}
- ];
- for(let i=0;i<weeks.length-1;i++){const boundary=isDaily?(i+1)*7-0.5:i+0.5;shapes.push({type:'line',xref:'x',yref:'paper',x0:boundary,x1:boundary,y0:0,y1:1,line:{color:'#bdcbd6',width:1,dash:'dot'},layer:'above'});}
- if(todayX!==null)annotations.push({xref:'x',yref:'paper',x:todayX,y:0.96,text:'Today',showarrow:false,xanchor:'left',yanchor:'top',xshift:7,font:{size:17,color:'#206ca6'}});
- const note=$('plannedAvailabilityNote');
- if(note)note.textContent=matched?'':"No matching Planned Appointment Types appointments found. Check Manage categories → Appointment Types.";
- Plotly.react(target,traces,{dragmode:false,
-  height:640,autosize:true,barmode:'stack',barcornerradius:isDaily?5:3,bargap:isDaily?0.07:0.11,
-  margin:{l:62,r:18,t:85,b:100},paper_bgcolor:'#fff',plot_bgcolor:plotBackground,
-  legend:{orientation:'h',x:0.5,y:-0.20,xanchor:'center',yanchor:'top',font:{size:13,color:'#42576a'},traceorder:'normal'},
-  xaxis:{type:'category',categoryorder:'array',categoryarray:dates,range:[-0.5,dates.length-0.5],tickmode:'array',tickvals:dates,ticktext:isDaily?dates.map(date=>new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'short',timeZone:'UTC'})):dates.map(()=>''),tickangle:-90,tickfont:{size:10},showticklabels:isDaily,showgrid:false,showline:true,linecolor:'#a9b9c7',linewidth:1.5,zeroline:false,fixedrange:true},
-  yaxis:{title:{text:'Appointment slots',font:{size:12,color:'#708397'}},tickfont:{size:12,color:'#52677b'},range:[0,Math.ceil(max*1.18/10)*10],gridcolor:'#e0e8ef',gridwidth:1,zeroline:false,showline:false},
-  annotations,shapes,hovermode:'closest',hoverlabel:{bgcolor:'#ffffff',bordercolor:'#dce5ed',font:{family:'Arial',size:12,color:'#182b3b'},align:'left',namelength:0}
- },{responsive:true,displaylogo:false,displayModeBar:false,scrollZoom:false,doubleClick:false}).then(()=>{applyFlatAvailabilityBars(target,isDaily);installAvailabilityCardTooltip(target)});
-}
-window.addEventListener('resize',()=>{if(!$('plannedAvailabilityPage').classList.contains('hidden'))renderPlannedAvailabilityChart()});
-setupPlannedRangeControls();
 
 
 
@@ -5120,7 +4953,7 @@ window.addEventListener('storage',event=>{
 
 async function renderActiveAnalyticsPage(){
  updateDashboardDateContext();refreshPrimaryApptTypeBoxes();
- const renderers={chartPage:refresh,waitingTimesPage:renderWaitingTimesChart,waitingOverTimePage:renderWaitingTrendChart,availabilityPage:renderAvailabilityChart,routineAvailabilityPage:renderRoutineAvailabilityChart,plannedAvailabilityPage:renderPlannedAvailabilityChart,dayView2Page:renderDayView2,bookingTimesPage:renderBookingTimesChart,signpostingPage:renderSignpostingChart,dailyForecastPage:()=>window.refreshForecastCharts?.(),weeklyForecastPage:()=>window.refreshForecastCharts?.(),routineCapacityPage:()=>window.renderRoutineCapacity?.()};
+ const renderers={chartPage:refresh,waitingTimesPage:renderWaitingTimesChart,waitingOverTimePage:renderWaitingTrendChart,availabilityPage:renderAvailabilityChart,routineAvailabilityPage:renderRoutineAvailabilityChart,dayView2Page:renderDayView2,bookingTimesPage:renderBookingTimesChart,signpostingPage:renderSignpostingChart,dailyForecastPage:()=>window.refreshForecastCharts?.(),weeklyForecastPage:()=>window.refreshForecastCharts?.(),routineCapacityPage:()=>window.renderRoutineCapacity?.()};
  for(const [id,draw] of Object.entries(renderers)){const page=$(id);if(page&&!page.classList.contains("hidden"))await draw()}
 }
 function refreshOnDateRollover(){if(document.hidden||!folderAccessVerified)return;if(updateDashboardDateContext())void renderActiveAnalyticsPage().catch(e=>showRefreshFeedback("Chart refresh failed: "+e.message))}
