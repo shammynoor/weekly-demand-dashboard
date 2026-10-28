@@ -4357,6 +4357,13 @@ function capacityTodayLabel(dateString=todayLondon){
  const month=date.toLocaleDateString('en-GB',{month:'long',timeZone:'UTC'});
  return 'Today<br><span style="font-size:12px">'+weekday+' '+day+suffix+' '+month+'</span>';
 }
+// Today has its own top-margin lane, above week headings and plot totals.
+function capacityTodayAnnotation(todayX,bucketCount,width,dateString=todayLondon){
+ const narrow=width<480;
+ const date=new Date(dateString+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:narrow?'short':'long',day:'numeric',month:narrow?'short':'long',timeZone:'UTC'});
+ const plotWidth=Math.max(100,width-80),half=Math.min(0.5,(narrow?83:130)/plotWidth);
+ return {xref:'paper',yref:'paper',x:Math.max(half,Math.min(1-half,(todayX+0.5)/bucketCount)),y:1,yshift:49,text:'<b>Today</b> · '+date,showarrow:false,xanchor:'center',yanchor:'bottom',font:{size:13,color:'#206ca6'}};
+}
 function capacityWeekBeginningLabel(date){return 'w/b '+new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',timeZone:'UTC'});}
 function weeklyCapacityTodayX(weekIndex,dayIndex){
  const fraction=0.10+Math.min(Math.max(dayIndex,0),4)*0.20;
@@ -4451,7 +4458,7 @@ function renderAvailabilityChart(){
   const x=weekly?weeklyCapacityTodayX(urgentWeeksBack,(new Date(todayLondon+'T12:00:00Z').getUTCDay()+6)%7):dates.indexOf(todayLondon);
   shapes.unshift({type:'rect',xref:'x',yref:'paper',x0:weekly?-.5:-.9,x1:x,y0:0,y1:1,fillcolor:'rgba(97,112,130,0.12)',line:{width:0},layer:'above'});
   shapes.push({type:'line',xref:'x',yref:'paper',x0:x,x1:x,y0:0,y1:1,line:{color:'#257cb6',width:2.5,dash:'dot'},layer:'above'});
-  annotations.push({x,xref:'x',y:1.005,yref:'paper',text:capacityTodayLabel(),align:'left',showarrow:false,font:{size:17,color:'#206ca6'},xanchor:'left',yanchor:'top',xshift:7,yshift:-8});
+  annotations.push(capacityTodayAnnotation(x,buckets.length,target.clientWidth));
  }
  buckets.forEach((date,i)=>{if((weekly||weekdays.has(date))&&totals[i])annotations.push({x:date,xref:'x',y:totals[i],yref:'y',text:String(totals[i]),showarrow:false,font:{size:weekly?13:10,color:'#425b70'},yshift:15+Math.max(0,names.length-1)*5,yanchor:'bottom'})});
  const note=$('availabilityNote');if(note)note.textContent=names.length?'':'Select an Urgent detailed Appointment Types to display appointments.';
@@ -4615,7 +4622,7 @@ function renderRoutineAvailabilityChart(){
  const max=Math.max(1,...totals);
  const annotations=totals.flatMap((total,i)=>total?[{xref:'x',x:i,y:total,text:total.toLocaleString('en-GB'),showarrow:false,yshift:15+Math.max(0,types.length-1)*5,font:{size:isDaily?10:13,color:'#425b70'}}]:[]);
  const weekTitles=weeks.map((_,i)=>{const offset=routineStartWeek+i;return offset===0?'This Week':offset===-1?'Last Week':offset<0?Math.abs(offset)+' weeks ago':offset===1?'Next Week':offset+' weeks'});
- for(let i=0;i<weeks.length;i++)annotations.push({xref:'x',yref:'paper',x:isDaily?i*7+3:i,y:1.105,text:weekTitles[i],showarrow:false,font:{family:'Arial',size:13,color:'#344b60'}});
+ for(let i=0;i<weeks.length;i++)annotations.push({xref:'x',yref:'paper',x:isDaily?i*7+3:i,y:1.045,text:weekTitles[i],showarrow:false,font:{family:'Arial',size:13,color:'#344b60'}});
  const dayIndex=(new Date(todayLondon+'T12:00:00Z').getUTCDay()+6)%7;
  const weekIndex=weeks.indexOf(thisWeek);
  const todayX=weekIndex<0?null:isDaily?dates.indexOf(todayLondon):weeklyCapacityTodayX(weekIndex,dayIndex);
@@ -4624,7 +4631,7 @@ function renderRoutineAvailabilityChart(){
   {type:'line',xref:'x',yref:'paper',x0:todayX,x1:todayX,y0:0,y1:1,line:{color:'#257cb6',width:2.5,dash:'dot'},layer:'above'}
  ];
  for(let i=0;i<weeks.length-1;i++){const boundary=isDaily?(i+1)*7-0.5:i+0.5;shapes.push({type:'line',xref:'x',yref:'paper',x0:boundary,x1:boundary,y0:0,y1:1,line:{color:'#bdcbd6',width:1,dash:'dot'},layer:'above'});}
- if(todayX!==null)annotations.push({xref:'x',yref:'paper',x:todayX,y:0.96,text:capacityTodayLabel(),align:'left',showarrow:false,xanchor:'left',yanchor:'top',xshift:7,font:{size:17,color:'#206ca6'}});
+ if(todayX!==null)annotations.push(capacityTodayAnnotation(todayX,dates.length,target.clientWidth));
  const note=$('routineAvailabilityNote');
  if(note)note.textContent=matched?'':"No matching Routine Appointment Types appointments found. Check Manage categories → Appointment Types.";
  Plotly.react(target,traces,{dragmode:false,

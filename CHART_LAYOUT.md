@@ -19,3 +19,5 @@ A native select marked `data-chart-select` uses the shared rounded listbox menu 
 Reusable sizing: title 21 px; control labels 12 px; options grid up to 650 px; 22 px between columns; 23 px fine-pointer toggle rows, 32 px on touch; dropdown menus 13 px radius and option rows 9 px radius. Current historical smoothing uses a 14 px thumb and 7 px tick-label inset. Native keyboard controls, Escape dismissal and outside-click dismissal remain available.
 
 Historic Booking Activity is the first implementation. Its controls are Include Bank Holiday Weeks, Adjust for List Size, Show current week/month, Combine selected lines, Data, Timeline and Smoothing. Other charts can have different options while retaining this layout.
+
+Urgent Capacity and Routine Capacity use this layout with Group unavailable appts and a Days/Weeks dropdown backed by their original saved checkbox models. Their Today annotation occupies a dedicated top-margin lane, clamped to plot bounds; week headings and bar totals remain in separate lower lanes.
