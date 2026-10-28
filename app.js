@@ -73,6 +73,48 @@ document.addEventListener('keydown',event=>{
  const active=dashboardMenus.find(menu=>menu.classList.contains('open'));
  closeDashboardMenus();if(active?.contains(document.activeElement))active.querySelector(':scope > button')?.focus();
 });
+function updateHeaderIdentity(){
+ const label=$('accountLabel');if(!label)return;
+ const saved=readPersonalSettings();
+ label.textContent=(typeof saved.name==='string'&&saved.name.trim())||activeAccount?.name||activeAccount?.username||'Microsoft account';
+ label.title=activeAccount?.username||'';
+}
+function updateHeaderSlotReportTime(timestamp){
+ const label=$('headerSlotRefreshed');if(!label)return;
+ const valid=Number.isFinite(timestamp)&&!Number.isNaN(new Date(timestamp).getTime());
+ label.textContent='Refreshed: '+(valid?new Date(timestamp).toLocaleString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'Europe/London'}):'unavailable');
+ label.title=valid?'Latest successfully imported Slot Report file · London time':'No imported Slot Report timestamp is available.';
+}
+function closeHeaderNavigation(){
+ const nav=document.querySelector('.dashboard-nav'),toggle=$('headerMenuToggle');
+ nav?.classList.remove('header-menu-open');toggle?.setAttribute('aria-expanded','false');toggle?.setAttribute('aria-label','Open navigation menu');
+}
+function setupResponsiveHeader(){
+ const nav=document.querySelector('.dashboard-nav'),toggle=$('headerMenuToggle');if(!nav||!toggle)return;
+ const narrow=window.matchMedia('(max-width:1100px)');
+ const setOpen=open=>{
+  const expanded=!!open&&narrow.matches;nav.classList.toggle('header-menu-open',expanded);
+  toggle.setAttribute('aria-expanded',String(expanded));toggle.setAttribute('aria-label',expanded?'Close navigation menu':'Open navigation menu');
+  if(!expanded)closeDashboardMenus();
+ };
+ toggle.addEventListener('click',()=>setOpen(toggle.getAttribute('aria-expanded')!=='true'));
+ nav.addEventListener('click',event=>{
+  const button=event.target.closest('button');if(!button)return;
+  if(button.id==='navHome'||button.closest('.nav-demand-dropdown,.nav-availability-dropdown,.nav-settings-dropdown'))setOpen(false);
+ });
+ document.addEventListener('pointerdown',event=>{if(!nav.contains(event.target))setOpen(false);const accountMenu=$('headerAccountMenu');if(accountMenu&&!accountMenu.contains(event.target))accountMenu.removeAttribute('open');});
+ document.addEventListener('keydown',event=>{if(event.key==='Escape'&&nav.classList.contains('header-menu-open')){setOpen(false);toggle.focus();}});
+ const widthChanged=()=>setOpen(false);if(narrow.addEventListener)narrow.addEventListener('change',widthChanged);else narrow.addListener(widthChanged);
+ const updateCurrent=()=>{
+  const active=[...nav.querySelectorAll('button.active')];
+  const selected=active.find(button=>button.closest('.nav-demand-dropdown,.nav-availability-dropdown,.nav-settings-dropdown'))||active[0];
+  const current=$('headerCurrentPage');if(current){const text=selected?.textContent.trim()||'Home';if(current.textContent!==text)current.textContent=text;current.title=text;}
+ };
+ new MutationObserver(updateCurrent).observe(nav,{attributes:true,attributeFilter:['class'],subtree:true});updateCurrent();
+ $('headerPersonalSettings')?.addEventListener('click',()=>{$('headerAccountMenu')?.removeAttribute('open');showPage('personalSettings')});
+}
+setupResponsiveHeader();
+
 function applyAccessMode(){
  document.body.classList.toggle('viewer-mode',!isOwner);
  for(const id of ['navCategories','navPeople','navPracticeSettings','chooseFolder','sourceSetup']){const el=document.getElementById(id);if(el)el.hidden=!isOwner}
@@ -1228,6 +1270,7 @@ function setSync(s){$('syncStatus').textContent=s}
 function showRefreshFeedback(message,loading=false){
  const el=$('refreshFeedback');if(!el)return;
  el.textContent=message;el.classList.toggle('loading',loading);
+ el.classList.toggle('header-feedback-quiet',!loading&&/^(Already up to date|Data refreshed successfully|Data refreshed ·)/.test(message));
  el.setAttribute('aria-busy',String(loading));
 }
 function resizeVisibleCharts(){
@@ -1267,6 +1310,7 @@ function setButtons(){
  }
  $('signIn').disabled=authChecking||(logged&&folderAccessVerified&&!folderAccessDenied);
  $('signIn').textContent='Sign in with Microsoft';
+ if(logged)updateHeaderIdentity();
  $('signOut').disabled=!logged;
  $('chooseFolder').disabled=!logged||!isOwner;
  $('refreshData').disabled=!logged||!selectedFolder||busy;
@@ -1283,6 +1327,8 @@ function returnToMicrosoftSignIn(denied){
  $('dashboardShell').dataset.signedIn='false';
  $('dashboardShell').classList.add('hidden');$('loginScreen').classList.remove('hidden');
  $('accountLabel').textContent='';
+ updateHeaderSlotReportTime(null);
+ closeHeaderNavigation();
  try{auth?.setActiveAccount(null);}catch(_){}
  try{sessionStorage.setItem('gp-insight-account-selection-required',denied?'denied':'retry');}catch(_){}
  applyAccessMode();
@@ -1328,7 +1374,7 @@ async function initAuth(){
    // Publish shared settings even if this account has not made edits recently.
    if(selectedFolder&&cloudReady)await saveCloudCategories();}
    setStatus('Signed in: '+(activeAccount.username||'Microsoft account'));
-   $('accountLabel').textContent=activeAccount.username||'Microsoft account';
+   updateHeaderIdentity();
    if(selectedFolder){$('folderStatus').textContent='Source: '+selectedFolder.name;await loadFolder(false)}
    else if(isOwner){setSync('No source folder saved yet. Use Slot settings → Source folder setup.');$('sourceSetup').classList.remove('hidden')}
   }else setStatus(authNeedsAccountSelection?'Choose a Microsoft account with access to this dashboard.':'Sign in with a Microsoft account that has access to this dashboard.');
@@ -1860,6 +1906,7 @@ async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;
  // after every changed file has downloaded and parsed successfully.
  const capacityFileDates=items.filter(file=>pendingCache.get(file.id)?.kind==='slot').map(file=>Date.parse(file.lastModifiedDateTime||'')).filter(Number.isFinite);
  capacityCSVLatestModified=capacityFileDates.length?Math.max(...capacityFileDates):null;
+ updateHeaderSlotReportTime(capacityCSVLatestModified);
  slotReportCoverage=GPCorrectness.coverageFromEntries(pendingCache);
  slotTypeFileStats=newSlotTypeStats;renderSlotInclusion();
  signpostingRecords=newSignposting;signpostingFileCount=newSignpostingFiles;signpostingSlotNames=new Set(newSignposting.map(event=>event.destination));
@@ -2685,6 +2732,7 @@ function savePersonalSettings(event){
  try{
   localStorage.setItem(key,JSON.stringify({...readPersonalSettings(),name:$('personalName').value.trim(),userType:$('personalUserType').value,logoutMinutes:[10,30,60,120,240].includes(Number($('personalLogoutMinutes').value))?Number($('personalLogoutMinutes').value):30}));
   recordDashboardActivity(true);checkDashboardInactivity();
+  updateHeaderIdentity();
   $('personalSettingsStatus').textContent='Personal settings saved.';
  }catch{$('personalSettingsStatus').textContent='Unable to save personal settings in this browser.';}
 }
@@ -5018,7 +5066,7 @@ window.addEventListener('storage',event=>{
   setStatus('You have been signed out. Sign in to continue.');setButtons();return;
  }
  if(event.key===state.key){const value=Number(event.newValue);if(Number.isFinite(value))state.lastActivity=Math.max(state.lastActivity,value);checkDashboardInactivity();}
- if(event.key===personalSettingsKey())checkDashboardInactivity();
+ if(event.key===personalSettingsKey()){updateHeaderIdentity();checkDashboardInactivity();}
 });
 
 async function renderActiveAnalyticsPage(){

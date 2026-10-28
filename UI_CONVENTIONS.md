@@ -49,3 +49,10 @@ Use the slate blue (#3c6487) bar with 36 px desktop buttons and 4 px vertical ba
 ## Average capsules
 
 Place small Average capsules inside the plot, along their dotted average lines. Use horizontal staggering and collision-aware nearby rows on crowded narrow plots, recalculating after Plotly redraw/resize. Use explicit HTML pill backgrounds with fully rounded ends, 10 px text and 4 px by 9 px padding. The background is 75% opaque, with a 2 px fully opaque strip exactly where the average line passes behind the pill. Keep category names in accessible labels. Do not show the category legend, the Year-on-year comparison subtitle or the Fine whiskers explanatory block. Retain year legends for overlaid historical years.
+
+
+## Darwin responsive header
+
+Use Darwin Insight IQ with IQ in superscript, retaining the original logo mark. The compact branding/account row is soft slate (#527595); the menu row stays slate blue (#3c6487). Display the saved personal name (falling back to the Microsoft name/email) above Administrator or View only. Show Refreshed with the date and time of the latest successfully imported Slot Report, formatted in Europe/London; do not substitute the refresh-check time or a Signposting timestamp. Keep refresh and account/sign-out actions available.
+
+Above 1100 px keep the icon-led navigation expanded. At 1100 px and below use a Menu toggle with the current page and a 29 px settings cog at the right end of the same menu row. Open navigation vertically in page flow; close it on selection, outside click, Escape or crossing the breakpoint. Opening Menu must not change the selected page. Keep name, role and timestamp visible on phones and preserve 44 px touch targets.
