@@ -9,7 +9,7 @@ function fixture(){
   addEventListener(k,v){this.handlers[k]=v}focus(){this.focused=true}contains(el){return el===this||el.parent===this}
   querySelectorAll(){return [{textContent:'Home',closest:()=>null}]}
  }
- for(const id of ['accountLabel','headerSlotRefreshed','headerMenuToggle','headerCurrentPage','headerPersonalSettings','headerAccountMenu'])nodes[id]=new Node(id);
+ for(const id of ['accountLabel','headerSlotRefreshed','headerMenuToggle','headerCurrentPage','headerPersonalSettings','headerAccountMenu','headerReportAge','headerReportAgeRow','headerEmisReminder'])nodes[id]=new Node(id);
  const nav=new Node('nav');let closeCount=0,page;
  const ctx={$:id=>nodes[id],activeAccount:{name:'Microsoft Name',username:'user@example.com'},readPersonalSettings:()=>({}),window:{matchMedia:()=>media},document:{querySelector:()=>nav,addEventListener:(name,fn)=>{events[name]=fn}},MutationObserver:class{observe(){}},closeDashboardMenus(){closeCount++},showPage:p=>{page=p}};
  vm.createContext(ctx);vm.runInContext(source.slice(start,end),ctx);ctx.setupResponsiveHeader();
@@ -78,4 +78,38 @@ test('refresh progress replaces the clinical download label in the same header a
  f.ctx.showRefreshFeedback('Data refreshed successfully');assert.match(f.nodes.headerSlotRefreshed.textContent,/Last clinical system download: 28 Oct 2026,? 09:15/);assert.equal(f.nodes.headerSlotRefreshed.getAttribute('aria-busy'),'false');
  assert.equal(f.nodes.refreshFeedback.classList.contains('header-feedback-quiet'),true);
  f.ctx.showRefreshFeedback('Refreshing data…',true);f.ctx.showRefreshFeedback('Refresh failed: offline');assert.match(f.nodes.headerSlotRefreshed.textContent,/28 Oct 2026/);assert.equal(f.nodes.refreshFeedback.textContent,'Refresh failed: offline');assert.equal(f.nodes.refreshFeedback.classList.contains('header-feedback-quiet'),false);
+});
+
+
+test('refresh age includes minutes below two hours and an EMIS reminder only above two hours',()=>{
+ const f=fixture(),timestamp=Date.parse('2026-10-28T10:00Z');
+ f.ctx.updateHeaderReportAge(timestamp,timestamp+119*60000);assert.equal(f.nodes.headerReportAge.textContent,'Refreshed 1 hour 59 minutes ago');assert.equal(f.nodes.headerEmisReminder.hidden,true);
+ f.ctx.updateHeaderReportAge(timestamp,timestamp+120*60000);assert.equal(f.nodes.headerReportAge.textContent,'Refreshed 2 hours ago');assert.equal(f.nodes.headerEmisReminder.hidden,true);
+ f.ctx.updateHeaderReportAge(timestamp,timestamp+121*60000);assert.equal(f.nodes.headerEmisReminder.hidden,false);assert.equal(f.nodes.headerReportAgeRow.hidden,false);
+ f.ctx.updateHeaderReportAge(timestamp,timestamp+20*60000);assert.equal(f.nodes.headerReportAge.textContent,'Refreshed 0 hours 20 minutes ago');
+ f.ctx.updateHeaderReportAge(null);assert.equal(f.nodes.headerReportAgeRow.hidden,true);assert.equal(f.nodes.headerEmisReminder.hidden,true);
+});
+function csvFixture({cancel=false,fail=false,refreshFail=false}={}){
+ const f=fixture();f.nodes.refreshFeedback=new f.Node('refreshFeedback');f.nodes.csvDropStatus=new f.Node('csvDropStatus');
+ const a=source.indexOf('function showRefreshFeedback('),b=source.indexOf('function resizeVisibleCharts(',a);vm.runInContext(source.slice(a,b),f.ctx);
+ vm.runInContext(source.slice(source.indexOf('function csvDropStatus('),source.indexOf('function csvDropOverlay(')),f.ctx);
+ let puts=0;
+ Object.assign(f.ctx,{csvDropBusy:false,isOwner:true,selectedFolder:{id:'folder'},GRAPH:'https://example.test',csvContributionCache:new Map(),lastFingerprint:'old',console:{error(){}},children:async()=>[{id:'report',name:'Slot Report.csv',file:{}}],validateCSVForReplacement:()=>({columns:['a','b']}),graph:async()=>({parentReference:{id:'folder'},'@microsoft.graph.downloadUrl':'https://example.test/original'}),awaitCSVConfirmation:async()=>!cancel,token:async()=> 'test-token',fetch:async(url,options)=>{if(options?.method==='PUT'){puts++;return {ok:!fail,status:500,json:async()=>({error:{message:'Upload failed'}})}}return {ok:true,text:async()=> 'a,b\n1,2'}},loadFolder:async()=>{
+  f.ctx.showRefreshFeedback('Refreshing data…',true);
+  if(refreshFail)f.ctx.showRefreshFeedback('Refresh failed: offline');else{f.ctx.updateHeaderSlotReportTime(Date.parse('2026-10-28T12:15Z'));f.ctx.showRefreshFeedback('Data refreshed successfully')}
+ }});
+ vm.runInContext(source.slice(source.indexOf('async function replaceExistingCSV('),source.indexOf('function initCSVDragDrop(')),f.ctx);
+ f.ctx.updateHeaderSlotReportTime(Date.parse('2026-10-27T14:35Z'));
+ return {...f,puts:()=>puts,file:{name:'Slot Report.csv',size:10,text:async()=> 'a,b\n1,2'}};
+}
+test('CSV replacement clears upload progress after the dashboard refresh completes',async()=>{
+ const f=csvFixture();await f.ctx.replaceExistingCSV(f.file);assert.equal(f.puts(),1);assert.equal(f.ctx.csvDropBusy,false);assert.equal(f.nodes.csvDropStatus.textContent,'');assert.equal(f.nodes.refreshFeedback.textContent,'');assert.match(f.nodes.headerSlotRefreshed.textContent,/Last clinical system download: 28 Oct 2026,? 12:15/);
+});
+test('cancelled CSV replacement clears progress without uploading',async()=>{
+ const f=csvFixture({cancel:true});await f.ctx.replaceExistingCSV(f.file);assert.equal(f.puts(),0);assert.equal(f.nodes.refreshFeedback.textContent,'');assert.match(f.nodes.headerSlotRefreshed.textContent,/27 Oct 2026/);
+});
+test('CSV upload or refresh failures remain visible and restore the last download label',async()=>{
+ for(const options of [{fail:true},{refreshFail:true}]){
+  const f=csvFixture(options);await f.ctx.replaceExistingCSV(f.file);assert.ok(f.nodes.refreshFeedback.textContent.includes('failed'));assert.equal(f.nodes.refreshFeedback.classList.contains('header-feedback-quiet'),false);assert.match(f.nodes.headerSlotRefreshed.textContent,/Last clinical system download:/);assert.equal(f.ctx.csvDropBusy,false);
+ }
 });

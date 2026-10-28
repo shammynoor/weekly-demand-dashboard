@@ -64,3 +64,10 @@ Use fully rounded primary pills (999 px radius), 14 px desktop labels, 20 px ico
 
 
 While refreshing/updating, replace the clinical-download caption and timestamp with progress in that same header region, then restore the imported-file timestamp when finished. Keep refresh errors visible in the feedback region. Retain a small down-chevron immediately to the right of each primary dropdown label.
+
+
+## Waiting-page recovery and download age
+
+Waiting Time Ranges and Median Waiting Times use the shared capacityUrgencyCategory resolver for both direct and detailed-to-group mappings. Keep month-range helpers in global shared scope so either waiting page can render without first opening the historical chart. Primary appointment types remain available when secondary filters conflict or no data matches.
+
+Under Last clinical system download, display Refreshed with hours and minutes when less than two hours old, otherwise whole hours. Above two hours, show Consider EMIS update in bold. Recalculate once a minute from the Slot Report timestamp, and hide the age/reminder during refresh progress. CSV replacement progress uses the same top header region and clears on successful completion or cancellation; upload/refresh errors remain visible.

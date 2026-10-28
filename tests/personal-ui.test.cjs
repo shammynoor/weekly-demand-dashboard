@@ -7,7 +7,7 @@ function fixture(prefix='demandRange',store={},user='one',timestamp='2026-10-27T
  const ctx={GPCorrectness:core,capacityCSVLatestModified:timestamp===null?null:Date.parse(timestamp),readChartPreferences:()=>store[account]||{},writeChartPreference:(k,v)=>{(store[account]??={})[k]=v},$:id=>nodes[id],availabilityRecords:months.map(m=>({date:m+'-01'})),waitingTimeRecords:[],waitingRecordMonths:()=>months,waitingTrendAvailableMonths:months,
  demandMonthBounds:'',demandMonthStart:null,demandMonthEnd:null,waitingAppointmentMonthBounds:'',waitingAppointmentMonthStart:null,waitingAppointmentMonthEnd:null,waitingTrendMonthBounds:'',waitingTrendMonthStart:null,waitingTrendMonthEnd:null,scheduleDemandRefresh(){}};
  vm.createContext(ctx);
- vm.runInContext(app.slice(app.indexOf('function monthRangeSelection('),app.indexOf('function renderDemandUrgencyToggles(')),ctx);
+ vm.runInContext(app.slice(app.indexOf('function monthRangeSelection('),app.indexOf('function refresh(){'))+app.slice(app.indexOf('function setupDemandMonthSlider('),app.indexOf('function renderDemandUrgencyToggles(')),ctx);
  vm.runInContext(app.slice(app.indexOf('function setupWaitingAppointmentSlider('),app.indexOf('function waitingMatches(')),ctx);
  const setup=prefix==='demandRange'?ctx.setupDemandMonthSlider:prefix==='waitingRange'?ctx.setupWaitingAppointmentSlider:ctx.setupWaitingTrendSlider;
  ctx.renderWaitingTimesChart=setup;ctx.renderWaitingTrendChart=setup;

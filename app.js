@@ -90,6 +90,19 @@ function updateHeaderIdentity(){
  label.title=activeAccount?.username||'';
 }
 let headerReportTimestamp=null,headerRefreshLoading=false;
+function headerReportAge(timestamp,now=Date.now()){
+ if(!Number.isFinite(timestamp)||Number.isNaN(new Date(timestamp).getTime()))return {text:'',stale:false};
+ const elapsed=Math.max(0,now-timestamp),minutes=Math.floor(elapsed/60000),hours=Math.floor(minutes/60);
+ const unit=(n,name)=>n+' '+name+(n===1?'':'s');
+ return {text:'Refreshed '+(elapsed<7200000?unit(hours,'hour')+' '+unit(minutes%60,'minute'):unit(hours,'hour'))+' ago',stale:elapsed>7200000};
+}
+function updateHeaderReportAge(timestamp,now=Date.now()){
+ const age=$('headerReportAge'),row=$('headerReportAgeRow'),reminder=$('headerEmisReminder');
+ const info=headerReportAge(timestamp,now);
+ if(age)age.textContent=headerRefreshLoading?'':info.text;
+ if(row)row.hidden=headerRefreshLoading||!info.text;
+ if(reminder)reminder.hidden=headerRefreshLoading||!info.stale;
+}
 function updateHeaderSlotReportTime(timestamp){
  headerReportTimestamp=timestamp;
  if(headerRefreshLoading)return;
@@ -97,6 +110,7 @@ function updateHeaderSlotReportTime(timestamp){
  const valid=Number.isFinite(timestamp)&&!Number.isNaN(new Date(timestamp).getTime());
  label.textContent='Last clinical system download: '+(valid?new Date(timestamp).toLocaleString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'Europe/London'}):'unavailable');
  label.title=valid?'Latest successfully imported Slot Report file · London time':'No imported Slot Report timestamp is available.';
+ updateHeaderReportAge(timestamp);
 }
 function closeHeaderNavigation(){
  const nav=document.querySelector('.dashboard-nav'),toggle=$('headerMenuToggle');
@@ -978,6 +992,7 @@ let auth,authInitPromise=null,activeAccount=null,authenticatedOnce=false,selecte
 let cloudReady=false, cloudSaveTimer=null, cloudVersion=null, cloudBusy=false;
 let cloudFolder=null;
 setupResponsiveHeader();
+setInterval(()=>updateHeaderReportAge(headerReportTimestamp),60000);
 // Per-account chart preferences stay local to this browser and are never included
 // in the shared OneDrive settings JSON.
 function chartPreferenceAccount(){return activeAccount?.homeAccountId||activeAccount?.localAccountId||activeAccount?.username||null}
@@ -1278,7 +1293,7 @@ function showRefreshFeedback(message,loading=false){
  const el=$('refreshFeedback');if(!el)return;
  headerRefreshLoading=loading;
  const header=$('headerSlotRefreshed');
- if(header){header.setAttribute('aria-busy',String(loading));if(loading){header.textContent=message;header.title=message;}else updateHeaderSlotReportTime(headerReportTimestamp);}
+ if(header){header.setAttribute('aria-busy',String(loading));if(loading){header.textContent=message;header.title=message;updateHeaderReportAge(headerReportTimestamp);}else updateHeaderSlotReportTime(headerReportTimestamp);}
  el.textContent=loading?'':message;el.classList.toggle('loading',loading);
  el.classList.toggle('header-feedback-quiet',!loading&&/^(Already up to date|Data refreshed successfully|Data refreshed ·)/.test(message));
  el.setAttribute('aria-busy',String(loading));
@@ -1613,7 +1628,8 @@ function renderDropEditor(dimension){
 // and never write to the separate app-folder settings JSON.
 let csvDropBusy=false,csvDragDepth=0;
 function csvDropStatus(message,isError=false){
- const status=$('csvDropStatus');if(status){status.textContent=message;status.classList.toggle('csv-drop-error',isError)}
+ const status=$('csvDropStatus');if(status){status.textContent='';status.classList.toggle('csv-drop-error',isError)}
+ showRefreshFeedback(message,!!message&&!isError);
 }
 function csvDropOverlay(show){
  const overlay=$('csvDropOverlay');if(overlay)overlay.classList.toggle('hidden',!show);
@@ -1668,6 +1684,7 @@ async function replaceExistingCSV(file){
  if(!isOwner){csvDropStatus('View-only accounts cannot replace CSV files.',true);return;}if(!activeAccount||!selectedFolder){csvDropStatus('Sign in and select your OneDrive CSV folder first.',true);return}
  if(!file||!/\.csv$/i.test(file.name)){csvDropStatus('Rejected: only CSV files can be uploaded.',true);return}
  if(file.size===0||file.size>200*1024*1024){csvDropStatus('Rejected: CSV must be non-empty and no larger than 200 MB.',true);return}
+ let uploadFailed=false;
  csvDropBusy=true;csvDropStatus('Checking '+file.name+' against OneDrive…');
  try{
   const existing=(await children(selectedFolder.id)).filter(item=>item.file&&/\.csv$/i.test(item.name));
@@ -1711,11 +1728,13 @@ async function replaceExistingCSV(file){
   csvContributionCache.delete(match.id);
   lastFingerprint='';
   await loadFolder(true);
-  csvDropStatus('OneDrive CSV replaced: '+match.name+'. Only the changed CSV was reloaded; dashboard totals updated.');
+  if($('refreshFeedback')?.textContent.startsWith('Refresh failed:')){uploadFailed=true;return;}
+  csvDropStatus('');
  }catch(error){
+  uploadFailed=true;
   console.error('CSV replacement error',error);
   csvDropStatus(error?.message||String(error),true);
- }finally{csvDropBusy=false}
+ }finally{csvDropBusy=false;if(!uploadFailed)csvDropStatus('')}
 }
 function initCSVDragDrop(){
  window.addEventListener('dragenter',event=>{
@@ -2291,6 +2310,29 @@ function scheduleDemandRefresh(){
  demandRefreshQueued=true;
  requestAnimationFrame(()=>{demandRefreshQueued=false;refresh()});
 }
+function monthRangeSelection(prefix,low,high){
+ const saved=readChartPreferences(),page=prefix==='demandRange'?'chartPage':prefix==='waitingRange'?'waitingTimesPage':'waitingOverTimePage';
+ const pair=saved['monthRange:'+prefix];
+ const index=value=>typeof value==='string'&&/^\d{4}-(0[1-9]|1[0-2])$/.test(value)?Number(value.slice(0,4))*12+Number(value.slice(5,7))-1:NaN;
+ const legacy=handle=>{const value=saved['range:'+page+':'+prefix+handle];return value!==undefined&&Number.isInteger(Number(value))?Number(value):NaN};
+ const from=index(pair?.start),to=index(pair?.end);
+ const first=Number.isFinite(from)?from:legacy('Start'),last=Number.isFinite(to)?to:legacy('End');
+ const a=Math.max(low,Math.min(high,Number.isFinite(first)?first:low));
+ return [a,Math.max(a,Math.min(high,Number.isFinite(last)?last:high))];
+}
+function saveMonthRange(prefix,start,end){writeChartPreference('monthRange:'+prefix,{start,end});}
+function reportRangeDate(){
+ return Number.isFinite(capacityCSVLatestModified)?GPCorrectness.londonDate(new Date(capacityCSVLatestModified)):null;
+}
+function reportRangeEndLabel(monthIndex){
+ const date=reportRangeDate(),month=new Date(Date.UTC(Math.floor(monthIndex/12),monthIndex%12,1));
+ const label=month.toLocaleDateString('en-GB',{month:'short',year:'numeric',timeZone:'UTC'});
+ if(!date)return label; // Completeness cannot be inferred without the report timestamp.
+ if(monthIndex===Number(date.slice(0,4))*12+Number(date.slice(5,7))-1)
+  return new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'});
+ return 'End of '+label;
+}
+
 function refresh(){
  updateDashboardDateContext();
  renderDemandUrgencyToggles();applyDemandPurposeDefaults();updateDemandSmoothingControl();
@@ -2336,28 +2378,6 @@ function yearBackgroundShapes(periods){
   if(year%2===0)shapes.push({type:'rect',xref:'x',yref:'paper',x0:year+'-01-01',x1:(year+1)+'-01-01',y0:0,y1:1,fillcolor:'#f2f5f8',opacity:0.65,line:{width:0},layer:'below'});
  }
  return shapes;
-}
-function monthRangeSelection(prefix,low,high){
- const saved=readChartPreferences(),page=prefix==='demandRange'?'chartPage':prefix==='waitingRange'?'waitingTimesPage':'waitingOverTimePage';
- const pair=saved['monthRange:'+prefix];
- const index=value=>typeof value==='string'&&/^\d{4}-(0[1-9]|1[0-2])$/.test(value)?Number(value.slice(0,4))*12+Number(value.slice(5,7))-1:NaN;
- const legacy=handle=>{const value=saved['range:'+page+':'+prefix+handle];return value!==undefined&&Number.isInteger(Number(value))?Number(value):NaN};
- const from=index(pair?.start),to=index(pair?.end);
- const first=Number.isFinite(from)?from:legacy('Start'),last=Number.isFinite(to)?to:legacy('End');
- const a=Math.max(low,Math.min(high,Number.isFinite(first)?first:low));
- return [a,Math.max(a,Math.min(high,Number.isFinite(last)?last:high))];
-}
-function saveMonthRange(prefix,start,end){writeChartPreference('monthRange:'+prefix,{start,end});}
-function reportRangeDate(){
- return Number.isFinite(capacityCSVLatestModified)?GPCorrectness.londonDate(new Date(capacityCSVLatestModified)):null;
-}
-function reportRangeEndLabel(monthIndex){
- const date=reportRangeDate(),month=new Date(Date.UTC(Math.floor(monthIndex/12),monthIndex%12,1));
- const label=month.toLocaleDateString('en-GB',{month:'short',year:'numeric',timeZone:'UTC'});
- if(!date)return label; // Completeness cannot be inferred without the report timestamp.
- if(monthIndex===Number(date.slice(0,4))*12+Number(date.slice(5,7))-1)
-  return new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'});
- return 'End of '+label;
 }
 function setupDemandMonthSlider(){
  const start=$('demandRangeStart'),end=$('demandRangeEnd');if(!start||!end)return;
@@ -2997,7 +3017,7 @@ function waitingRecordMonths(rows){
 function waitingRowDimensions(r){
  const clinicianType=effectiveClinicianType(r.clinician,r.person);
  return {
-  urgency:groupUrgencyAssignments[assignments[r.slot]||''],
+  urgency:capacityUrgencyCategory(r.slot),
   consult:consultCategoryNames.includes(consultAssignments[r.slot])?consultAssignments[r.slot]:(suggestConsultMode(r.slot)||''),
   purpose:purposeCategoryNames.includes(purposeAssignments[r.slot])?purposeAssignments[r.slot]:'',
   capacity:capacityCategoryNames.includes(capacityAssignments[r.slot])?capacityAssignments[r.slot]:'',
@@ -3124,7 +3144,8 @@ function renderWaitingTimesChart(){
   if(waitingAppointmentMonthStart&&r.appointmentMonth<waitingAppointmentMonthStart)continue;
   if(waitingAppointmentMonthEnd&&r.appointmentMonth>waitingAppointmentMonthEnd)continue;
   const d=dimensionsFor(r);
-  if(!isDashboardToggleOption(d.urgency))continue;
+  if(!isDashboardToggleOption(d.urgency)||!groupUrgencyNames.includes(d.urgency))continue;
+  optionsByKind.urgency.add(d.urgency);
   const enabled={
    urgency:!waitingDisabledUrgency.has(d.urgency),
    consult:!waitingFilterDisabled.consult.has(d.consult),
@@ -3149,7 +3170,7 @@ function renderWaitingTimesChart(){
   input.addEventListener('change',()=>{onChange(input.checked);renderWaitingTimesChart()});
  };
  root.replaceChildren();
- for(const name of groupUrgencyNames.filter(n=>isDashboardToggleOption(n)&&optionsByKind.urgency.has(n)))
+ for(const name of groupUrgencyNames.filter(n=>isDashboardToggleOption(n)&&(!optionsByKind.urgency.size||optionsByKind.urgency.has(n))))
   makeToggle(root,name,!waitingDisabledUrgency.has(name),urgencyGroupColour(name),checked=>{if(checked)waitingDisabledUrgency.delete(name);else waitingDisabledUrgency.add(name)});
  const dimensions=[['consult','waitingConsultToggles',consultCategoryNames,consultModeColours],['purpose','waitingPurposeToggles',purposeCategoryNames,purposeColours],['capacity','waitingCapacityToggles',capacityCategoryNames,capacityColours],['clinician','waitingClinicianToggles',clinicianGroupNames,clinicianGroupColours]];
  for(const [kind,id,allNames,colours] of dimensions){
@@ -3234,7 +3255,8 @@ function renderWaitingTrendChart(){
   if(waitingTrendMonthStart&&r.appointmentMonth<waitingTrendMonthStart)continue;
   if(waitingTrendMonthEnd&&r.appointmentMonth>waitingTrendMonthEnd)continue;
   const d=dimensionsFor(r);
-  if(!isDashboardToggleOption(d.urgency))continue;
+  if(!isDashboardToggleOption(d.urgency)||!groupUrgencyNames.includes(d.urgency))continue;
+  optionsByKind.urgency.add(d.urgency);
   const enabled={urgency:!waitingTrendDisabledUrgency.has(d.urgency)};
   for(const kind of kinds.slice(1))enabled[kind]=!waitingTrendDisabled[kind].has(d[kind]);
   const off=kinds.filter(k=>!enabled[k]);
@@ -3254,7 +3276,7 @@ function renderWaitingTrendChart(){
   input.addEventListener('change',()=>{change(input.checked);renderWaitingTrendChart()});
  };
  root.replaceChildren();
- for(const name of groupUrgencyNames.filter(n=>isDashboardToggleOption(n)&&optionsByKind.urgency.has(n)))
+ for(const name of groupUrgencyNames.filter(n=>isDashboardToggleOption(n)&&(!optionsByKind.urgency.size||optionsByKind.urgency.has(n))))
   toggle(root,name,!waitingTrendDisabledUrgency.has(name),urgencyGroupColour(name),on=>{if(on)waitingTrendDisabledUrgency.delete(name);else waitingTrendDisabledUrgency.add(name)});
  const dimensions=[['consult','waitingTrendConsultToggles',consultCategoryNames,consultModeColours],['purpose','waitingTrendPurposeToggles',purposeCategoryNames,purposeColours],['capacity','waitingTrendCapacityToggles',capacityCategoryNames,capacityColours],['clinician','waitingTrendClinicianToggles',clinicianGroupNames,clinicianGroupColours]];
  for(const [kind,id,names,colours] of dimensions){
