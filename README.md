@@ -459,6 +459,15 @@ The smoothing label is aligned with the 20 px input row, while tick labels use a
 
 The current-period display uses a fine 40%-opacity whisker with short caps and an 8 px open circle for actual bookings so far. Hover details distinguish actual observations from the estimated finishing range; current observations are never labelled as smoothed. Circles remain available when there is not enough history for a forecast.
 
-Separate appointment types receive stable horizontal offsets at 12 px spacing where space permits. Each circle and its own whisker use the same offset. The marker group is kept inside the plotting area, and spacing is recalculated after resizing. Offsets are visual only; period keys, counts and estimated bounds remain unchanged. Combined mode uses one marker column.
+Separate appointment types use a dedicated current-period lane to the right of all historical traces, with 10 px spacing where space permits. Each circle and its own whisker use the same offset. The marker group is kept inside the plotting area, and spacing is recalculated after resizing. Offsets are visual only; period keys, counts and estimated bounds remain unchanged. Combined mode uses one marker column.
 
 The Smoothing label matches the neighbouring toolbar labels: inherited font family, 12 px, weight 700 and 1.2 line height. Its label and track align with the other controls; the tick labels occupy reserved space below the final control rather than shifting its row centre.
+
+
+## Historical graph polish and secondary-filter collapse
+
+Current-period circles and whiskers are rendered on a separate horizontal axis in a narrow lane after the historical plot. This prevents them from overlapping any completed line, including previous-year traces in superimposed mode. The lane is labelled Current, uses tighter 10 px series spacing, and disappears when Show current is off. In continuous mode the historical axis ends at the last completed point. Mean lines stop before the prediction lane.
+
+The newest year uses a 2.75 px line (half the previous 5.5 px width); earlier years use thinner 0.65–1.15 px lines and lower opacity to preserve the visual hierarchy.
+
+Secondary-filter collapse state is saved synchronously before changing the UI. Saved expansion preferences are applied once per account/state instead of replaying button clicks after every chart mutation. This prevents minus clicks being immediately undone by stale saved expansion state. Filter summaries only replace their text when it changes.
