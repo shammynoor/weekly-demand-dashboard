@@ -71,3 +71,8 @@ While refreshing/updating, replace the clinical-download caption and timestamp w
 Waiting Time Ranges and Median Waiting Times use the shared capacityUrgencyCategory resolver for both direct and detailed-to-group mappings. Keep month-range helpers in global shared scope so either waiting page can render without first opening the historical chart. Primary appointment types remain available when secondary filters conflict or no data matches.
 
 Under Last clinical system download, display Refreshed with hours and minutes when less than two hours old, otherwise whole hours. Above two hours, show Consider EMIS update in bold. Recalculate once a minute from the Slot Report timestamp, and hide the age/reminder during refresh progress. CSV replacement progress uses the same top header region and clears on successful completion or cancellation; upload/refresh errors remain visible.
+
+
+## Urgent Forecast bank-holiday policy
+
+Appointment Number Suggestions must not read the analytics day-of-week selection. Fit normal daily suggestions and weekly allocations using the selected historical window with bank-holiday weeks excluded. Use the separate before/after-bank-holiday models for holiday-adjacent suggestion dates, retaining all available adjacent-day history. Analytics Monday–Friday automatically exclude bank-holiday weeks; before/after-bank-holiday analytics automatically include them and use all available adjacent-day history. Remove the Ignore bank holiday weeks checkbox; obsolete saved values have no effect. Prediction cache keys exclude the analytics weekday.
