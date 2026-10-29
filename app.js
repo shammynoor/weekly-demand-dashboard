@@ -161,8 +161,13 @@ async function readSharedSettings(){
  const files=await children(folder.id);
  const settings=files.find(item=>item.file&&item.name.toLowerCase()===SHARED_SETTINGS_FILE.toLowerCase());
  if(!settings)return null;
- const detail=await graph(sourceItemUrl(settings.id));
- const downloadUrl=detail['@microsoft.graph.downloadUrl'];
+ // The children response is already scoped to the verified sharing link.
+ // Personal OneDrive recipients may not be able to resolve owner drive IDs directly.
+ let downloadUrl=settings['@microsoft.graph.downloadUrl'];
+ if(!downloadUrl){
+  try{const detail=await graph(sourceItemUrl(settings.id));downloadUrl=detail['@microsoft.graph.downloadUrl'];}
+  catch(error){throw Error('Shared settings file was found but could not be downloaded ('+(error.code||error.status||error.message)+').');}
+ }
  if(!downloadUrl)throw Error('Microsoft did not provide a download link for shared settings.');
  const response=await fetch(downloadUrl,{cache:'no-store'});
  if(!response.ok)throw Error('Shared settings download failed (HTTP '+response.status+')');
@@ -1409,11 +1414,13 @@ async function initAuth(){
   const message=String(e?.message||e);
   // Only a confirmed 401/403 or a sharing-link denial is an access rejection.
   // Network outages and missing settings should not be mislabelled as unauthorised.
-  const permissionError=[401,403,404].includes(e?.status)||/access.?denied|permission.?denied|not authorised|not authorized|does not have access|itemNotFound|item not found/i.test(String(e?.code||'')+' '+message);
+  // A 404 can mean an unsupported shared-item path or missing settings, not denied access.
+  // Only classify explicit access-denied responses as an authorisation failure.
+  const permissionError=[401,403].includes(e?.status)||/access.?denied|permission.?denied|not authorised|not authorized|does not have access/i.test(String(e?.code||'')+' '+message);
   const failedAccessCheck=!folderAccessVerified;
   if(failedAccessCheck){
    returnToMicrosoftSignIn(permissionError);
-   setStatus(permissionError?'You do not have access to this dashboard. Sign in with a different Microsoft account.':'Unable to check dashboard access: '+message+' You can try signing in again.');
+   setStatus(permissionError?'OneDrive access was denied (HTTP '+(e?.status||'unknown')+'). Check that this Microsoft account was explicitly invited to the shared folder.':'Unable to check dashboard access: '+message+' You can try signing in again.');
   }else setStatus('Unable to open dashboard: '+message);
  }finally{authChecking=false;setButtons()}
  })();
