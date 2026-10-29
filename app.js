@@ -14,7 +14,7 @@ const GRAPH='https://graph.microsoft.com/v1.0';
 const FOLDER_KEY='weekly-demand-onedrive-folder-v1';
 // A specific-person, view-only OneDrive share; not an authentication credential.
 // Only accounts explicitly granted access in OneDrive can read this folder.
-const SHARED_FOLDER_LINK='https://1drv.ms/f/c/07c73540cffc666d/IgDtAqPOppU4RI0NK-J0JwZwASLOpdds9ogr0rNNS18_X78?e=poJClm';
+const SHARED_FOLDER_LINK='https://1drv.ms/f/c/07c73540cffc666d/IgDtAqPOppU4RI0NK-J0JwZwARwoZ83uuDlzEzq8G_hJW9Q?e=QiECEF';
 const OWNER_DRIVE_ID='07c73540cffc666d';
 const SHARED_SETTINGS_FILE='weekly-demand-categories.json';
 const SHARED_TOKEN='u!'+btoa(unescape(encodeURIComponent(SHARED_FOLDER_LINK))).replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
