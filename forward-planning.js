@@ -60,41 +60,40 @@ function data(){
  return {rows,days,totals:{phone:pools.phone.reduce((a,b)=>a+b.count,0),f2f:pools.f2f.reduce((a,b)=>a+b.count,0)}};
 }
 function render(){
- const note=$('forwardPlanningNote'),summary=$('forwardPlanningSummary'),capacity=$('forwardPlanningCapacityChart'),waiting=$('forwardPlanningWaitChart');
- if(!capacity||!waiting)return;
- for(const [id,val] of [['forwardPlanningClinician',state.clinician],['forwardPlanningHorizon',String(state.horizon)],['forwardPlanningMode',state.mode]]){const el=$(id);if(el&&el.value!==val)el.value=val}
- let model;try{model=data()}catch(e){console.error('Forward planning',e);model={error:'Unable to calculate the forecast from the loaded data.'}}
- if(model.error){note.textContent=model.error;summary.textContent='';capacity.replaceChildren();waiting.replaceChildren();return}
- const rows=model.rows.filter(r=>r.mode===state.mode&&r.i<state.horizon);
+ const note=$('forwardPlanningNote'),summary=$('forwardPlanningSummary'),host=$('forwardPlanningCombinedChart');
+ if(!host)return;
+ for(const [id,val] of [['forwardPlanningClinician',state.clinician],['forwardPlanningHorizon',String(state.horizon)]]){const el=$(id);if(el&&el.value!==val)el.value=val}
+ let model;try{model=data()}catch(e){console.error('Forward planning',e);model={error:'Unable to calculate forecast from loaded data.'}}
+ host.replaceChildren();
+ if(model.error){note.textContent=model.error;summary.textContent='';return}
+ const modes=['phone','f2f'],series=modes.map(mode=>({mode,rows:model.rows.filter(r=>r.mode===mode&&r.i<state.horizon)}));
+ const dates=series[0].rows.map(r=>r.date),width=960,height=330,p={l:66,r:70,t:32,b:50};
  const fmt=n=>Math.round(n).toLocaleString('en-GB');
- const exhausted=rows.find(r=>r.remaining===0);
- const initial=rows[0]?.before||0,latest=rows.at(-1)?.remaining||0;
- summary.textContent=exhausted?'Appointments forecast to run out on '+dayfmt(exhausted.date):'Appointments available beyond '+dayfmt(rows.at(-1).date);
- function chart(host,values,opts){
-  host.replaceChildren();
-  const width=900,height=230,p={l:58,r:24,t:22,b:44};
-  const max=Math.max(opts.floor||0,...values.filter(v=>v!==null).map(v=>v||0),1);
-  const x=i=>p.l+(rows.length<=1?0:i/(rows.length-1))*(width-p.l-p.r);
-  const y=v=>height-p.b-(v/max)*(height-p.t-p.b);
-  const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
-  const add=(tag,attrs,text)=>{const el=document.createElementNS(svg.namespaceURI,tag);for(const [k,v] of Object.entries(attrs))el.setAttribute(k,v);if(text!==undefined)el.textContent=text;svg.append(el);return el};
-  svg.setAttribute('viewBox','0 0 '+width+' '+height);svg.style.width='100%';svg.style.height='auto';svg.setAttribute('role','img');svg.setAttribute('aria-label',opts.title);
-  for(let i=0;i<=4;i++){const val=max*i/4,yy=y(val);add('line',{x1:p.l,y1:yy,x2:width-p.r,y2:yy,stroke:'#e2e9ef','stroke-width':1});add('text',{x:p.l-10,y:yy+4,'text-anchor':'end',fill:'#6a7b8d','font-size':12},opts.tick(val))}
-  rows.forEach((r,i)=>{if(i%Math.max(1,Math.ceil(rows.length/6))===0||i===rows.length-1)add('text',{x:x(i),y:height-15,'text-anchor':'middle',fill:'#607386','font-size':12},dayfmt(r.date).replace(/^\\w+ /,''))});
+ const capacityMax=Math.max(1,...series.flatMap(s=>s.rows.map(r=>r.before)));
+ const waitMax=Math.max(1,...series.flatMap(s=>s.rows.map(r=>r.wait===null?0:r.wait/7)));
+ const x=i=>p.l+i/Math.max(1,dates.length-1)*(width-p.l-p.r);
+ const yCap=v=>height-p.b-v/capacityMax*(height-p.t-p.b);
+ const yWait=v=>height-p.b-v/waitMax*(height-p.t-p.b);
+ const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 '+width+' '+height);svg.style.width='100%';svg.setAttribute('role','img');svg.setAttribute('aria-label','Routine forward planning: Phone and Face-to-Face appointments remaining and waiting times');
+ const add=(tag,attrs,label)=>{const el=document.createElementNS(svg.namespaceURI,tag);for(const [k,v] of Object.entries(attrs))el.setAttribute(k,v);if(label!==undefined)el.textContent=label;svg.append(el);return el};
+ for(let i=0;i<=4;i++){const yy=p.t+i*(height-p.t-p.b)/4;add('line',{x1:p.l,y1:yy,x2:width-p.r,y2:yy,stroke:'#e1e8ef'});add('text',{x:p.l-10,y:yy+4,'text-anchor':'end','font-size':12,fill:'#64778a'},fmt(capacityMax*(4-i)/4));add('text',{x:width-p.r+10,y:yy+4,'font-size':12,fill:'#64778a'},(waitMax*(4-i)/4).toFixed(1)) }
+ add('text',{x:p.l,y:17,'font-size':13,fill:'#4d6378'},'Appointments remaining');
+ add('text',{x:width-p.r,y:17,'text-anchor':'end','font-size':13,fill:'#4d6378'},'Waiting time (weeks)');
+ dates.forEach((d,i)=>{if(i%Math.max(1,Math.ceil(dates.length/7))===0||i===dates.length-1)add('text',{x:x(i),y:height-17,'text-anchor':'middle','font-size':12,fill:'#64778a'},dayfmt(d).replace(/^\\w+ /,''))});
+ const colors={phone:'#267ca5',f2f:'#ad7042'};
+ function line(values,color,dashed,mode,label,scale){
   let segment=[];
-  function flush(){if(segment.length>1)add('polyline',{points:segment.join(' '),fill:'none',stroke:opts.color,'stroke-width':3,'stroke-linejoin':'round','stroke-linecap':'round'});else if(segment.length===1){const [cx,cy]=segment[0].split(',');add('circle',{cx,cy,r:3,fill:opts.color})}segment=[]}
-  values.forEach((v,i)=>{if(v===null){flush();return}segment.push(x(i)+','+y(v))});flush();
-  if(opts.markExhausted&&exhausted){const i=rows.indexOf(exhausted);add('line',{x1:x(i),y1:p.t,x2:x(i),y2:height-p.b,stroke:'#ba4352','stroke-width':1.5,'stroke-dasharray':'5 4'});add('text',{x:Math.min(x(i)+8,width-125),y:p.t+13,fill:'#a33342','font-size':12},'Runs out')}
-  values.forEach((v,i)=>{if(v===null)return;const dot=add('circle',{cx:x(i),cy:y(v),r:5,fill:opts.color,opacity:0.01});const title=document.createElementNS(svg.namespaceURI,'title');title.textContent=dayfmt(rows[i].date)+': '+opts.tick(v);dot.append(title)});
-  host.append(svg);
+  function flush(){if(segment.length){if(segment.length>1)add('polyline',{points:segment.join(' '),fill:'none',stroke:color,'stroke-width':dashed?2.5:3.5,'stroke-dasharray':dashed?'7 5':'none','stroke-linejoin':'round','stroke-linecap':'round'});else{const [cx,cy]=segment[0].split(',');add('circle',{cx,cy,r:3,fill:color})}}segment=[]}
+  values.forEach((v,i)=>{if(v===null){flush();return}segment.push(x(i)+','+scale(v))});flush();
+  values.forEach((v,i)=>{if(v===null)return;const hit=add('circle',{cx:x(i),cy:scale(v),r:7,fill:color,opacity:0.01});const title=document.createElementNS(svg.namespaceURI,'title');title.textContent=dayfmt(dates[i])+' · '+mode+' · '+label+': '+(dashed?v.toFixed(1)+' weeks':fmt(v));hit.append(title)})
  }
- chart(capacity,rows.map(r=>r.remaining),{title:'Available appointments remaining by day',color:'#227fa4',tick:v=>fmt(v),markExhausted:true});
- chart(waiting,rows.map(r=>r.wait===null?null:r.wait/7),{title:'Predicted earliest appointment waiting time in weeks',color:'#8b67b3',tick:v=>v.toFixed(1)+'w'});
- const current=rows[0]?.wait,final=rows.at(-1)?.wait;
- $('forwardPlanningCapacityCaption').textContent=fmt(initial)+' currently available in the future diary · '+fmt(latest)+' projected remaining at the end of the period';
- $('forwardPlanningWaitCaption').textContent=current===null?'No available appointment to calculate a starting wait':('Earliest available appointment: '+(current/7).toFixed(1)+' weeks initially'+(final===null?' · no capacity at period end':' → '+(final/7).toFixed(1)+' weeks at period end'));
- note.textContent='Based on loaded Slot Report data. Only Availability = Available counts; blocked, booked and embargoed appointments are excluded. Forecast demand uses historical weekday booking averages, not unmet demand. Waiting time estimates assume bookings use the earliest available appointment; no capacity means the waiting time cannot be estimated.';
+ for(const item of series){const color=colors[item.mode];line(item.rows.map(r=>r.remaining),color,false,item.mode,'appointments remaining',yCap);line(item.rows.map(r=>r.wait===null?null:r.wait/7),color,true,item.mode,'waiting time',yWait)}
+ for(const item of series){const exhausted=item.rows.find(r=>r.remaining===0);if(!exhausted)continue;const i=item.rows.indexOf(exhausted);add('circle',{cx:x(i),cy:yCap(0),r:5,fill:colors[item.mode]});const title=add('title',{},(item.mode==='phone'?'Phone':'F2F')+' capacity runs out '+dayfmt(exhausted.date));}
+ host.append(svg);
+ const summaries=series.map(item=>{const empty=item.rows.find(r=>r.remaining===0);return (item.mode==='phone'?'Phone':'F2F')+': '+(empty?'runs out '+dayfmt(empty.date):'capacity beyond '+dayfmt(item.rows.at(-1).date))});
+ summary.textContent=summaries.join('   ·   ');
+ note.textContent='Solid lines = appointments remaining (left axis); dashed lines = predicted waiting time in weeks (right axis). Phone is blue; Face-to-Face is orange. Waiting-time lines stop when no appointment remains. Uses live Slot Report data, only Availability = Available; excludes Blocked, Booked and Embargoed. Demand is estimated from the last 12 weeks of bookings and may understate unmet demand. Estimates assume earliest available slots are booked first.';
 }
 window.renderForwardPlanning=render;
-document.addEventListener('DOMContentLoaded',()=>{for(const [id,key] of [['forwardPlanningClinician','clinician'],['forwardPlanningHorizon','horizon'],['forwardPlanningMode','mode']])$(id)?.addEventListener('change',e=>{state[key]=key==='horizon'?Number(e.target.value):e.target.value;state.selection=null;render()});});
+document.addEventListener('DOMContentLoaded',()=>{for(const [id,key] of [['forwardPlanningClinician','clinician'],['forwardPlanningHorizon','horizon']])$(id)?.addEventListener('change',e=>{state[key]=key==='horizon'?Number(e.target.value):e.target.value;state.selection=null;render()});});
 })();
