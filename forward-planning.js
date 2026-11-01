@@ -7,7 +7,7 @@ const today=()=>{const p=Object.fromEntries(new Intl.DateTimeFormat('en-GB',{tim
 const shift=(iso,n)=>{const d=new Date(iso+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10)};
 const workdays=(iso,n)=>{const out=[];for(let d=iso;out.length<n;d=shift(d,1)){const w=new Date(d+'T12:00:00Z').getUTCDay();if(w>0&&w<6)out.push(d)}return out};
 const dayfmt=iso=>new Intl.DateTimeFormat('en-GB',{weekday:'short',day:'numeric',month:'short',timeZone:'UTC'}).format(new Date(iso+'T12:00:00Z'));
-const state={clinician:'GP',horizon:7,selection:null};
+const state={clinician:'GP',horizon:14,mode:'phone',selection:null};
 const groupOf=r=>{const type=effectiveClinicianType(r.clinician,r.person);return clinicianGroupAssignments[type]||''};
 const serviceOf=r=>{const group=groupOf(r),type=effectiveClinicianType(r.clinician,r.person);if(isDoctorPlanningGroup(group))return 'GP';const label=(group+' '+type+' '+r.clinician).toLowerCase();if(/physio|physiotherap|first.contact|\bfcp\b/.test(label))return 'Physio';if(/mental.health|psycholog|counsell|\bmh\b/.test(label))return 'Mental Health';return null};
 const modeOf=r=>{const v=String(consultAssignments[r.slot]||suggestConsultMode(r.slot)||'').toLowerCase();if(/phone|telephone|remote.audio/.test(v))return 'phone';if(/face|f2f|in.person|in person/.test(v))return 'f2f';return null};
@@ -60,26 +60,41 @@ function data(){
  return {rows,days,totals:{phone:pools.phone.reduce((a,b)=>a+b.count,0),f2f:pools.f2f.reduce((a,b)=>a+b.count,0)}};
 }
 function render(){
- const root=$('forwardPlanningRows'),note=$('forwardPlanningNote'),detail=$('forwardPlanningDetail');if(!root)return;
- for(const [id,val] of [['forwardPlanningClinician',state.clinician],['forwardPlanningHorizon',String(state.horizon)]]){const e=$(id);if(e&&e.value!==val)e.value=val}
- let model;try{model=data()}catch(e){console.error('Forward planning',e);model={error:'Unable to calculate forecast from loaded Slot Report data.'}}
- if(model.error){root.replaceChildren();note.textContent=model.error;detail.textContent='';return}
+ const note=$('forwardPlanningNote'),summary=$('forwardPlanningSummary'),capacity=$('forwardPlanningCapacityChart'),waiting=$('forwardPlanningWaitChart');
+ if(!capacity||!waiting)return;
+ for(const [id,val] of [['forwardPlanningClinician',state.clinician],['forwardPlanningHorizon',String(state.horizon)],['forwardPlanningMode',state.mode]]){const el=$(id);if(el&&el.value!==val)el.value=val}
+ let model;try{model=data()}catch(e){console.error('Forward planning',e);model={error:'Unable to calculate the forecast from the loaded data.'}}
+ if(model.error){note.textContent=model.error;summary.textContent='';capacity.replaceChildren();waiting.replaceChildren();return}
+ const rows=model.rows.filter(r=>r.mode===state.mode&&r.i<state.horizon);
  const fmt=n=>Math.round(n).toLocaleString('en-GB');
- const rows=model.rows.filter(r=>r.i<state.horizon).sort((a,b)=>a.i-b.i||(['phone','f2f'].indexOf(a.mode)-['phone','f2f'].indexOf(b.mode)));
- const full={};for(const mode of ['phone','f2f']){const index=model.rows.find(r=>r.mode===mode&&r.remaining===0)?.i;full[mode]=index===undefined?null:index}
- root.replaceChildren();
- for(const r of rows){
-  const tr=document.createElement('tr');tr.tabIndex=0;tr.style.cursor='pointer';
-  const previous=model.rows.find(x=>x.mode===r.mode&&x.i===r.i-1);const change=r.wait===null||!previous||previous.wait===null?'—':((r.wait-previous.wait)/7>=0?'+':'')+((r.wait-previous.wait)/7).toFixed(1)+'w';
-  const fields=[r.mode==='phone'?dayfmt(r.date):'',r.mode==='phone'?'Phone':'F2F',fmt(r.before)+' / '+fmt(r.demand),r.unmet>0?'-'+fmt(r.unmet)+' unmet':r.remaining>0?'+'+fmt(r.remaining):'0',fmt(r.remaining),r.wait===null?'No capacity':(r.wait/7).toFixed(1)+' weeks',change,full[r.mode]===null?'>14 working days':Math.max(0,full[r.mode]-r.i)+' working days'];
-  fields.forEach((v,i)=>{const td=document.createElement('td');td.textContent=v;if(i>1)td.style.textAlign='center';if(i===5&&r.wait===null)td.style.color='#a22b39';tr.append(td)});
-  tr.addEventListener('click',()=>{state.selection=r.date+'|'+r.mode;detail.textContent=dayfmt(r.date)+' · '+(r.mode==='phone'?'Phone':'F2F')+' — '+fmt(r.before)+' available at start, '+fmt(r.demand)+' forecast new bookings, '+fmt(r.remaining)+' left at day end.'});
-  root.append(tr);
+ const exhausted=rows.find(r=>r.remaining===0);
+ const initial=rows[0]?.before||0,latest=rows.at(-1)?.remaining||0;
+ summary.textContent=exhausted?'Appointments forecast to run out on '+dayfmt(exhausted.date):'Appointments available beyond '+dayfmt(rows.at(-1).date);
+ function chart(host,values,opts){
+  host.replaceChildren();
+  const width=900,height=230,p={l:58,r:24,t:22,b:44};
+  const max=Math.max(opts.floor||0,...values.filter(v=>v!==null).map(v=>v||0),1);
+  const x=i=>p.l+(rows.length<=1?0:i/(rows.length-1))*(width-p.l-p.r);
+  const y=v=>height-p.b-(v/max)*(height-p.t-p.b);
+  const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+  const add=(tag,attrs,text)=>{const el=document.createElementNS(svg.namespaceURI,tag);for(const [k,v] of Object.entries(attrs))el.setAttribute(k,v);if(text!==undefined)el.textContent=text;svg.append(el);return el};
+  svg.setAttribute('viewBox','0 0 '+width+' '+height);svg.style.width='100%';svg.style.height='auto';svg.setAttribute('role','img');svg.setAttribute('aria-label',opts.title);
+  for(let i=0;i<=4;i++){const val=max*i/4,yy=y(val);add('line',{x1:p.l,y1:yy,x2:width-p.r,y2:yy,stroke:'#e2e9ef','stroke-width':1});add('text',{x:p.l-10,y:yy+4,'text-anchor':'end',fill:'#6a7b8d','font-size':12},opts.tick(val))}
+  rows.forEach((r,i)=>{if(i%Math.max(1,Math.ceil(rows.length/6))===0||i===rows.length-1)add('text',{x:x(i),y:height-15,'text-anchor':'middle',fill:'#607386','font-size':12},dayfmt(r.date).replace(/^\\w+ /,''))});
+  let segment=[];
+  function flush(){if(segment.length>1)add('polyline',{points:segment.join(' '),fill:'none',stroke:opts.color,'stroke-width':3,'stroke-linejoin':'round','stroke-linecap':'round'});else if(segment.length===1){const [cx,cy]=segment[0].split(',');add('circle',{cx,cy,r:3,fill:opts.color})}segment=[]}
+  values.forEach((v,i)=>{if(v===null){flush();return}segment.push(x(i)+','+y(v))});flush();
+  if(opts.markExhausted&&exhausted){const i=rows.indexOf(exhausted);add('line',{x1:x(i),y1:p.t,x2:x(i),y2:height-p.b,stroke:'#ba4352','stroke-width':1.5,'stroke-dasharray':'5 4'});add('text',{x:Math.min(x(i)+8,width-125),y:p.t+13,fill:'#a33342','font-size':12},'Runs out')}
+  values.forEach((v,i)=>{if(v===null)return;const dot=add('circle',{cx:x(i),cy:y(v),r:5,fill:opts.color,opacity:0.01});const title=document.createElementNS(svg.namespaceURI,'title');title.textContent=dayfmt(rows[i].date)+': '+opts.tick(v);dot.append(title)});
+  host.append(svg);
  }
- const history=model.rows.filter(r=>r.i===0).map(r=>r.mode+': '+r.samples+' historic weekdays').join('; ');
- note.textContent='Live Slot Report availability and historical booked appointments · '+history+'. Only Availability = Available is counted; Blocked, Booked and Embargoed are excluded. Forecast demand is an observed weekday average over 12 weeks, not a measure of unmet demand. Waiting time is the earliest remaining available appointment date after simulated bookings; it is not a validated prediction. “All” pools distinct services and is not a patient-specific waiting time.';
- if(!state.selection)detail.textContent='Select a row to inspect the forecast.';
+ chart(capacity,rows.map(r=>r.remaining),{title:'Available appointments remaining by day',color:'#227fa4',tick:v=>fmt(v),markExhausted:true});
+ chart(waiting,rows.map(r=>r.wait===null?null:r.wait/7),{title:'Predicted earliest appointment waiting time in weeks',color:'#8b67b3',tick:v=>v.toFixed(1)+'w'});
+ const current=rows[0]?.wait,final=rows.at(-1)?.wait;
+ $('forwardPlanningCapacityCaption').textContent=fmt(initial)+' currently available in the future diary · '+fmt(latest)+' projected remaining at the end of the period';
+ $('forwardPlanningWaitCaption').textContent=current===null?'No available appointment to calculate a starting wait':('Earliest available appointment: '+(current/7).toFixed(1)+' weeks initially'+(final===null?' · no capacity at period end':' → '+(final/7).toFixed(1)+' weeks at period end'));
+ note.textContent='Based on loaded Slot Report data. Only Availability = Available counts; blocked, booked and embargoed appointments are excluded. Forecast demand uses historical weekday booking averages, not unmet demand. Waiting time estimates assume bookings use the earliest available appointment; no capacity means the waiting time cannot be estimated.';
 }
 window.renderForwardPlanning=render;
-document.addEventListener('DOMContentLoaded',()=>{for(const [id,key] of [['forwardPlanningClinician','clinician'],['forwardPlanningHorizon','horizon']])$(id)?.addEventListener('change',e=>{state[key]=key==='horizon'?Number(e.target.value):e.target.value;state.selection=null;render()});});
+document.addEventListener('DOMContentLoaded',()=>{for(const [id,key] of [['forwardPlanningClinician','clinician'],['forwardPlanningHorizon','horizon'],['forwardPlanningMode','mode']])$(id)?.addEventListener('change',e=>{state[key]=key==='horizon'?Number(e.target.value):e.target.value;state.selection=null;render()});});
 })();
