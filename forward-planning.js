@@ -70,7 +70,19 @@ function render(){
  const dates=series[0].rows.map(r=>r.date),width=960,height=330,p={l:66,r:70,t:32,b:50};
  const fmt=n=>Math.round(n).toLocaleString('en-GB');
  const capacityMax=Math.max(1,...series.flatMap(s=>s.rows.map(r=>r.before)));
- const waitMax=Math.max(1,...series.flatMap(s=>s.rows.map(r=>r.wait===null?0:r.wait/7)));
+ // At the first exhausted point, extend the recent observed waiting-time slope.
+ // This is an illustrative extrapolation, not a bookable appointment or validated wait.
+ const projected={};
+ for(const item of series){
+  const idx=item.rows.findIndex(r=>r.remaining===0);
+  if(idx<0)continue;
+  const known=item.rows.slice(0,idx).map((r,i)=>({i,v:r.wait===null?null:r.wait/7})).filter(p=>p.v!==null);
+  if(!known.length)continue;
+  const last=known.at(-1),previous=known.at(-2);
+  const slope=previous?Math.max(-0.5,Math.min(1.5,(last.v-previous.v)/Math.max(1,last.i-previous.i))):0;
+  projected[item.mode]={index:idx,value:Math.max(0,last.v+slope*(idx-last.i))};
+ }
+ const waitMax=Math.max(1,...series.flatMap(s=>s.rows.map(r=>r.wait===null?0:r.wait/7)),...Object.values(projected).map(p=>p.value));
  const x=i=>p.l+i/Math.max(1,dates.length-1)*(width-p.l-p.r);
  const yCap=v=>height-p.b-v/capacityMax*(height-p.t-p.b);
  const yWait=v=>height-p.b-v/waitMax*(height-p.t-p.b);
@@ -88,11 +100,46 @@ function render(){
   values.forEach((v,i)=>{if(v===null)return;const hit=add('circle',{cx:x(i),cy:scale(v),r:7,fill:color,opacity:0.01});const title=document.createElementNS(svg.namespaceURI,'title');title.textContent=dayfmt(dates[i])+' · '+mode+' · '+label+': '+(dashed?v.toFixed(1)+' weeks':fmt(v));hit.append(title)})
  }
  for(const item of series){const color=colors[item.mode];line(item.rows.map(r=>r.remaining),color,false,item.mode,'appointments remaining',yCap);line(item.rows.map(r=>r.wait===null?null:r.wait/7),color,true,item.mode,'waiting time',yWait)}
- for(const item of series){const exhausted=item.rows.find(r=>r.remaining===0);if(!exhausted)continue;const i=item.rows.indexOf(exhausted);add('circle',{cx:x(i),cy:yCap(0),r:5,fill:colors[item.mode]});const title=add('title',{},(item.mode==='phone'?'Phone':'F2F')+' capacity runs out '+dayfmt(exhausted.date));}
+ // Capsule labels for exhaustion, and a separately marked extrapolated wait.
+ const capsule=(cx,cy,label,color,above)=>{
+  const w=Math.max(122,label.length*6.6+27),h=27;
+  const xx=Math.max(p.l,Math.min(width-p.r-w,cx-w/2));
+  const yy=above?Math.max(p.t,cy-h-13):Math.min(height-p.b-h-8,cy+10);
+  add('rect',{x:xx,y:yy,width:w,height:h,rx:13.5,fill:'#fff',stroke:'#d8e1e8','stroke-width':1.2,opacity:0.97});
+  add('path',{d:'M '+(xx+11)+' '+(yy+8)+' L '+(xx+17)+' '+(yy+19)+' L '+(xx+5)+' '+(yy+19)+' Z',fill:'#d78b30'});
+  add('text',{x:xx+11,y:yy+17.4,'text-anchor':'middle','font-size':9,'font-weight':700,fill:'#fff'},'!');
+  add('text',{x:xx+24,y:yy+18,'font-size':12,'font-weight':600,fill:color},label);
+ };
+ for(const item of series){
+  const exhausted=item.rows.find(r=>r.remaining===0);
+  if(!exhausted)continue;
+  const i=item.rows.indexOf(exhausted),color=colors[item.mode];
+  add('circle',{cx:x(i),cy:yCap(0),r:5,fill:color});
+  capsule(x(i),yCap(0),(item.mode==='phone'?'Phone':'F2F')+' runs out',color,item.mode==='phone');
+  const proj=projected[item.mode];
+  if(proj){
+   const known=item.rows.map((r,j)=>({j,v:r.wait===null?null:r.wait/7})).filter(p=>p.j<i&&p.v!==null).at(-1);
+   if(known)add('line',{x1:x(known.j),y1:yWait(known.v),x2:x(i),y2:yWait(proj.value),stroke:color,'stroke-width':2,'stroke-dasharray':'2 5',opacity:0.75});
+   add('circle',{cx:x(i),cy:yWait(proj.value),r:5,fill:'#fff',stroke:color,'stroke-width':2});
+   const label=proj.value.toFixed(1)+'w est.';
+   const labelY=yWait(proj.value)+(item.mode==='phone'?-13:19);
+   add('text',{x:Math.max(p.l+25,Math.min(width-p.r-25,x(i))),y:Math.max(p.t+14,Math.min(height-p.b-8,labelY)),'text-anchor':'middle','font-size':11,'font-weight':600,fill:color},label);
+  }
+ }
+ // Display the wait (weeks) at every modelled point, with small offsets for readability.
+ for(const item of series){
+  const color=colors[item.mode];
+  for(let i=0;i<item.rows.length;i++){
+   const r=item.rows[i];if(r.wait===null)continue;
+   const xx=x(i),yy=yWait(r.wait/7);
+   add('circle',{cx:xx,cy:yy,r:2.7,fill:color});
+   add('text',{x:xx,y:Math.max(p.t+10,Math.min(height-p.b-5,yy+(item.mode==='phone'?-12:16))),'text-anchor':'middle','font-size':10,'font-weight':600,fill:color,'paint-order':'stroke',stroke:'#fff','stroke-width':3,'stroke-linejoin':'round'},(r.wait/7).toFixed(1)+'w');
+  }
+ }
  host.append(svg);
  const summaries=series.map(item=>{const empty=item.rows.find(r=>r.remaining===0);return (item.mode==='phone'?'Phone':'F2F')+': '+(empty?'runs out '+dayfmt(empty.date):'capacity beyond '+dayfmt(item.rows.at(-1).date))});
  summary.textContent=summaries.join('   ·   ');
- note.textContent='Solid lines = appointments remaining (left axis); dashed lines = predicted waiting time in weeks (right axis). Phone is blue; Face-to-Face is orange. Waiting-time lines stop when no appointment remains. Uses live Slot Report data, only Availability = Available; excludes Blocked, Booked and Embargoed. Demand is estimated from the last 12 weeks of bookings and may understate unmet demand. Estimates assume earliest available slots are booked first.';
+ note.textContent='Solid lines = appointments remaining (left axis); dashed lines = predicted waiting time in weeks (right axis). Phone is blue; Face-to-Face is orange. Waiting-time labels show weeks at every point. At the first exhausted point, an open-circle estimated wait extends the last observed slope; this is an illustrative projection only, not an available appointment. Waiting-time lines otherwise stop when no appointment remains. Uses live Slot Report data, only Availability = Available; excludes Blocked, Booked and Embargoed. Demand is estimated from the last 12 weeks of bookings and may understate unmet demand. Estimates assume earliest available slots are booked first.';
 }
 window.renderForwardPlanning=render;
 document.addEventListener('DOMContentLoaded',()=>{for(const [id,key] of [['forwardPlanningClinician','clinician'],['forwardPlanningHorizon','horizon']])$(id)?.addEventListener('change',e=>{state[key]=key==='horizon'?Number(e.target.value):e.target.value;state.selection=null;render()});});
