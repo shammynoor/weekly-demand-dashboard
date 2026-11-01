@@ -12,7 +12,7 @@ const groupOf=r=>{const type=effectiveClinicianType(r.clinician,r.person);return
 const serviceOf=r=>{const group=groupOf(r),type=effectiveClinicianType(r.clinician,r.person);if(isDoctorPlanningGroup(group))return 'GP';const label=(group+' '+type+' '+r.clinician).toLowerCase();if(/physio|physiotherap|first.contact|\bfcp\b/.test(label))return 'Physio';if(/mental.health|psycholog|counsell|\bmh\b/.test(label))return 'Mental Health';return null};
 const modeOf=r=>{const v=String(consultAssignments[r.slot]||suggestConsultMode(r.slot)||'').toLowerCase();if(/phone|telephone|remote.audio/.test(v))return 'phone';if(/face|f2f|in.person|in person/.test(v))return 'f2f';return null};
 const valid=r=>r&&!excludedSlotTypes.has(r.slot)&&appointmentCalculationRole(capacityUrgencyCategory(r.slot))==='routine';
-const matching=r=>valid(r)&&modeOf(r)&&(state.clinician==='All'||serviceOf(r)===state.clinician)&&serviceOf(r);
+const matching=r=>valid(r)&&modeOf(r)&&serviceOf(r)&&(state.clinician==='All'||serviceOf(r)===state.clinician);
 function data(){
  const available=typeof availabilityRecords==='undefined'?[]:availabilityRecords;
  const booked=typeof appointmentTimeRecords==='undefined'?[]:appointmentTimeRecords;
@@ -34,26 +34,27 @@ function data(){
  for(const mode of ['phone','f2f']){
   const pool=pools[mode].sort((a,b)=>a.date.localeCompare(b.date)),counts=new Map();
   for(const r of pool)counts.set(r.date,(counts.get(r.date)||0)+r.count);
-  let remaining=[...counts.values()].reduce((a,b)=>a+b,0),cumulativeUnmet=0;
+  let remaining=[...counts.values()].reduce((a,b)=>a+b,0);
   const weekdaySamples=Array.from({length:5},()=>[]);
   for(let d=historyStart;d<now;d=shift(d,1)){const w=new Date(d+'T12:00:00Z').getUTCDay();if(w>=1&&w<=5)weekdaySamples[w-1].push(bookings[mode].get(d)||0)}
   const daily=weekdaySamples.map(xs=>xs.length?xs.reduce((a,b)=>a+b,0)/xs.length:0);
   const samples=weekdaySamples.reduce((a,x)=>a+x.length,0);
   for(let i=0;i<days.length;i++){
    const date=days[i],weekday=new Date(date+'T12:00:00Z').getUTCDay()-1;
-   const demand=Math.round(daily[weekday]||0),before=remaining;
+   const demand=Math.round(daily[weekday]||0);
+   // Expired unbooked appointment slots cannot be sold in later days.
+   for(const key of [...counts.keys()])if(key<date){remaining-=counts.get(key);counts.delete(key)}
+   const before=remaining;
    let toBook=Math.min(remaining,demand);
-   // First available future appointment is booked first; past-date slots expire.
+   // Allocate new bookings to the earliest future available appointment.
    for(const key of [...counts.keys()].sort()){
-    if(key<date){remaining-=counts.get(key);counts.delete(key);continue}
     if(toBook<=0)break;
     const use=Math.min(toBook,counts.get(key));counts.set(key,counts.get(key)-use);remaining-=use;toBook-=use;
     if(!counts.get(key))counts.delete(key);
    }
-   cumulativeUnmet+=Math.max(0,demand-(before- Math.max(0,before-remaining-toBook)));
    const earliest=[...counts.keys()].filter(k=>k>=date&&counts.get(k)>0).sort()[0];
    const wait=earliest?Math.max(0,Math.round((new Date(earliest+'T12:00:00Z')-new Date(date+'T12:00:00Z'))/86400000)):null;
-   rows.push({i,date,mode,before,demand,remaining:Math.max(0,remaining),wait,samples,unmet:cumulativeUnmet});
+   rows.push({i,date,mode,before,demand,remaining:Math.max(0,remaining),wait,samples,unmet:Math.max(0,demand-before)});
   }
  }
  return {rows,days,totals:{phone:pools.phone.reduce((a,b)=>a+b.count,0),f2f:pools.f2f.reduce((a,b)=>a+b.count,0)}};
@@ -69,7 +70,8 @@ function render(){
  root.replaceChildren();
  for(const r of rows){
   const tr=document.createElement('tr');tr.tabIndex=0;tr.style.cursor='pointer';
-  const fields=[r.mode==='phone'?dayfmt(r.date):'',r.mode==='phone'?'Phone':'F2F',fmt(r.before)+' / '+fmt(r.demand),r.remaining>0?'+'+fmt(r.remaining):'0',fmt(r.remaining),r.wait===null?'No capacity':(r.wait/7).toFixed(1)+' weeks',r.wait===null?'—':'—',full[r.mode]===null?'>14 working days':Math.max(0,full[r.mode]-r.i)+' working days'];
+  const previous=model.rows.find(x=>x.mode===r.mode&&x.i===r.i-1);const change=r.wait===null||!previous||previous.wait===null?'—':((r.wait-previous.wait)/7>=0?'+':'')+((r.wait-previous.wait)/7).toFixed(1)+'w';
+  const fields=[r.mode==='phone'?dayfmt(r.date):'',r.mode==='phone'?'Phone':'F2F',fmt(r.before)+' / '+fmt(r.demand),r.unmet>0?'-'+fmt(r.unmet)+' unmet':r.remaining>0?'+'+fmt(r.remaining):'0',fmt(r.remaining),r.wait===null?'No capacity':(r.wait/7).toFixed(1)+' weeks',change,full[r.mode]===null?'>14 working days':Math.max(0,full[r.mode]-r.i)+' working days'];
   fields.forEach((v,i)=>{const td=document.createElement('td');td.textContent=v;if(i>1)td.style.textAlign='center';if(i===5&&r.wait===null)td.style.color='#a22b39';tr.append(td)});
   tr.addEventListener('click',()=>{state.selection=r.date+'|'+r.mode;detail.textContent=dayfmt(r.date)+' · '+(r.mode==='phone'?'Phone':'F2F')+' — '+fmt(r.before)+' available at start, '+fmt(r.demand)+' forecast new bookings, '+fmt(r.remaining)+' left at day end.'});
   root.append(tr);
