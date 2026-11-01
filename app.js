@@ -9,7 +9,7 @@ function isDashboardToggleOption(name){
 
 const CLIENT_ID='ba2bc895-4213-447c-ba62-d7edec6e8173';
 const SCOPES=['Files.Read','Files.ReadWrite','Files.ReadWrite.AppFolder'];
-const REDIRECT_URI='https://shammynoor.github.io/weekly-demand-dashboard/index.html';
+const REDIRECT_URI=window.location.origin+window.location.pathname;
 const GRAPH='https://graph.microsoft.com/v1.0';
 const FOLDER_KEY='weekly-demand-onedrive-folder-v1';
 // A specific-person, view-only OneDrive share; not an authentication credential.
