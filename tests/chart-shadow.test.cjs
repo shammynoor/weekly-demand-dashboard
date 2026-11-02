@@ -9,10 +9,10 @@ function loadHelpers({inputs={},saved={one:{},two:{}},account='one'}={}){
 test('capacity chart shadow switch saves its account preference and styles the Today capsule',()=>{
  const input={checked:true,handlers:{},addEventListener(type,fn){this.handlers[type]=fn}};
  const f=loadHelpers({inputs:{urgentChartShadows:input}});
- const rect={attrs:{},setAttribute(name,value){this.attrs[name]=value}},group={textContent:'Today · 2 Nov',style:{},querySelector:()=>rect};
+ const rect={attrs:{},dataset:{},setAttribute(name,value){this.attrs[name]=value},getAttribute(name){return ({x:'100',width:'120'})[name]||null}},group={textContent:'Today · 2 Nov',style:{},querySelector:()=>rect};
  const barLayer={style:{}},target={id:'availabilityChart',querySelector:()=>barLayer,querySelectorAll:()=>[group]};f.nodes.availabilityChart=target;
  f.ctx.restoreChartShadowControls();f.ctx.applyCapacityChartShadows(target,false);
- assert.match(barLayer.style.filter,/drop-shadow/);assert.match(group.style.filter,/drop-shadow/);assert.equal(rect.attrs.rx,'999');
+ assert.match(barLayer.style.filter,/drop-shadow/);assert.match(group.style.filter,/drop-shadow/);assert.equal(rect.attrs.rx,'999');assert.equal(rect.attrs.x,'95');assert.equal(rect.attrs.width,'130');
  input.checked=false;input.handlers.change();
  assert.equal(f.saved.one['chartShadows:urgent'],false);assert.equal(barLayer.style.filter,'none');assert.equal(group.style.filter,'none');
 });

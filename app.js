@@ -1020,8 +1020,15 @@ function applyCapacityChartShadows(target,isDaily=false){
  target.querySelectorAll('.annotation-text-g').forEach(group=>{
   if(!group.textContent.trim().startsWith('Today'))return;
   const background=group.querySelector('rect');
-  if(background){background.setAttribute('rx','999');background.setAttribute('ry','999');}
-  group.style.filter=enabled?'drop-shadow(0 2px 4px rgba(25,45,65,0.18))':'none';
+  if(background){
+   background.setAttribute('rx','999');background.setAttribute('ry','999');
+   if(background.dataset.capsulePadding!=='1'){
+    const x=Number(background.getAttribute('x')),width=Number(background.getAttribute('width'));
+    if(Number.isFinite(x)&&Number.isFinite(width)){background.setAttribute('x',String(x-5));background.setAttribute('width',String(width+10));}
+    background.dataset.capsulePadding='1';
+   }
+  }
+  group.style.filter=enabled?'drop-shadow(0 1px 3px rgba(16,43,73,0.06))':'none';
  });
 }
 function applyHistoricChartShadows(target){
@@ -4426,7 +4433,7 @@ function capacityTodayAnnotation(todayX,bucketCount,width,dateString=todayLondon
  const narrow=width<480;
  const date=new Date(dateString+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:narrow?'short':'long',day:'numeric',month:narrow?'short':'long',timeZone:'UTC'});
  const plotWidth=Math.max(100,width-80),half=Math.min(0.5,(narrow?83:130)/plotWidth);
- return {xref:'paper',yref:'paper',x:Math.max(half,Math.min(1-half,(todayX+0.5)/bucketCount)),y:0.985,text:'<b>Today</b> · '+date,showarrow:false,xanchor:'center',yanchor:'top',font:{size:14,color:'#206ca6'},bgcolor:'#ffffff',bordercolor:'#d7e3ec',borderwidth:1,borderpad:4};
+ return {xref:'paper',yref:'paper',x:Math.max(half,Math.min(1-half,(todayX+0.5)/bucketCount)),y:0.985,text:'<span style="font-weight:500">Today</span> · '+date,showarrow:false,xanchor:'center',yanchor:'top',font:{family:'Segoe UI,Arial,sans-serif',size:10,color:'#206ca6'},bgcolor:'rgba(255,255,255,0.75)',bordercolor:'#206ca6',borderwidth:1,borderpad:4};
 }
 function capacityWeekBeginningLabel(date){return 'w/b '+new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',timeZone:'UTC'});}
 function weeklyCapacityTodayX(weekIndex,dayIndex){

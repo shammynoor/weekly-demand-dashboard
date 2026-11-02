@@ -5,7 +5,7 @@ test('capacity Today label stays inside the plot in a clear top strip at every r
  const begin=source.indexOf('function capacityTodayAnnotation('),end=source.indexOf('function capacityWeekBeginningLabel(',begin),ctx={};vm.createContext(ctx);vm.runInContext(source.slice(begin,end),ctx);
  for(const width of [240,320,460,736,1400])for(const count of [2,5,10,70])for(const x of [0,count/2,count-1]){
   const label=ctx.capacityTodayAnnotation(x,count,width,'2026-10-28');
-  assert.equal(label.xref,'paper');assert.equal(label.y,0.985);assert.equal(label.yanchor,'top');assert.equal(label.xanchor,'center');assert.equal(label.bgcolor,'#ffffff');assert.equal(label.font.size,14);
+  assert.equal(label.xref,'paper');assert.equal(label.y,0.985);assert.equal(label.yanchor,'top');assert.equal(label.xanchor,'center');assert.equal(label.bgcolor,'rgba(255,255,255,0.75)');assert.equal(label.bordercolor,'#206ca6');assert.equal(label.borderwidth,1);assert.equal(label.borderpad,4);assert.equal(label.font.size,10);assert.equal(label.font.family,'Segoe UI,Arial,sans-serif');
   const half=Math.min(.5,(width<480?83:130)/Math.max(100,width-80));assert.ok(label.x>=half&&label.x<=1-half);assert.match(label.text,/Today/);assert.doesNotMatch(label.text,/<br>/);
  }
  assert.match(source,/annotations.push\(capacityTodayAnnotation\(x,buckets.length,target.clientWidth\)\)/);
