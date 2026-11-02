@@ -1004,6 +1004,55 @@ function chartPreferenceAccount(){return activeAccount?.homeAccountId||activeAcc
 function chartPreferenceKey(){const id=chartPreferenceAccount();return id?'gp-insight-chart-toggles-v1:'+encodeURIComponent(id):null}
 function readChartPreferences(){const key=chartPreferenceKey();if(!key)return {};try{return JSON.parse(localStorage.getItem(key)||'{}')||{}}catch{return {}}}
 function writeChartPreference(key,value){const storageKey=chartPreferenceKey();if(!storageKey)return;try{const saved=readChartPreferences();saved[key]=value;localStorage.setItem(storageKey,JSON.stringify(saved))}catch(error){console.warn('Could not save chart preference',error)}}
+const chartShadowControls=[
+ {id:'urgentChartShadows',key:'chartShadows:urgent'},
+ {id:'routineChartShadows',key:'chartShadows:routine'},
+ {id:'historicChartShadows',key:'chartShadows:historic'}
+];
+let chartShadowPreferenceOwner=null;
+const chartShadowBoundInputs=new WeakSet();
+function applyCapacityChartShadows(target,isDaily=false){
+ if(!target)return;
+ const input=$(target.id==='availabilityChart'?'urgentChartShadows':'routineChartShadows');
+ const enabled=input?.checked!==false;
+ const barLayer=target.querySelector('.barlayer');
+ if(barLayer)barLayer.style.filter=enabled?(isDaily?'drop-shadow(4px 5px 3px rgba(25,45,65,0.32))':'drop-shadow(4px 5px 3px rgba(25,45,65,0.22))'):'none';
+ target.querySelectorAll('.annotation-text-g').forEach(group=>{
+  if(!group.textContent.trim().startsWith('Today'))return;
+  const background=group.querySelector('rect');
+  if(background){background.setAttribute('rx','999');background.setAttribute('ry','999');}
+  group.style.filter=enabled?'drop-shadow(0 2px 4px rgba(25,45,65,0.18))':'none';
+ });
+}
+function applyHistoricChartShadows(target){
+ if(!target)return;
+ const enabled=$('historicChartShadows')?.checked!==false;
+ const groups=[...target.querySelectorAll('.scatterlayer .trace.scatter')];let scatterIndex=0;
+ for(const trace of target.data||[]){
+  if(trace.type!=='scatter')continue;
+  const group=groups[scatterIndex++];
+  if(!group)continue;
+  const historical=String(trace.mode||'').includes('lines')&&!trace.meta?.estimateConnector&&!trace.meta?.nowcast&&!trace.meta?.currentObserved&&!trace.meta?.rangeCaps;
+  group.querySelectorAll('path.js-line').forEach(path=>{path.style.filter=enabled&&historical?'drop-shadow(0 1px 2px rgba(25,45,65,0.22))':'none';});
+ }
+}
+function restoreChartShadowControls(){
+ const account=chartPreferenceAccount();if(!account)return;
+ if(account!==chartShadowPreferenceOwner){
+  chartShadowPreferenceOwner=account;
+  const saved=readChartPreferences();
+  for(const {id,key} of chartShadowControls){const input=$(id);if(input)input.checked=saved[key]!==false;}
+ }
+ for(const {id,key} of chartShadowControls){
+  const input=$(id);if(!input||chartShadowBoundInputs.has(input))continue;
+  chartShadowBoundInputs.add(input);
+  input.addEventListener('change',()=>{
+   writeChartPreference(key,input.checked);
+   if(id==='historicChartShadows')applyHistoricChartShadows($('combinedDemandChart'));
+   else {const target=$(id==='urgentChartShadows'?'availabilityChart':'routineAvailabilityChart');applyCapacityChartShadows(target,target?._capacityIsDaily);}
+  });
+ }
+}
 window.gpChartPreferences={read:readChartPreferences,write:writeChartPreference,account:chartPreferenceAccount};
 function chartControlKey(el){
  if(!el||!el.matches?.('input,select'))return null;
@@ -2529,6 +2578,7 @@ function installDemandCardTooltip(target){
  target.on('plotly_unhover',()=>{card.hidden=true});
 }
 function drawCombinedDemandChart(){
+ if(typeof restoreChartShadowControls==='function')restoreChartShadowControls();
  const adjustmentStatus=$('demandAdjustmentStatus');if(adjustmentStatus)adjustmentStatus.textContent=adjustDemandForListSize?'Adjusted for list size':'Not adjusted for list size';
  renderDemandClassificationToggles('demandPurposeToggles',purposeCategoryNames,purposeAssignments,disabledDemandPurposes,purposeColours);
  renderDemandClassificationToggles('demandCapacityToggles',capacityCategoryNames,capacityAssignments,disabledDemandCapacities,capacityColours);
@@ -2666,7 +2716,7 @@ function drawCombinedDemandChart(){
   xaxis:continuousMode?{...historicalAxisStyle,type:'date',domain:[0,1],title:monthlyMode?'Booking month':'Booking date',tickformat:'%b %Y',dtick:'M3',showgrid:true,gridcolor:'#e4e4e4',gridwidth:1,...(range?{range}: {})}:{...axis,...historicalAxisStyle,domain:[0,1],showgrid:true,gridcolor:'#e4e4e4',gridwidth:1,dtick:3},
   yaxis:{...historicalAxisStyle,title:{text:monthlyMode?'Appointments per month':'Appointments per week',standoff:8,font:{size:11}},range:[0,yAxisTop],tick0:0,dtick:majorGridStep,showgrid:true,gridcolor:'#b0b0b0',gridwidth:1,zeroline:false,minor:{tick0:0,dtick:majorGridStep/2,showgrid:true,gridcolor:'#e3e3e3',gridwidth:0.6,ticks:''}},hovermode:'closest',
   annotations:!selected.length?[{text:'Select an appointment type to display appointments',xref:'paper',yref:'paper',x:.5,y:.5,showarrow:false}]:yearLabels
- },{responsive:true,displaylogo:false,displayModeBar:false,scrollZoom:false,doubleClick:false}).then(()=>{installDemandCardTooltip($('combinedDemandChart'));installDemandAverageCapsules($('combinedDemandChart'),averageCapsules);});
+ },{responsive:true,displaylogo:false,displayModeBar:false,scrollZoom:false,doubleClick:false}).then(()=>{applyHistoricChartShadows($('combinedDemandChart'));installDemandCardTooltip($('combinedDemandChart'));installDemandAverageCapsules($('combinedDemandChart'),averageCapsules);});
 }
 drawCombinedDemandChart();
 }
@@ -4295,10 +4345,9 @@ function capacityMissedPattern(svg,colour,id){
  return 'url(#'+id+')';
 }
 function applyFlatAvailabilityBars(target,isDaily=false,separateGroups=false){
- // Apply one medium bottom-right shadow to the composited stacked bars,
- // rather than to each coloured segment (which would create internal seams).
- const barLayer=target.querySelector('.barlayer');
- if(barLayer)barLayer.style.filter=isDaily?'drop-shadow(4px 5px 3px rgba(25,45,65,0.32))':'drop-shadow(4px 5px 3px rgba(25,45,65,0.22))';
+ target._capacityIsDaily=isDaily;
+ // Apply one shadow to the composited stacked bars, rather than each segment.
+ applyCapacityChartShadows(target,isDaily);
  // Plotly SVG paths need an explicit fill: removing their fill renders them black.
  // Read each bar trace's actual marker colour, including custom colours from Slot settings.
  const barTraces=(target.data||[]).filter(trace=>trace.type==='bar');
@@ -4423,6 +4472,7 @@ function capacityGroupedSeries(dates,names,counts,held,heading,extras=[]){
 function renderAvailabilityChart(){
  const target=$('availabilityChart');
  if($('availabilityPage').classList.contains('hidden')||!window.Plotly||!target)return;
+ restoreChartShadowControls();
  renderUrgentCategoryToggles();
  renderUrgentSideFilters();
  refreshAvailabilityOptionStates('urgent');
@@ -4593,6 +4643,7 @@ function setupRoutineRangeControls(){
 function renderRoutineAvailabilityChart(){
  const target=$('routineAvailabilityChart');
  if(!target||$('routineAvailabilityPage').classList.contains('hidden')||!window.Plotly)return;
+ restoreChartShadowControls();
  renderRoutineAvailabilityFilters();
  renderRoutineCategoryToggles();
  refreshAvailabilityOptionStates('routine');
