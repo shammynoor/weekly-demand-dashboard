@@ -2657,7 +2657,7 @@ function drawCombinedDemandChart(){
  const yearLabels=continuousMode?[...new Set(visibleWeeks.map(w=>w.slice(0,4)))].map(year=>{
   const a=Math.max(Date.parse(year+'-01-01'),Date.parse(visibleWeeks[0]));
   const b=Math.min(Date.parse((Number(year)+1)+'-01-01'),Date.parse(visibleWeeks.at(-1)));
-  return {xref:'x',yref:'paper',x:new Date((a+b)/2).toISOString(),y:1,yshift:7,text:year,showarrow:false,yanchor:'bottom',font:{size:11,color:'#597080'}};
+  return {xref:'x',yref:'paper',x:new Date((a+b)/2).toISOString(),y:0.97,text:year,showarrow:false,yanchor:'top',font:{size:14,color:'rgba(89,112,128,0.58)'}};
  }):[];
  Plotly.react('combinedDemandChart',traces,{dragmode:false,autosize:true,height:535,
   margin:{l:62,r:24,t:continuousMode?28:50,b:65},paper_bgcolor:'white',plot_bgcolor:'#fafafa',
@@ -4372,12 +4372,12 @@ function capacityTodayLabel(dateString=todayLondon){
  const month=date.toLocaleDateString('en-GB',{month:'long',timeZone:'UTC'});
  return 'Today<br><span style="font-size:12px">'+weekday+' '+day+suffix+' '+month+'</span>';
 }
-// Today has its own top-margin lane, above week headings and plot totals.
+// Keep Today inside a clear strip at the top of the plot, above the bars.
 function capacityTodayAnnotation(todayX,bucketCount,width,dateString=todayLondon){
  const narrow=width<480;
  const date=new Date(dateString+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:narrow?'short':'long',day:'numeric',month:narrow?'short':'long',timeZone:'UTC'});
  const plotWidth=Math.max(100,width-80),half=Math.min(0.5,(narrow?83:130)/plotWidth);
- return {xref:'paper',yref:'paper',x:Math.max(half,Math.min(1-half,(todayX+0.5)/bucketCount)),y:1,yshift:49,text:'<b>Today</b> · '+date,showarrow:false,xanchor:'center',yanchor:'bottom',font:{size:13,color:'#206ca6'}};
+ return {xref:'paper',yref:'paper',x:Math.max(half,Math.min(1-half,(todayX+0.5)/bucketCount)),y:0.985,text:'<b>Today</b> · '+date,showarrow:false,xanchor:'center',yanchor:'top',font:{size:14,color:'#206ca6'},bgcolor:'#ffffff',bordercolor:'#d7e3ec',borderwidth:1,borderpad:4};
 }
 function capacityWeekBeginningLabel(date){return 'w/b '+new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',timeZone:'UTC'});}
 function weeklyCapacityTodayX(weekIndex,dayIndex){
@@ -4472,7 +4472,7 @@ function renderAvailabilityChart(){
  if(dateSet.has(todayLondon)){
   const x=weekly?weeklyCapacityTodayX(urgentWeeksBack,(new Date(todayLondon+'T12:00:00Z').getUTCDay()+6)%7):dates.indexOf(todayLondon);
   shapes.unshift({type:'rect',xref:'x',yref:'paper',x0:weekly?-.5:-.9,x1:x,y0:0,y1:1,fillcolor:'rgba(97,112,130,0.12)',line:{width:0},layer:'above'});
-  shapes.push({type:'line',xref:'x',yref:'paper',x0:x,x1:x,y0:0,y1:1,line:{color:'#257cb6',width:2.5,dash:'dot'},layer:'above'});
+  shapes.push({type:'line',xref:'x',yref:'paper',x0:x,x1:x,y0:0,y1:0.91,line:{color:'#257cb6',width:2.5,dash:'dot'},layer:'above'});
   annotations.push(capacityTodayAnnotation(x,buckets.length,target.clientWidth));
  }
  buckets.forEach((date,i)=>{if((weekly||weekdays.has(date))&&totals[i])annotations.push({x:date,xref:'x',y:totals[i],yref:'y',text:String(totals[i]),showarrow:false,font:{size:weekly?13:10,color:'#425b70'},yshift:15+Math.max(0,names.length-1)*5,yanchor:'bottom'})});
@@ -4643,7 +4643,7 @@ function renderRoutineAvailabilityChart(){
  const todayX=weekIndex<0?null:isDaily?dates.indexOf(todayLondon):weeklyCapacityTodayX(weekIndex,dayIndex);
  const shapes=todayX===null?[]:[
   {type:'rect',xref:'x',yref:'paper',x0:isDaily?-0.9:-0.5,x1:todayX,y0:0,y1:1,fillcolor:'rgba(97,112,130,0.12)',line:{width:0},layer:'above'},
-  {type:'line',xref:'x',yref:'paper',x0:todayX,x1:todayX,y0:0,y1:1,line:{color:'#257cb6',width:2.5,dash:'dot'},layer:'above'}
+  {type:'line',xref:'x',yref:'paper',x0:todayX,x1:todayX,y0:0,y1:0.91,line:{color:'#257cb6',width:2.5,dash:'dot'},layer:'above'}
  ];
  for(let i=0;i<weeks.length-1;i++){const boundary=isDaily?(i+1)*7-0.5:i+0.5;shapes.push({type:'line',xref:'x',yref:'paper',x0:boundary,x1:boundary,y0:0,y1:1,line:{color:'#bdcbd6',width:1,dash:'dot'},layer:'above'});}
  if(todayX!==null)annotations.push(capacityTodayAnnotation(todayX,dates.length,target.clientWidth));

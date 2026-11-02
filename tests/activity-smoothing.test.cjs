@@ -19,6 +19,10 @@ test('continuous history crosses year boundaries; superimposed history keeps yea
  assert.deepEqual(core.smoothDemandSeries(points,{level:1,continuous:true}).map(p=>p.smoothed),[70/1.5,110/1.5]);
  assert.deepEqual(core.smoothDemandSeries(points,{level:1,continuous:false}).map(p=>p.smoothed),[20,100]);
 });
+test('continuous history year labels sit subtly inside the plot',()=>{
+ const source=fs.readFileSync(__dirname+'/../app.js','utf8');
+ assert.match(source,/y:0\.97,text:year,showarrow:false,yanchor:'top',font:\{size:14,color:'rgba\(89,112,128,0\.58\)'\}/);
+});
 test('direct appointment types remain resolvable without a redundant self mapping',()=>{
  const source=fs.readFileSync(__dirname+'/../app.js','utf8'),begin=source.indexOf('function capacityUrgencyCategory('),end=source.indexOf('function renderUrgentCategoryToggles(',begin);
  const ctx={assignments:{'Phone slot':'Routine','Legacy slot':'Detailed routine'},groupUrgencyNames:['Routine'],groupUrgencyAssignments:{'Detailed routine':'Routine'}};
