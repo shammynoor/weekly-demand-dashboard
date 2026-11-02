@@ -1021,7 +1021,7 @@ function applyCapacityChartShadows(target,isDaily=false){
   if(!group.textContent.trim().startsWith('Today'))return;
   const background=group.querySelector('rect');
   if(background){
-   background.setAttribute('rx','999');background.setAttribute('ry','999');
+   background.setAttribute('rx','6');background.setAttribute('ry','6');
    if(background.dataset.capsulePadding!=='1'){
     const x=Number(background.getAttribute('x')),width=Number(background.getAttribute('width'));
     if(Number.isFinite(x)&&Number.isFinite(width)){background.setAttribute('x',String(x-5));background.setAttribute('width',String(width+10));}
@@ -4535,7 +4535,7 @@ function renderAvailabilityChart(){
  buckets.forEach((date,i)=>{if((weekly||weekdays.has(date))&&totals[i])annotations.push({x:date,xref:'x',y:totals[i],yref:'y',text:String(totals[i]),showarrow:false,font:{size:weekly?13:10,color:'#425b70'},yshift:15+Math.max(0,names.length-1)*5,yanchor:'bottom'})});
  const note=$('availabilityNote');if(note)note.textContent=names.length?'':'Select an Urgent detailed Appointment Types to display appointments.';
  Plotly.react(target,traces,{dragmode:false,
-  autosize:true,height:640,barmode:'stack',barcornerradius:weekly?6:5,bargap:weekly?0.11:0.025,margin:{l:62,r:18,t:85,b:100},paper_bgcolor:'white',plot_bgcolor:'#e1eaf1',
+  autosize:true,height:640,barmode:'stack',barcornerradius:weekly?6:5,bargap:weekly?0.11:0.025,margin:{l:62,r:18,t:40,b:100},paper_bgcolor:'white',plot_bgcolor:'#e1eaf1',
   legend:{orientation:'h',x:0.5,y:-0.23,xanchor:'center',yanchor:'top',font:{size:13,color:'#42576a'},bgcolor:'rgba(255,255,255,0)'},
   xaxis:{type:'category',categoryorder:'array',categoryarray:buckets,tickmode:'array',tickvals:buckets,ticktext:buckets.map(date=>weekly?capacityWeekBeginningLabel(date):weekdays.has(date)?new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'short',timeZone:'UTC'}):''),tickangle:weekly?0:-90,tickfont:{size:12,color:'#444444'},showgrid:false,range:[weekly?-.5:-.9,buckets.length-.5],fixedrange:true},
   yaxis:{title:{text:'Appointment slots',font:{size:12,color:'#708397'}},tickfont:{size:12,color:'#52677b'},range:[0,max],gridcolor:'#e0e8ef',gridwidth:1,zeroline:false,showline:false},annotations,shapes,hovermode:'closest',hoverlabel:{bgcolor:'#ffffff',bordercolor:'#dce5ed',font:{family:'Arial',size:12,color:'#182b3b'},align:'left',namelength:0}
@@ -4709,7 +4709,7 @@ function renderRoutineAvailabilityChart(){
  if(note)note.textContent=matched?'':"No matching Routine Appointment Types appointments found. Check Manage categories → Appointment Types.";
  Plotly.react(target,traces,{dragmode:false,
   height:640,autosize:true,barmode:'stack',barcornerradius:isDaily?5:6,bargap:isDaily?0.07:0.11,
-  margin:{l:62,r:18,t:85,b:100},paper_bgcolor:'#fff',plot_bgcolor:plotBackground,
+  margin:{l:62,r:18,t:40,b:100},paper_bgcolor:'#fff',plot_bgcolor:plotBackground,
   legend:{orientation:'h',x:0.5,y:-0.20,xanchor:'center',yanchor:'top',font:{size:13,color:'#42576a'},traceorder:'normal'},
   xaxis:{type:'category',categoryorder:'array',categoryarray:dates,range:[isDaily?-0.9:-0.5,dates.length-0.5],tickmode:'array',tickvals:dates,ticktext:dates.map(date=>isDaily?([0,6].includes(new Date(date+'T12:00:00Z').getUTCDay())?'':new Date(date+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'short',timeZone:'UTC'})):capacityWeekBeginningLabel(date)),tickangle:isDaily?-90:0,tickfont:{size:isDaily?10:12},showticklabels:true,showgrid:false,showline:true,linecolor:'#a9b9c7',linewidth:1.5,zeroline:false,fixedrange:true},
   yaxis:{title:{text:'Appointment slots',font:{size:12,color:'#708397'}},tickfont:{size:12,color:'#52677b'},range:[0,Math.ceil(max*1.18/10)*10],gridcolor:'#e0e8ef',gridwidth:1,zeroline:false,showline:false},
