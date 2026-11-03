@@ -171,7 +171,7 @@ async function readSharedSettings(){
  if(!downloadUrl)throw Error('Microsoft did not provide a download link for shared settings.');
  const response=await fetch(downloadUrl,{cache:'no-store'});
  if(!response.ok)throw Error('Shared settings download failed (HTTP '+response.status+')');
- const data=await response.json();
+ const data=parseSettingsJSON(await response.text());
  if(!data||!Array.isArray(data.categories)||!data.assignments||typeof data.assignments!=='object')
   throw Error('Shared settings JSON does not contain valid categories and slot assignments.');
  if(!Object.keys(data.assignments).length)
@@ -1165,7 +1165,17 @@ document.addEventListener('DOMContentLoaded',()=>{
 });
 const CLOUD_SETTINGS_NAME='weekly-demand-categories.json';
 function cloudNotice(msg){const el=$('cloudCategoryStatus');if(el)el.textContent=msg}
-async function cloudFile(){if(!isOwner)return readSharedSettings();try{const shared=await readSharedSettings();if(shared)return shared}catch(e){cloudNotice('Shared settings not available yet: '+e.message)}const t=await token();const r=await fetch(GRAPH+'/me/drive/special/approot:/'+CLOUD_SETTINGS_NAME+':/content',{headers:{Authorization:'Bearer '+t}});if(r.status===404)return null;if(!r.ok)throw Error('Settings read failed (HTTP '+r.status+')');return r.json()}
+async function cloudFile(){
+ const shared=await readSharedSettings();
+ if(shared||!isOwner)return shared;
+ // Only a verified missing shared file permits first-time private-file recovery.
+ // A permission, network or validation error must never publish a stale copy.
+ const t=await token();
+ const r=await fetch(GRAPH+'/me/drive/special/approot:/'+CLOUD_SETTINGS_NAME+':/content',{headers:{Authorization:'Bearer '+t},cache:'no-store'});
+ if(r.status===404)return null;
+ if(!r.ok)throw Error('Private settings read failed (HTTP '+r.status+')');
+ return parseSettingsJSON(await r.text());
+}
 function validCategoryNames(names){
  if(!Array.isArray(names))throw Error('Saved categories are invalid');
  const result=[];
@@ -5026,7 +5036,31 @@ setInterval(refreshOnDateRollover,60000);
 document.addEventListener("visibilitychange",refreshOnDateRollover);
 window.addEventListener("focus",refreshOnDateRollover);
 
+function parseSettingsJSON(text){
+ let data;
+ try{data=JSON.parse(text.replace(/^\uFEFF/,''))}catch{throw Error('Settings file is not valid JSON. Ask the administrator to restore a valid settings backup.');}
+ validateCloudCategories(data);
+ return data;
+}
 function validateCloudCategories(data){
+ const object=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
+ const invalid=key=>{throw Error('Invalid settings field: '+key+'. Existing settings have not been replaced.');};
+ if(!object(data))invalid('settings (expected an object)');
+ if(data.version!==undefined&&(!Number.isInteger(data.version)||data.version<1||data.version>9))invalid('version (supported: 1–9)');
+ // Preflight every loaded field before loadCloudCategories mutates any state.
+ for(const key of ['categories','clinicianCategories','consultCategories','purposeCategories','capacityCategories','clinicianGroupCategories','groupUrgencyCategories','appointmentCategoryNames','excludedSlotTypes']){
+  if(data[key]!==undefined&&(!Array.isArray(data[key])||data[key].some(v=>typeof v!=='string')))invalid(key);
+ }
+ for(const key of ['assignments','clinicianAssignments','consultAssignments','purposeAssignments','capacityAssignments','clinicianGroupAssignments','groupUrgencyAssignments','appointmentCategoryAssignments','peopleClinicianType','peopleLocum','clinicianTypeColours','urgencyTypeColours','clinicianGroupColours','urgencyGroupColours','consultModeColours','purposeColours','capacityColours','appointmentCategoryColours']){
+  if(data[key]!==undefined&&(!object(data[key])||Object.entries(data[key]).some(([k,v])=>['__proto__','constructor','prototype'].includes(k)||typeof v!=='string')))invalid(key);
+ }
+ if(data.analyticsRoles!==undefined&&!object(data.analyticsRoles))invalid('analyticsRoles');
+ if(data.togglePriority!==undefined&&(!object(data.togglePriority)||Object.values(data.togglePriority).some(v=>!Array.isArray(v)||v.some(x=>typeof x!=='string'))))invalid('togglePriority');
+ if(data.folder!==undefined&&data.folder!==null&&(!object(data.folder)||typeof data.folder.id!=='string'||!data.folder.id.trim()||(data.folder.name!==undefined&&typeof data.folder.name!=='string')))invalid('folder');
+ if(data.practiceSettings!==undefined){
+  const p=data.practiceSettings;
+  if(!object(p)||(p.name!==undefined&&typeof p.name!=='string')||(p.anchors!==undefined&&(!object(p.anchors)||Object.entries(p.anchors).some(([k,v])=>!/^\d{4}-(0[1-9]|1[0-2])$/.test(k)||!['number','string'].includes(typeof v)||!String(v).trim()||!Number.isFinite(Number(v))||Number(v)<0))))invalid('practiceSettings');
+ }
  validAssignments(data.assignments,validCategoryNames(data.categories));
  for(const [namesKey,mapKey,fallback] of [['categories','assignments',categoryNames],['clinicianCategories','clinicianAssignments',clinicianCategoryNames],['consultCategories','consultAssignments',[]],['purposeCategories','purposeAssignments',purposeCategoryNames],['capacityCategories','capacityAssignments',capacityCategoryNames],['clinicianGroupCategories','clinicianGroupAssignments',clinicianGroupNames],['groupUrgencyCategories','groupUrgencyAssignments',groupUrgencyNames],['appointmentCategoryNames',null,appointmentCategoryNames]]){
  const names=data[namesKey]===undefined?fallback:validCategoryNames(data[namesKey]);if(mapKey&&data[mapKey])validAssignments(data[mapKey],names);
