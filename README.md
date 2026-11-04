@@ -2,6 +2,13 @@
 
 ## Direct RH incremental imports
 
+The Home report list includes Direct Rapid Health with the canonical file's OneDrive
+modified date/time in Europe/London, using the same timestamp convention as the other
+reports. Activity IQ → Rapid Health shows a two-column weekly table: Monday week
+beginning and count of `request_type = Admin`, `admin_type = OTHER_ENQUIRY`, grouped
+by request date. Weeks within the source coverage with no matching requests show zero.
+Counts refresh after loading or appending, and stay separate from appointment totals.
+
 Put the initial full export in the selected OneDrive source folder as `Direct RH Data.csv`.
 Owners can then drop a CSV with any filename onto the dashboard. Direct RH reports are
 identified by their column headings. The app compares `request_date` + `request_time`

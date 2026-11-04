@@ -58,7 +58,22 @@
   const separator=/[\r\n]$/.test(originalText)?'':newline;
   return {...result,text:originalText+separator+papa.unparse(result.rows,{newline})+newline};
  }
- const api={recognises,parse,timestamp,plan,merge};
+ function weeklyOtherEnquiries(text,papa){
+  const table=parse(text,papa),index=Object.fromEntries(table.fields.map((field,i)=>[field,i]));
+  const counts=new Map();let first=Infinity,last=-Infinity,total=0;
+  for(const row of table.rows){
+   const date=new Date(timestamp(row[index.request_date],row[index.request_time]));
+   date.setUTCHours(0,0,0,0);date.setUTCDate(date.getUTCDate()-((date.getUTCDay()+6)%7));
+   const week=date.getTime();first=Math.min(first,week);last=Math.max(last,week);
+   if(row[index.request_type].trim()==='Admin'&&row[index.admin_type].trim()==='OTHER_ENQUIRY'){
+    counts.set(week,(counts.get(week)||0)+1);total++;
+   }
+  }
+  const weeks=[];
+  for(let week=first;week<=last;week+=7*86400000)weeks.push({week:new Date(week).toISOString().slice(0,10),count:counts.get(week)||0});
+  return {weeks,total,records:table.rows.length};
+ }
+ const api={recognises,parse,timestamp,plan,merge,weeklyOtherEnquiries};
  if(typeof module==='object'&&module.exports)module.exports=api;
  else root.DirectRHCSV=api;
 })(typeof globalThis==='object'?globalThis:this);

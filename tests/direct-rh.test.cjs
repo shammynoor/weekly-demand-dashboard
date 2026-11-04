@@ -55,7 +55,7 @@ test('timestamp filename updates only canonical item with concurrency guard; no 
  assert.equal(f.writes.length,1);assert.equal(f.writes[0].url,'https://graph.test/me/drive/items/canonical/content');
  assert.equal(f.writes[0].headers['If-Match'],'version-1');
  const text=await f.writes[0].body.text();assert.equal(text.split('08:00').length-1,1);assert.equal(text.split('08:01').length-1,1);
- assert.match(f.confirmations[0][2],/Append 1 new records/);assert.equal(f.refreshes(),0);assert.equal(f.ctx.csvDropBusy,false);
+ assert.match(f.confirmations[0][2],/Append 1 new records/);assert.equal(f.refreshes(),1);assert.equal(f.ctx.csvDropBusy,false);
 });
 test('no new records, cancelled uploads, missing source, missing version, invalid CSV, and viewers do not write',async()=>{
  for(const options of [{incoming:csv([row('01-Jul-25','08:00')])},{cancel:true},{missing:true},{etag:null},{incoming:csv([row('31-Jun-25','08:01')])},{owner:false}]){

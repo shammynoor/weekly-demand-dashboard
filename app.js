@@ -1816,7 +1816,11 @@ async function replaceExistingCSV(file){
   // without changing them; the settings JSON is never overwritten here.
   csvContributionCache.delete(match.id);
   lastFingerprint='';
-  if(directRH){keepStatus=true;showRefreshFeedback('New Direct RH records appended to '+match.name+'. No separate upload file saved.',false);return}
+  if(directRH){
+   await loadFolder(true);
+   if($('refreshFeedback')?.textContent.startsWith('Refresh failed:')){uploadFailed=true;return;}
+   keepStatus=true;showRefreshFeedback('New Direct RH records appended to '+match.name+'. No separate upload file saved.',false);return;
+  }
   await loadFolder(true);
   if($('refreshFeedback')?.textContent.startsWith('Refresh failed:')){uploadFailed=true;return;}
   csvDropStatus('');
@@ -1852,6 +1856,7 @@ function initCSVDragDrop(){
 }
 initCSVDragDrop();
 
+let rapidHealthSummary=null;
 let signpostingRecords=[],signpostingFileCount=0;let signpostingSlotNames=new Set();
 function isSignpostingFile(name){return /signposting[\s_-]*auto[\s_-]*report/i.test(String(name||''))&&/\.csv$/i.test(name)}
 function parseSignpostingDate(raw){
@@ -1910,12 +1915,27 @@ function renderSignpostingChart(){
  },{responsive:true,displaylogo:false,displayModeBar:false,scrollZoom:false,doubleClick:false});
  status.textContent=signpostingRecords.length.toLocaleString('en-GB')+' signposting records · '+sortedDestinations.length+' destinations · '+signpostingFileCount+' CSV file'+(signpostingFileCount===1?'':'s')+'. Empty cells filled from preceding rows.';
 }
-function updateHomeReportDates(items){const slots=items.filter(f=>/slot[\s_-]*report/i.test(f.name));const signs=items.filter(f=>isSignpostingFile(f.name));const display=files=>{if(!files.length)return 'No report found';const dates=files.map(f=>Date.parse(f.lastModifiedDateTime||'')).filter(Number.isFinite);return dates.length?new Date(Math.max(...dates)).toLocaleString('en-GB',{day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:true,timeZone:'Europe/London'}):'Modified date unavailable'};$('homeSlotModified').textContent=display(slots);$('homeSignpostingModified').textContent=display(signs)}
+function isDirectRHFile(name){return String(name||'').toLowerCase()==='direct rh data.csv'}
+function renderRapidHealthTable(){
+ const body=$('rapidHealthBody'),status=$('rapidHealthStatus'),table=$('rapidHealthTable');
+ if(!body||!status||!table)return;
+ body.replaceChildren();table.hidden=!rapidHealthSummary;
+ status.textContent=rapidHealthSummary?'':'No Direct RH Data.csv has been loaded from the selected OneDrive folder.';
+ if(!rapidHealthSummary)return;
+ const fragment=document.createDocumentFragment();
+ for(const record of rapidHealthSummary.weeks){
+  const row=document.createElement('tr'),date=document.createElement('td'),count=document.createElement('td');
+  date.textContent=new Date(record.week+'T00:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'});
+  count.textContent=record.count.toLocaleString('en-GB');row.append(date,count);fragment.append(row);
+ }
+ body.append(fragment);
+}
+function updateHomeReportDates(items){const slots=items.filter(f=>/slot[\s_-]*report/i.test(f.name));const signs=items.filter(f=>isSignpostingFile(f.name));const display=files=>{if(!files.length)return 'No report found';const dates=files.map(f=>Date.parse(f.lastModifiedDateTime||'')).filter(Number.isFinite);return dates.length?new Date(Math.max(...dates)).toLocaleString('en-GB',{day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:true,timeZone:'Europe/London'}):'Modified date unavailable'};$('homeSlotModified').textContent=display(slots);$('homeSignpostingModified').textContent=display(signs);$('homeRapidHealthModified').textContent=display(items.filter(f=>isDirectRHFile(f.name)))}
 // Parsed per-file contributions survive reloads in a private browser IndexedDB cache.
 // A replacement invalidates only its own contribution, not the other CSV files.
 const csvContributionCache=new Map();
 // Bump this only when CSV parsing or contribution structure changes, not for UI deployments.
-const CSV_CACHE_SCHEMA=1;
+const CSV_CACHE_SCHEMA=2;
 let csvMemoryScope=null;
 function csvCacheScope(){
  const account=activeAccount?.homeAccountId||activeAccount?.localAccountId||activeAccount?.username;
@@ -1961,7 +1981,8 @@ async function restoreCSVCache(){
    if(typeof id!=='string'||typeof value?.version!=='string')continue;
    if(value.kind==='slot'&&(!Array.isArray(value.maps)||value.maps.length!==8||!value.maps.every(map=>map instanceof Map)))continue;
    if(value.kind==='signposting'&&!Array.isArray(value.events))continue;
-   if(!['slot','signposting','other'].includes(value.kind))continue;
+   if(value.kind==='rapidHealth'&&(!value.summary||!Array.isArray(value.summary.weeks)))continue;
+   if(!['slot','signposting','rapidHealth','other'].includes(value.kind))continue;
    csvContributionCache.set(id,value);
   }
  }
@@ -1977,6 +1998,7 @@ function mergeCSVCounts(target,source){
  }
 }
 function parseCSVContribution(csvText,name){
+ if(isDirectRHFile(name))return {kind:'rapidHealth',summary:DirectRHCSV.weeklyOtherEnquiries(csvText,Papa)};
  if(isSignpostingFile(name))return {kind:'signposting',events:parseSignpostingCSV(csvText)};
  if(!/slot[\s_-]*report/i.test(name))return {kind:'other'};
  const maps=Array.from({length:8},()=>new Map());
@@ -1987,7 +2009,7 @@ async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;
  const items=(await children(selectedFolder.id)).filter(f=>f.file&&/\.csv$/i.test(f.name)).sort((a,b)=>a.name.localeCompare(b.name));if(!items.length)throw Error('No CSV files found directly inside this folder.');updateHomeReportDates(items);
  const cacheScope=await restoreCSVCache();
  const fingerprint=JSON.stringify(items.map(f=>[f.id,f.name,f.lastModifiedDateTime,f.size]));if(!force&&fingerprint===lastFingerprint){await renderActiveAnalyticsPage();showRefreshFeedback('Already up to date');setSync(`No changes detected · ${items.length} CSV files · Checked ${new Date().toLocaleTimeString('en-GB')}`);return}
- const aggregate=new Map(),availabilityAggregate=new Map(),bookingTimeAggregate=new Map(),appointmentTimeAggregate=new Map(),waitingAggregate=new Map(),waitingTrendAggregate=new Map(),peopleAggregate=new Map(),newSlotTypeStats=new Map();let valid=0,skipped=0;const newSignposting=[];let newSignpostingFiles=0,newSlotFiles=0;
+ const aggregate=new Map(),availabilityAggregate=new Map(),bookingTimeAggregate=new Map(),appointmentTimeAggregate=new Map(),waitingAggregate=new Map(),waitingTrendAggregate=new Map(),peopleAggregate=new Map(),newSlotTypeStats=new Map();let valid=0,skipped=0;let newRapidHealth=null;const newSignposting=[];let newSignpostingFiles=0,newSlotFiles=0;
  const activeIds=new Set(items.map(f=>f.id));
  const removedCachedFiles=[...csvContributionCache.keys()].some(id=>!activeIds.has(id));
  const pendingCache=new Map();
@@ -2008,7 +2030,9 @@ async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;
    contribution={version,...parseCSVContribution(csvText,f.name)};
   }else reused++;
   pendingCache.set(f.id,contribution);
-  if(contribution.kind==='signposting'){
+  if(contribution.kind==='rapidHealth'){
+   newRapidHealth=contribution.summary;
+  }else if(contribution.kind==='signposting'){
    newSignposting.push(...contribution.events);newSignpostingFiles++;
   }else if(contribution.kind==='slot'){
    newSlotFiles++;valid+=contribution.valid;skipped+=contribution.skipped;
@@ -2028,6 +2052,7 @@ async function loadFolder(force=true){if(!selectedFolder||busy)return;busy=true;
  updateHeaderSlotReportTime(capacityCSVLatestModified);
  slotReportCoverage=GPCorrectness.coverageFromEntries(pendingCache);
  slotTypeFileStats=newSlotTypeStats;renderSlotInclusion();
+ rapidHealthSummary=newRapidHealth;
  signpostingRecords=newSignposting;signpostingFileCount=newSignpostingFiles;signpostingSlotNames=new Set(newSignposting.map(event=>event.destination));
  // Each dated signposting event is also a booked appointment for the main
  // demand/availability calculations. Its destination is its Slot Type.
@@ -3940,7 +3965,7 @@ function showPage(which){
  for(const id of ['dailyForecastPage','weeklyForecastPage'])$(id)?.classList.add('hidden');
  for(const id of ['navDailyForecast','navWeeklyForecast'])$(id)?.classList.remove('active');
  if(!isOwner&&(which==='categories'||which==='people'||which==='practiceSettings'))return;
- for(const [page,nav,name] of [['workforceNeedPage','navWorkforceNeed','workforceNeed'],['homePage','navHome','home'],['routineCapacityPage','navRoutineCapacity','routineCapacity'],['chartPage','navChart','chart'],['waitingTimesPage','navWaitingTimes','waitingTimes'],['waitingOverTimePage','navWaitingTrend','waitingTrend'],['categoryPage','navCategories','categories'],['availabilityPage','navAvailability','availability'],['routineAvailabilityPage','navRoutineAvailability','routineAvailability'],['dayView2Page','navDayView2','dayView'],['bookingTimesPage','navBookingTimes','bookingTimes'],['signpostingPage','navSignposting','signposting'],['peoplePage','navPeople','people'],['practiceSettingsPage','navPracticeSettings','practiceSettings'],['personalSettingsPage','navPersonalSettings','personalSettings']]){
+ for(const [page,nav,name] of [['workforceNeedPage','navWorkforceNeed','workforceNeed'],['homePage','navHome','home'],['routineCapacityPage','navRoutineCapacity','routineCapacity'],['chartPage','navChart','chart'],['waitingTimesPage','navWaitingTimes','waitingTimes'],['waitingOverTimePage','navWaitingTrend','waitingTrend'],['categoryPage','navCategories','categories'],['availabilityPage','navAvailability','availability'],['routineAvailabilityPage','navRoutineAvailability','routineAvailability'],['dayView2Page','navDayView2','dayView'],['bookingTimesPage','navBookingTimes','bookingTimes'],['signpostingPage','navSignposting','signposting'],['rapidHealthPage','navRapidHealth','rapidHealth'],['peoplePage','navPeople','people'],['practiceSettingsPage','navPracticeSettings','practiceSettings'],['personalSettingsPage','navPersonalSettings','personalSettings']]){
   $(page).classList.toggle('hidden',which!==name);$(nav).classList.toggle('active',which===name);
  }
  if(which==='home')updateHomePracticeName();
@@ -3954,12 +3979,13 @@ function showPage(which){
  else if(which==='dayView')setTimeout(renderDayView2,0);
  else if(which==='bookingTimes')setTimeout(renderBookingTimesChart,0);
  else if(which==='signposting')setTimeout(renderSignpostingChart,0);
+ else if(which==='rapidHealth')renderRapidHealthTable();
  else if(which==='people'){renderPeopleGroups();renderPeopleGroupFilter();renderPeople();}
  else if(which==='personalSettings'){renderPersonalSettings();}
  else if(which==='practiceSettings'){selectPracticeSettingsTab(readChartPreferences()['practiceSettings:tab']);}
  else if(which==='categories'){restorePersonalSettingsWorkspace();renderSlotGroupBoxes();renderSlotTable();renderEditor();renderGroupUrgencyEditor();renderClinicianEditor();renderClinicianGroupEditor();renderConsultEditor()}
 }document.getElementById('navWorkforceNeed').onclick=()=>showPage('workforceNeed');document.getElementById('navHome').onclick=()=>showPage('home');document.getElementById('navRoutineCapacity').onclick=()=>showPage('routineCapacity');document.getElementById('navChart').onclick=()=>showPage('chart');document.getElementById('navWaitingTimes').onclick=()=>showPage('waitingTimes');document.getElementById('navWaitingTrend').onclick=()=>showPage('waitingTrend');document.getElementById('navCategories').onclick=()=>showPage('categories');document.getElementById('navAvailability').onclick=()=>showPage('availability');document.getElementById('navRoutineAvailability').onclick=()=>showPage('routineAvailability');
-document.getElementById('navDayView2').onclick=()=>showPage('dayView');document.getElementById('navBookingTimes').onclick=()=>showPage('bookingTimes');document.getElementById('navSignposting').onclick=()=>showPage('signposting');document.getElementById('navPeople').onclick=()=>showPage('people');document.getElementById('navPracticeSettings').onclick=()=>showPage('practiceSettings');document.getElementById('navPersonalSettings').onclick=()=>showPage('personalSettings');$('personalSettingsForm').addEventListener('submit',savePersonalSettings);$('demandCombineLines')?.addEventListener('change',()=>{const chart=$('combinedDemandChart');if(chart&&window.Plotly)Plotly.purge(chart);scheduleDemandRefresh();});$('slotTableSearch').addEventListener('input',renderSlotTable);for(const id of ['slotGroupFilter','slotModeFilter','slotPurposeFilter','slotCapacityFilter'])$(id)?.addEventListener('change',renderSlotTable);$('slotUnassignedOnly').addEventListener('change',renderSlotTable);$('slotModeUnassignedOnly').addEventListener('change',renderSlotTable);$('slotPurposeUnassignedOnly').addEventListener('change',renderSlotTable);$('slotCapacityUnassignedOnly').addEventListener('change',renderSlotTable);$('peopleSearch').addEventListener('input',renderPeople);$('peopleGroupFilter').addEventListener('change',renderPeople);$('peopleUnassignedOnly').addEventListener('change',()=>{const only=$('peopleUnassignedOnly').checked;$('peopleGroupFilter').disabled=only;renderPeople()});
+document.getElementById('navDayView2').onclick=()=>showPage('dayView');document.getElementById('navBookingTimes').onclick=()=>showPage('bookingTimes');document.getElementById('navSignposting').onclick=()=>showPage('signposting');document.getElementById('navRapidHealth').onclick=()=>showPage('rapidHealth');document.getElementById('navPeople').onclick=()=>showPage('people');document.getElementById('navPracticeSettings').onclick=()=>showPage('practiceSettings');document.getElementById('navPersonalSettings').onclick=()=>showPage('personalSettings');$('personalSettingsForm').addEventListener('submit',savePersonalSettings);$('demandCombineLines')?.addEventListener('change',()=>{const chart=$('combinedDemandChart');if(chart&&window.Plotly)Plotly.purge(chart);scheduleDemandRefresh();});$('slotTableSearch').addEventListener('input',renderSlotTable);for(const id of ['slotGroupFilter','slotModeFilter','slotPurposeFilter','slotCapacityFilter'])$(id)?.addEventListener('change',renderSlotTable);$('slotUnassignedOnly').addEventListener('change',renderSlotTable);$('slotModeUnassignedOnly').addEventListener('change',renderSlotTable);$('slotPurposeUnassignedOnly').addEventListener('change',renderSlotTable);$('slotCapacityUnassignedOnly').addEventListener('change',renderSlotTable);$('peopleSearch').addEventListener('input',renderPeople);$('peopleGroupFilter').addEventListener('change',renderPeople);$('peopleUnassignedOnly').addEventListener('change',()=>{const only=$('peopleUnassignedOnly').checked;$('peopleGroupFilter').disabled=only;renderPeople()});
 function renderClinicianEditor(){renderDropEditor('clinician');updateClinicianChartFilter()}
 function renderClinicianGroupEditor(){renderDropEditor('clinicianGroup');if(!$('peoplePage')?.classList.contains('hidden'))renderPeopleGroups()}
 $('addClinicianCategory').onclick=()=>{const el=$('newClinicianCategory');const c=el.value.trim();if(!c)return;if(c.toLowerCase()==='uncategorised'||clinicianCategoryNames.some(x=>x.toLowerCase()===c.toLowerCase())){alert('This clinician category name already exists or is reserved.');return}clinicianCategoryNames.push(c);el.value='';saveCategories();renderClinicianEditor();renderClinicianGroupEditor()};
@@ -5043,7 +5069,7 @@ window.addEventListener('storage',event=>{
 
 async function renderActiveAnalyticsPage(){
  updateDashboardDateContext();refreshPrimaryApptTypeBoxes();
- const renderers={chartPage:refresh,waitingTimesPage:renderWaitingTimesChart,waitingOverTimePage:renderWaitingTrendChart,availabilityPage:renderAvailabilityChart,routineAvailabilityPage:renderRoutineAvailabilityChart,dayView2Page:renderDayView2,bookingTimesPage:renderBookingTimesChart,signpostingPage:renderSignpostingChart,dailyForecastPage:()=>window.refreshForecastCharts?.(),weeklyForecastPage:()=>window.refreshForecastCharts?.(),routineCapacityPage:()=>window.renderRoutineCapacity?.()};
+ const renderers={chartPage:refresh,waitingTimesPage:renderWaitingTimesChart,waitingOverTimePage:renderWaitingTrendChart,availabilityPage:renderAvailabilityChart,routineAvailabilityPage:renderRoutineAvailabilityChart,dayView2Page:renderDayView2,bookingTimesPage:renderBookingTimesChart,signpostingPage:renderSignpostingChart,rapidHealthPage:renderRapidHealthTable,dailyForecastPage:()=>window.refreshForecastCharts?.(),weeklyForecastPage:()=>window.refreshForecastCharts?.(),routineCapacityPage:()=>window.renderRoutineCapacity?.()};
  for(const [id,draw] of Object.entries(renderers)){const page=$(id);if(page&&!page.classList.contains("hidden"))await draw()}
 }
 function refreshOnDateRollover(){if(document.hidden||!folderAccessVerified)return;if(updateDashboardDateContext())void renderActiveAnalyticsPage().catch(e=>showRefreshFeedback("Chart refresh failed: "+e.message))}
