@@ -1740,11 +1740,12 @@ function validateSignpostingReplacementCSV(text){
 function validateCSVForReplacement(text,filename){
  return isSignpostingFile(filename)?validateSignpostingReplacementCSV(text):validateReplacementCSV(text);
 }
-function awaitCSVConfirmation(fileName,match){
+function awaitCSVConfirmation(fileName,match,appendSummary){
  return new Promise(resolve=>{
   const modal=$('csvUploadModal'),confirm=$('csvUploadConfirm'),cancel=$('csvUploadCancel');
   if(!modal||!confirm||!cancel){resolve(false);return}
-  $('csvUploadMessage').textContent='Replace the existing OneDrive CSV "'+match.name+'" with the dropped file "'+fileName+'"? This will overwrite the existing file. Your people and slot settings will not be changed.';
+  $('csvUploadMessage').textContent=appendSummary||'Replace the existing OneDrive CSV "'+match.name+'" with the dropped file "'+fileName+'"? This will overwrite the existing file. Your people and slot settings will not be changed.';
+  confirm.textContent=appendSummary?'Append new records':'Replace existing CSV';
   csvUploadModal(true);
   const finish=accepted=>{
    csvUploadModal(false);confirm.removeEventListener('click',yes);cancel.removeEventListener('click',no);
@@ -1759,16 +1760,18 @@ async function replaceExistingCSV(file){
  if(!isOwner){csvDropStatus('View-only accounts cannot replace CSV files.',true);return;}if(!activeAccount||!selectedFolder){csvDropStatus('Sign in and select your OneDrive CSV folder first.',true);return}
  if(!file||!/\.csv$/i.test(file.name)){csvDropStatus('Rejected: only CSV files can be uploaded.',true);return}
  if(file.size===0||file.size>200*1024*1024){csvDropStatus('Rejected: CSV must be non-empty and no larger than 200 MB.',true);return}
- let uploadFailed=false;
+ let uploadFailed=false,keepStatus=false;
  csvDropBusy=true;csvDropStatus('Checking '+file.name+' against OneDrive…');
  try{
   const existing=(await children(selectedFolder.id)).filter(item=>item.file&&/\.csv$/i.test(item.name));
-  // Case-insensitive name matching is necessary because OneDrive filenames are case-insensitive.
-  const matches=existing.filter(item=>item.name.toLocaleLowerCase('en-GB')===file.name.toLocaleLowerCase('en-GB'));
-  if(matches.length!==1)throw Error('Rejected: no existing CSV with exactly this filename in the selected OneDrive folder.');
-  const match=matches[0];
   const text=await file.text();
-  validateCSVForReplacement(text,match.name);
+  const directRH=typeof DirectRHCSV!=='undefined'&&DirectRHCSV.recognises(text,Papa);
+  // Direct RH exports can have timestamp filenames; only their canonical source is updated.
+  const targetName=directRH?'Direct RH Data.csv':file.name;
+  const matches=existing.filter(item=>item.name.toLocaleLowerCase('en-GB')===targetName.toLocaleLowerCase('en-GB'));
+  if(matches.length!==1)throw Error(directRH?'Place the initial full dataset named Direct RH Data.csv in the selected OneDrive folder first.':'Rejected: no existing CSV with exactly this filename in the selected OneDrive folder.');
+  const match=matches[0];
+  if(!directRH)validateCSVForReplacement(text,match.name);
   // Check the original export's columns as well, so incompatible replacements
   // cannot silently change the source schema.
   const detail=await graph('/me/drive/items/'+encodeURIComponent(match.id));
@@ -1779,20 +1782,31 @@ async function replaceExistingCSV(file){
   const originalResponse=await fetch(originalUrl,{cache:'no-store'});
   if(!originalResponse.ok)throw Error('Could not check the original CSV.');
   const originalText=await originalResponse.text();
-  const originalSchema=validateCSVForReplacement(originalText,match.name).columns;
-  const newSchema=validateCSVForReplacement(text,match.name).columns;
-  if(originalSchema.length!==newSchema.length||originalSchema.some((column,i)=>column!==newSchema[i]))
-   throw Error('Rejected: the CSV column headings or their order do not match the existing OneDrive file.');
+  let body=file,appendSummary='';
+  if(directRH){
+   const merged=DirectRHCSV.merge(originalText,text,Papa);
+   if(!merged.rows.length){keepStatus=true;showRefreshFeedback('No new Direct RH records. Existing file unchanged; '+merged.skipped.toLocaleString('en-GB')+' overlapping or older records ignored.',false);return}
+   if(!detail.eTag)throw Error('Could not verify the current Direct RH file version. Refresh and try again.');
+   body=new Blob([merged.text],{type:'text/csv;charset=utf-8'});
+   if(body.size>200*1024*1024)throw Error('The combined Direct RH CSV exceeds the 200 MB upload limit.');
+   appendSummary='Append '+merged.rows.length.toLocaleString('en-GB')+' new records to '+match.name+'? Ignore '+merged.skipped.toLocaleString('en-GB')+' records at or before the latest saved request minute. Existing records stay unchanged. The dropped file will not be saved separately.';
+  }else{
+   const originalSchema=validateCSVForReplacement(originalText,match.name).columns;
+   const newSchema=validateCSVForReplacement(text,match.name).columns;
+   if(originalSchema.length!==newSchema.length||originalSchema.some((column,i)=>column!==newSchema[i]))
+    throw Error('Rejected: the CSV column headings or their order do not match the existing OneDrive file.');
+  }
   csvDropStatus('Validated '+file.name+'. Waiting for confirmation…');
-  if(!await awaitCSVConfirmation(file.name,match)){csvDropStatus('Upload cancelled. No files were changed.');return}
+  if(!await awaitCSVConfirmation(file.name,match,appendSummary)){csvDropStatus('Upload cancelled. No files were changed.');return}
   csvDropStatus('Uploading '+file.name+' to OneDrive…');
   const bearer=await token();
   // PUT by existing item ID, never by path: this can only replace the matched file.
   const upload=await fetch(GRAPH+'/me/drive/items/'+encodeURIComponent(match.id)+'/content',{
-   method:'PUT',headers:{Authorization:'Bearer '+bearer,'Content-Type':'text/csv'},
-   body:file
+   method:'PUT',headers:{Authorization:'Bearer '+bearer,'Content-Type':'text/csv',...(directRH?{'If-Match':detail.eTag}:{})},
+   body
   });
   if(!upload.ok){
+   if(directRH&&upload.status===412)throw Error('Direct RH Data.csv changed during this upload. Drop the file again to merge with the latest version.');
    let message='HTTP '+upload.status;
    try{const response=await upload.json();message=response.error?.message||message}catch{}
    throw Error('OneDrive rejected the replacement: '+message);
@@ -1802,6 +1816,7 @@ async function replaceExistingCSV(file){
   // without changing them; the settings JSON is never overwritten here.
   csvContributionCache.delete(match.id);
   lastFingerprint='';
+  if(directRH){keepStatus=true;showRefreshFeedback('New Direct RH records appended to '+match.name+'. No separate upload file saved.',false);return}
   await loadFolder(true);
   if($('refreshFeedback')?.textContent.startsWith('Refresh failed:')){uploadFailed=true;return;}
   csvDropStatus('');
@@ -1809,7 +1824,7 @@ async function replaceExistingCSV(file){
   uploadFailed=true;
   console.error('CSV replacement error',error);
   csvDropStatus(error?.message||String(error),true);
- }finally{csvDropBusy=false;if(!uploadFailed)csvDropStatus('')}
+ }finally{csvDropBusy=false;if(!uploadFailed&&!keepStatus)csvDropStatus('')}
 }
 function initCSVDragDrop(){
  window.addEventListener('dragenter',event=>{

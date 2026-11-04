@@ -1,5 +1,23 @@
 # Weekly Demand Dashboard — GitHub Pages
 
+## Direct RH incremental imports
+
+Put the initial full export in the selected OneDrive source folder as `Direct RH Data.csv`.
+Owners can then drop a CSV with any filename onto the dashboard. Direct RH reports are
+identified by their column headings. The app compares `request_date` + `request_time`
+with the latest request minute in the saved source and appends only strictly later
+records. Both full-history and incremental exports work. Records at the cutoff minute,
+older records and corrections to them are ignored. Multiple new records sharing a
+later minute are retained. No persistent cutoff or separate copy of the dropped file
+is saved; the source CSV is the authority.
+
+All original rows stay unchanged. Columns and timestamps are validated, other tenants
+are rejected, and the confirmation shows appended and skipped counts. The app updates
+only the existing canonical file by item ID with an ETag condition; a concurrent change
+requires dropping the file again. Invalid, cancelled and no-new-record imports do not
+write. Failed uploads do not advance the cutoff. No people/slot settings are written by
+this import. Direct RH data does not contribute to Slot or Signposting charts.
+
 Upload `index.html` and `app.js` to the **root** of https://github.com/shammynoor/weekly-demand-dashboard. GitHub Pages should deploy from `main` / `(root)`.
 
 ## Important: Microsoft redirect URI
