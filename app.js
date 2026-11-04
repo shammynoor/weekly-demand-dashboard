@@ -1923,10 +1923,16 @@ function renderRapidHealthTable(){
  status.textContent=rapidHealthSummary?'':'No Direct RH Data.csv has been loaded from the selected OneDrive folder.';
  if(!rapidHealthSummary)return;
  const fragment=document.createDocumentFragment();
- for(const record of rapidHealthSummary.weeks){
-  const row=document.createElement('tr'),date=document.createElement('td'),count=document.createElement('td');
-  date.textContent=new Date(record.week+'T00:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'});
-  count.textContent=record.count.toLocaleString('en-GB');row.append(date,count);fragment.append(row);
+ for(const record of rapidHealthSummary.months){
+  const row=document.createElement('tr'),month=document.createElement('td');
+  month.textContent=new Date(record.month+'-01T00:00:00Z').toLocaleDateString('en-GB',{month:'long',year:'numeric',timeZone:'UTC'});
+  row.append(month);
+  record.averages.forEach((average,i)=>{
+   const cell=document.createElement('td');
+   cell.textContent=average===null?'—':average.toLocaleString('en-GB',{minimumFractionDigits:1,maximumFractionDigits:1});
+   cell.title=record.days[i]?record.counts[i]+' enquiries across '+record.days[i]+' days':'No dates covered';row.append(cell);
+  });
+  fragment.append(row);
  }
  body.append(fragment);
 }
@@ -1935,7 +1941,7 @@ function updateHomeReportDates(items){const slots=items.filter(f=>/slot[\s_-]*re
 // A replacement invalidates only its own contribution, not the other CSV files.
 const csvContributionCache=new Map();
 // Bump this only when CSV parsing or contribution structure changes, not for UI deployments.
-const CSV_CACHE_SCHEMA=2;
+const CSV_CACHE_SCHEMA=3;
 let csvMemoryScope=null;
 function csvCacheScope(){
  const account=activeAccount?.homeAccountId||activeAccount?.localAccountId||activeAccount?.username;
@@ -1981,7 +1987,7 @@ async function restoreCSVCache(){
    if(typeof id!=='string'||typeof value?.version!=='string')continue;
    if(value.kind==='slot'&&(!Array.isArray(value.maps)||value.maps.length!==8||!value.maps.every(map=>map instanceof Map)))continue;
    if(value.kind==='signposting'&&!Array.isArray(value.events))continue;
-   if(value.kind==='rapidHealth'&&(!value.summary||!Array.isArray(value.summary.weeks)))continue;
+   if(value.kind==='rapidHealth'&&(!value.summary||!Array.isArray(value.summary.months)))continue;
    if(!['slot','signposting','rapidHealth','other'].includes(value.kind))continue;
    csvContributionCache.set(id,value);
   }
@@ -1998,7 +2004,7 @@ function mergeCSVCounts(target,source){
  }
 }
 function parseCSVContribution(csvText,name){
- if(isDirectRHFile(name))return {kind:'rapidHealth',summary:DirectRHCSV.weeklyOtherEnquiries(csvText,Papa)};
+ if(isDirectRHFile(name))return {kind:'rapidHealth',summary:DirectRHCSV.monthlyWeekdayOtherEnquiries(csvText,Papa)};
  if(isSignpostingFile(name))return {kind:'signposting',events:parseSignpostingCSV(csvText)};
  if(!/slot[\s_-]*report/i.test(name))return {kind:'other'};
  const maps=Array.from({length:8},()=>new Map());

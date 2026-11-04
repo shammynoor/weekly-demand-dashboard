@@ -4,11 +4,19 @@ const fields=['tenant_name','request_date','request_time','request_type','admin_
 const papa=process.env.DIRECT_RH_PAPA?require(process.env.DIRECT_RH_PAPA):{parse:text=>({data:text.trim().split(/\r?\n/).map(line=>line.split(',')),errors:[]})};
 const row=(date,type='Admin',admin='OTHER_ENQUIRY')=>['darwin',date,'09:00',type,admin,'0 hour(s) 1 minute(s)'];
 const csv=rows=>[fields,...rows].map(row=>row.join(',')).join('\n');
-test('weekly counts use request dates, include Sunday in the preceding Monday, fill zero weeks, and exclude other request types',()=>{
- const summary=rh.weeklyOtherEnquiries(csv([row('29-Dec-25'),row('04-Jan-26'),row('05-Jan-26','U16'),row('19-Jan-26'),row('19-Jan-26','Admin','FIT_NOTE')]),papa);
- assert.deepEqual(summary,{records:5,total:3,weeks:[{week:'2025-12-29',count:2},{week:'2026-01-05',count:0},{week:'2026-01-12',count:0},{week:'2026-01-19',count:1}]});
- assert.equal(rh.weeklyOtherEnquiries(csv([row('19-Jan-26','Medical')]),papa).total,0);
- assert.throws(()=>rh.weeklyOtherEnquiries(csv([row('31-Feb-26')]),papa));
+test('month weekday averages include zero days, use calendar weekday denominators and exclude other request types',()=>{
+ const summary=rh.monthlyWeekdayOtherEnquiries(csv([row('01-Jul-25','Medical'),row('02-Jul-25'),row('02-Jul-25'),row('09-Jul-25'),row('10-Jul-25','U16'),row('31-Jul-25','Admin','FIT_NOTE'),row('01-Aug-25','Medical')]),papa);
+ assert.equal(summary.total,3);assert.equal(summary.records,7);
+ assert.deepEqual(summary.months[0],{month:'2025-07',counts:[0,0,3,0,0,0,0],days:[4,5,5,5,4,4,4],averages:[0,0,0.6,0,0,0,0]});
+ assert.deepEqual(summary.months[1].days,[0,0,0,0,1,0,0]);
+ assert.deepEqual(summary.months[1].averages,[null,null,null,null,0,null,null]);
+ assert.throws(()=>rh.monthlyWeekdayOtherEnquiries(csv([row('31-Feb-26')]),papa));
+});
+test('partial months use only covered dates, include zero months, and handle leap years',()=>{
+ const summary=rh.monthlyWeekdayOtherEnquiries(csv([row('29-Feb-24'),row('01-Apr-24')]),papa);
+ assert.equal(summary.months.length,3);assert.deepEqual(summary.months[0].days,[0,0,0,1,0,0,0]);
+ assert.equal(summary.months[1].days.reduce((a,b)=>a+b,0),31);assert.equal(summary.months[1].averages.reduce((a,b)=>a+b,0),0);
+ assert.equal(summary.months[2].averages[0],1);assert.equal(summary.months[2].averages[1],null);
 });
 function ui(){
  class Node{
@@ -27,11 +35,13 @@ test('home dates use each named file modification time in London and missing rep
  assert.equal(f.nodes.homeSignpostingModified.textContent,'No report found');
  f.ctx.updateHomeReportDates([]);assert.equal(f.nodes.homeRapidHealthModified.textContent,'No report found');
 });
-test('table handles missing files, formatted counts and replacement without accumulating old rows',()=>{
+test('table formats month/year and weekday averages, distinguishes unavailable from zero, and replaces rows',()=>{
  const f=ui();f.ctx.renderRapidHealthTable();assert.equal(f.nodes.rapidHealthTable.hidden,true);assert.match(f.nodes.rapidHealthStatus.textContent,/No Direct RH/);
- f.ctx.rapidHealthSummary={weeks:[{week:'2026-01-05',count:1234},{week:'2026-01-12',count:0}]};f.ctx.renderRapidHealthTable();
- assert.equal(f.nodes.rapidHealthTable.hidden,false);assert.equal(f.nodes.rapidHealthBody.children[0].children[0].textContent,'5 Jan 2026');assert.equal(f.nodes.rapidHealthBody.children[0].children[1].textContent,'1,234');
- f.ctx.rapidHealthSummary={weeks:[{week:'2026-01-19',count:7}]};f.ctx.renderRapidHealthTable();assert.equal(f.nodes.rapidHealthBody.children.length,1);
+ const record={month:'2025-07',counts:[0,0,3,0,0,0,0],days:[4,5,5,5,4,4,4],averages:[0,0,0.6,0,0,0,0]};
+ f.ctx.rapidHealthSummary={months:[record]};f.ctx.renderRapidHealthTable();
+ const cells=f.nodes.rapidHealthBody.children[0].children;
+ assert.equal(f.nodes.rapidHealthTable.hidden,false);assert.equal(cells.length,8);assert.equal(cells[0].textContent,'July 2025');assert.equal(cells[1].textContent,'0.0');assert.equal(cells[3].textContent,'0.6');assert.equal(cells[3].title,'3 enquiries across 5 days');
+ f.ctx.rapidHealthSummary={months:[{...record,averages:[null,0,0,0,0,0,0]}]};f.ctx.renderRapidHealthTable();assert.equal(f.nodes.rapidHealthBody.children.length,1);assert.equal(f.nodes.rapidHealthBody.children[0].children[1].textContent,'—');
 });
 test('Rapid Health is an Activity submenu page, available to viewers and hidden when another page is selected',()=>{
  const f=ui();let rendered=0;
@@ -40,7 +50,7 @@ test('Rapid Health is an Activity submenu page, available to viewers and hidden 
  f.ctx.showPage('rapidHealth');assert.equal(rendered,1);assert.equal(f.$('rapidHealthPage').classList.contains('hidden'),false);assert.equal(f.$('navRapidHealth').classList.contains('active'),true);assert.equal(f.$('signpostingPage').classList.contains('hidden'),true);
  f.ctx.showPage('home');assert.equal(f.$('rapidHealthPage').classList.contains('hidden'),true);
  assert.match(html,/<button type="button" id="navSignposting">Signposting<\/button><button type="button" id="navRapidHealth">Rapid Health<\/button>/);
- assert.match(html,/<th scope="col">Week beginning<\/th><th scope="col">Other enquiries<\/th>/);
+ for(const heading of ['Month','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'])assert.ok(html.includes('<th scope="col">'+heading+'</th>'));
 });
 test('canonical RH file gets a separate contribution; timestamp exports cannot be counted twice',()=>{
  const ctx={isDirectRHFile:name=>name.toLowerCase()==='direct rh data.csv',DirectRHCSV:rh,Papa:papa,isSignpostingFile:()=>false};vm.createContext(ctx);

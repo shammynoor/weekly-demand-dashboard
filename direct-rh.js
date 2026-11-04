@@ -58,22 +58,29 @@
   const separator=/[\r\n]$/.test(originalText)?'':newline;
   return {...result,text:originalText+separator+papa.unparse(result.rows,{newline})+newline};
  }
- function weeklyOtherEnquiries(text,papa){
+ function monthlyWeekdayOtherEnquiries(text,papa){
   const table=parse(text,papa),index=Object.fromEntries(table.fields.map((field,i)=>[field,i]));
-  const counts=new Map();let first=Infinity,last=-Infinity,total=0;
+  const months=new Map();let first=Infinity,last=-Infinity,total=0;
+  const getMonth=date=>{
+   const month=date.toISOString().slice(0,7);
+   if(!months.has(month))months.set(month,{month,counts:Array(7).fill(0),days:Array(7).fill(0)});
+   return months.get(month);
+  };
   for(const row of table.rows){
    const date=new Date(timestamp(row[index.request_date],row[index.request_time]));
-   date.setUTCHours(0,0,0,0);date.setUTCDate(date.getUTCDate()-((date.getUTCDay()+6)%7));
-   const week=date.getTime();first=Math.min(first,week);last=Math.max(last,week);
+   date.setUTCHours(0,0,0,0);first=Math.min(first,date.getTime());last=Math.max(last,date.getTime());
    if(row[index.request_type].trim()==='Admin'&&row[index.admin_type].trim()==='OTHER_ENQUIRY'){
-    counts.set(week,(counts.get(week)||0)+1);total++;
+    getMonth(date).counts[(date.getUTCDay()+6)%7]++;total++;
    }
   }
-  const weeks=[];
-  for(let week=first;week<=last;week+=7*86400000)weeks.push({week:new Date(week).toISOString().slice(0,10),count:counts.get(week)||0});
-  return {weeks,total,records:table.rows.length};
+  // Count calendar occurrences, including days with no matching requests. Do not
+  // treat dates before/after the source coverage as observed zero-demand days.
+  for(let value=first;value<=last;value+=86400000){
+   const date=new Date(value);getMonth(date).days[(date.getUTCDay()+6)%7]++;
+  }
+  return {months:[...months.values()].sort((a,b)=>a.month.localeCompare(b.month)).map(record=>({...record,averages:record.counts.map((count,i)=>record.days[i]?count/record.days[i]:null)})),total,records:table.rows.length};
  }
- const api={recognises,parse,timestamp,plan,merge,weeklyOtherEnquiries};
+ const api={recognises,parse,timestamp,plan,merge,monthlyWeekdayOtherEnquiries};
  if(typeof module==='object'&&module.exports)module.exports=api;
  else root.DirectRHCSV=api;
 })(typeof globalThis==='object'?globalThis:this);

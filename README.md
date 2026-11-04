@@ -4,9 +4,12 @@
 
 The Home report list includes Direct Rapid Health with the canonical file's OneDrive
 modified date/time in Europe/London, using the same timestamp convention as the other
-reports. Activity IQ → Rapid Health shows a two-column weekly table: Monday week
-beginning and count of `request_type = Admin`, `admin_type = OTHER_ENQUIRY`, grouped
-by request date. Weeks within the source coverage with no matching requests show zero.
+reports. Activity IQ → Rapid Health shows month/year rows and Monday–Sunday columns. Each
+cell is the average daily count of `request_type = Admin`, `admin_type = OTHER_ENQUIRY`
+for that weekday in that month, grouped by request date. Calendar days with zero
+matching requests are included. Partial months include only dates between the first
+and last request dates in the source. A dash means that weekday has no covered dates;
+averages display to one decimal place.
 Counts refresh after loading or appending, and stay separate from appointment totals.
 
 Put the initial full export in the selected OneDrive source folder as `Direct RH Data.csv`.
