@@ -1,8 +1,10 @@
 import {weekdays,canManage,parseUpload,monthlyAverages,validateConfig,formatDate} from './core.mjs';
 import {SupabaseBackend} from './backend.mjs?v=20261105-email';
 import {DemoBackend} from './demo.mjs';
+import {packContribution,unpackContribution,sourceKey} from './analytics-codec.mjs';
 const $=id=>document.getElementById(id);
-let backend=null,user=null,context=null,practice=null,report=null,members=[],view='home',loadVersion=0,busy=false,recovery=false;
+let backend=null,user=null,context=null,practice=null,report=null,members=[],view='analytics',loadVersion=0,busy=false,recovery=false;
+let analyticsFrame=null,analyticsFrameKey=null;
 const invitation=new URL(location.href).searchParams.get('invite');
 const ownerSetup=new URL(location.href).searchParams.get('setup')==='1';
 function node(tag,text,className){const element=document.createElement(tag);if(text!==undefined)element.textContent=text;if(className)element.className=className;return element;}
@@ -32,13 +34,40 @@ function updateShell(){
  document.querySelectorAll('[data-view]').forEach(b=>{if(b.dataset.view===view)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
 }
 function render(){
- updateShell();const content=$('content');content.replaceChildren();if(!user||recovery)return;
+ updateShell();const content=$('content');
+ const key=user&&currentApproved()?user.id+':'+practice.id+':'+practice.role:null;
+ if(key!==analyticsFrameKey){analyticsFrame?.remove();analyticsFrame=null;analyticsFrameKey=null;window.DarwinAnalytics=null;}
+ $('analyticsHost').hidden=view!=='analytics'||!currentApproved()||!user||recovery;
+ content.hidden=view==='analytics'&&currentApproved();
+ if(view==='analytics'&&currentApproved()&&user&&!recovery){renderAnalytics();return;}
+ content.replaceChildren();if(!user||recovery)return;
  if(view==='practices'&&context?.platform_admin){renderPractices(content);return;}
  if(!currentApproved())return;
  if(view==='users'){renderUsers(content);return;}
  if(!report){content.append(node('p','Loading practice data…','empty'));return;}
  if(view==='rapid'){renderRapid(content);return;}
  renderHome(content);
+}
+function renderAnalytics(){
+ if(analyticsFrame)return;
+ const selected=practice.id,identity=user.id,role=practice.role,targetBackend=backend;
+ const check=()=>{if(backend!==targetBackend||user?.id!==identity||practice?.id!==selected||practice.role!==role||!currentApproved())throw Error('Practice access changed. Reopen the dashboard.');};
+ const ensure=async()=>{check();const next=await targetBackend.context();check();const allowed=next.practices.find(p=>p.id===selected&&p.active&&p.status==='approved');if(!allowed||allowed.role!==role){context=next;practice=allowed||null;render();throw Error('Practice access changed.');}};
+ const checked=async(action,manage=false)=>{await ensure();if(manage&&!canManage(practice))throw Error('Practice administrator required.');const value=await action();check();return value;};
+ window.DarwinAnalytics={practice:{...practice},user:{id:user.id,email:user.email},manage:canManage(practice),ensure,
+  list:()=>checked(()=>targetBackend.analyticsSources(selected)),
+  read:key=>checked(async()=>unpackContribution(await targetBackend.analyticsPayload(selected,key))),
+  readSettings:()=>checked(()=>targetBackend.analyticsSettings(selected)),
+  saveSettings:(settings,revision)=>checked(()=>targetBackend.saveAnalyticsSettings(selected,settings,revision),true),
+  save:source=>checked(async()=>targetBackend.saveAnalyticsSource(selected,{source_key:source.existing?.source_key||await sourceKey(source.kind,source.name),kind:source.kind,source_name:source.name.slice(0,200),clinical_at:source.clinical_at,row_count:source.count,payload:await packContribution(source.contribution),revision:source.existing?.revision||0}),true),
+  remove:(key,revision)=>checked(()=>targetBackend.deleteAnalyticsSource(selected,key,revision),true),
+  rapidSummary:()=>checked(async()=>{const data=await targetBackend.report(selected);return data.state?{months:monthlyAverages(data.state,data.daily),total:data.daily.reduce((n,r)=>n+Number(r.other_enquiries),0),records:data.state.record_count}:null;}),
+  rapidDate:()=>report?.state?.latest_request?formatDate(report.state.latest_request+'Z'):null,
+  importRapid:file=>checked(()=>prepareUpload(file),true),
+  users:()=>{check();view='users';render();},
+  signOut:()=>run(async()=>{await targetBackend.logout();user=null;context=null;practice=null;report=null;render();})
+ };
+ analyticsFrameKey=identity+':'+selected+':'+role;analyticsFrame=node('iframe');analyticsFrame.title='Practice Activity, Capacity, Forecast and Workforce IQ';analyticsFrame.className='analytics-frame';analyticsFrame.src='dashboard/index.html';$('analyticsHost').replaceChildren(analyticsFrame);
 }
 function renderHome(content){
  const metrics=node('div',undefined,'metric-row');
@@ -126,7 +155,7 @@ $('enterDemo').addEventListener('click',()=>run(async()=>{backend=new DemoBacken
 $('demoIdentity').addEventListener('change',()=>run(async()=>{backend.identity=$('demoIdentity').value;user=await backend.user();view='home';practice=null;await reload();}));
 $('signOut').addEventListener('click',()=>run(async()=>{const old=backend;++loadVersion;user=null;context=null;practice=null;report=null;members=[];render();await old.logout();if(old.demo){backend=null;$('demoIdentity').value='platform';await initialise();}notice('Signed out.');}));
 $('practiceSelect').addEventListener('change',()=>run(()=>reload($('practiceSelect').value)));
-$('refresh').addEventListener('click',()=>run(()=>reload()));
+$('refresh').addEventListener('click',()=>run(async()=>{await reload();analyticsFrame?.contentWindow.postMessage({type:'iq-refresh'},location.origin);}));
 document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>{view=b.dataset.view;render();}));
 async function initialise(){
  let configured=false;try{configured=validateConfig(window.DARWIN_CONFIG);}catch(error){notice(error.message,true);}

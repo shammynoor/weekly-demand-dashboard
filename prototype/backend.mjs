@@ -8,6 +8,12 @@ export class SupabaseBackend{
  async reset(email,redirect){const {error}=await this.client.auth.resetPasswordForEmail(email,{redirectTo:redirect});if(error)throw error;}
  async password(password){const {error}=await this.client.auth.updateUser({password});if(error)throw error;}
  context(){return this.rpc('my_context');}
+ async analyticsSources(practice){const {data,error}=await this.client.from('iq_analytics_sources').select('source_key,kind,source_name,clinical_at,imported_at,row_count,revision').eq('practice_id',practice).order('source_name');if(error)throw error;return data;}
+ async analyticsPayload(practice,key){const {data,error}=await this.client.from('iq_analytics_sources').select('payload').eq('practice_id',practice).eq('source_key',key).single();if(error)throw error;return data.payload;}
+ async analyticsSettings(practice){const {data,error}=await this.client.from('iq_analytics_settings').select('settings,revision').eq('practice_id',practice).maybeSingle();if(error)throw error;return data||{settings:null,revision:0};}
+ saveAnalyticsSource(practice,source){return this.rpc('save_analytics_source',{p_practice:practice,p_key:source.source_key,p_kind:source.kind,p_name:source.source_name,p_clinical:source.clinical_at,p_count:source.row_count,p_payload:source.payload,p_expected:source.revision||0});}
+ deleteAnalyticsSource(practice,key,revision){return this.rpc('delete_analytics_source',{p_practice:practice,p_key:key,p_expected:revision});}
+ saveAnalyticsSettings(practice,settings,revision){return this.rpc('save_analytics_settings',{p_practice:practice,p_settings:settings,p_expected:revision});}
  claimPlatformAdmin(){return this.rpc('claim_platform_admin');}
  createPractice(name,tenant){return this.rpc('create_practice',{p_name:name,p_tenant_name:tenant});}
  async invite(practice,email,role){
