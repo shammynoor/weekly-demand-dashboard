@@ -10,7 +10,12 @@ export class SupabaseBackend{
  context(){return this.rpc('my_context');}
  claimPlatformAdmin(){return this.rpc('claim_platform_admin');}
  createPractice(name,tenant){return this.rpc('create_practice',{p_name:name,p_tenant_name:tenant});}
- invite(practice,email,role){return this.rpc('create_invite',{p_practice:practice,p_email:email,p_role:role});}
+ async invite(practice,email,role){
+  const {data,error}=await this.client.functions.invoke('iq-send-invite',{body:{practice,email,role}});
+  if(error){let message='Invitation email could not be submitted. No successful send was confirmed.';try{const detail=await error.context?.json();if(detail?.error)message=detail.error;}catch{}throw Error(message);}
+  if(!data?.email_submitted)throw Error('The email service did not confirm submission.');
+  return data;
+ }
  redeem(token){return this.rpc('redeem_invite',{p_token:token});}
  members(practice){return this.rpc('list_members',{p_practice:practice});}
  setStatus(practice,user,status){return this.rpc('set_member_status',{p_practice:practice,p_user:user,p_status:status});}

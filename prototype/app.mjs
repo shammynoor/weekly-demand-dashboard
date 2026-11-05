@@ -1,5 +1,5 @@
 import {weekdays,canManage,parseUpload,monthlyAverages,validateConfig,formatDate} from './core.mjs';
-import {SupabaseBackend} from './backend.mjs?v=20261105-connected';
+import {SupabaseBackend} from './backend.mjs?v=20261105-email';
 import {DemoBackend} from './demo.mjs';
 const $=id=>document.getElementById(id);
 let backend=null,user=null,context=null,practice=null,report=null,members=[],view='home',loadVersion=0,busy=false,recovery=false;
@@ -93,11 +93,11 @@ function renderUsers(content){
  p.append(members.length?data.wrap:node('p','No users have accepted an invitation yet.','subtle'));content.append(p);
  const invite=panel('Invite a user'),form=node('form'),emailLabel=node('label','Email address'),email=node('input');email.type='email';email.required=true;email.autocomplete='off';emailLabel.append(email);form.append(emailLabel);
  const roleLabel=node('label','Role'),role=node('select');for(const [value,text] of [['viewer','Practice viewer'],...(context.platform_admin?[['practice_admin','Practice administrator']]:[])]){const option=node('option',text);option.value=value;role.append(option);}roleLabel.append(role);form.append(roleLabel);
- const submit=node('button','Create invitation link','primary');submit.type='submit';form.append(submit);invite.append(node('p','Share the link with this person. After they verify their email and accept, approve their access above.','subtle'),form);
+ const submit=node('button',backend.demo?'Preview invitation':'Send invitation email','primary');submit.type='submit';form.append(submit);invite.append(node('p','We will email this person an invitation. After they verify their email and accept, approve their access above.','subtle'),form);
  const result=node('div',undefined,'invite-result');result.hidden=true;invite.append(result);
- form.addEventListener('submit',event=>{event.preventDefault();run(async()=>{const response=await backend.invite(practice.id,email.value,role.value);result.replaceChildren();result.hidden=false;
+ form.addEventListener('submit',event=>{event.preventDefault();result.replaceChildren();result.hidden=true;run(async()=>{const response=await backend.invite(practice.id,email.value,role.value);result.hidden=false;
   if(backend.demo){result.textContent='Demo invitation created for '+email.value+'. No email has been sent and this link does not create a real account.';return;}
-  const url=new URL(location.origin+location.pathname);url.searchParams.set('invite',response.token);const link=node('a',url.href);link.href=url.href;result.append(node('p','Invitation expires '+formatDate(response.expires_at)),link,button('Copy link',async()=>{await navigator.clipboard.writeText(url.href);notice('Invitation link copied.');}));
+  result.append(node('p','Invitation submitted for email delivery to '+response.email+'. Ask them to check their inbox and spam folder.'),node('p','Invitation expires '+formatDate(response.expires_at),'subtle'));
  });});content.append(invite);
 }
 function renderPractices(content){
