@@ -29,17 +29,12 @@ Signposting migration are later work; keep original exports outside this prototy
    Site URL and allowed redirect URLs to this preview's exact origin/path.
    Configure an SMTP service before inviting external test users. Supabase's
    default email sender is limited to project-team addresses.
-4. Create your own initial account in the Supabase Auth dashboard (or its invite
-   flow). Set your password yourself. Bootstrap **only your verified account** with
-   this SQL, replacing the email explicitly:
-
-   ```sql
-   insert into public.iq_platform_admins(user_id)
-   select id from auth.users
-   where lower(email)=lower('YOUR_VERIFIED_EMAIL')
-     and email_confirmed_at is not null
-   on conflict do nothing;
-   ```
+4. Configure the designated owner's verified email in `iq_private.platform_bootstrap`
+   using an administrative connection, then open the preview at `?setup=1`.
+   The owner creates their own password and verifies their email. The checked
+   `iq_claim_platform_admin` RPC grants the first platform role only to that
+   exact verified email and consumes the setup record. A URL flag alone grants
+   no access. Reopening setup cannot reinstate a revoked administrator.
 
 5. Set `supabaseUrl` and `publishableKey` in `prototype/config.js`. These two values
    are public client configuration. Never put a service-role/secret key in this app.

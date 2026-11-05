@@ -8,6 +8,7 @@ export class SupabaseBackend{
  async reset(email,redirect){const {error}=await this.client.auth.resetPasswordForEmail(email,{redirectTo:redirect});if(error)throw error;}
  async password(password){const {error}=await this.client.auth.updateUser({password});if(error)throw error;}
  context(){return this.rpc('my_context');}
+ claimPlatformAdmin(){return this.rpc('claim_platform_admin');}
  createPractice(name,tenant){return this.rpc('create_practice',{p_name:name,p_tenant_name:tenant});}
  invite(practice,email,role){return this.rpc('create_invite',{p_practice:practice,p_email:email,p_role:role});}
  redeem(token){return this.rpc('redeem_invite',{p_token:token});}

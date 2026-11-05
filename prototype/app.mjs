@@ -1,9 +1,10 @@
 import {weekdays,canManage,parseUpload,monthlyAverages,validateConfig,formatDate} from './core.mjs';
-import {SupabaseBackend} from './backend.mjs';
+import {SupabaseBackend} from './backend.mjs?v=20261105-connected';
 import {DemoBackend} from './demo.mjs';
 const $=id=>document.getElementById(id);
 let backend=null,user=null,context=null,practice=null,report=null,members=[],view='home',loadVersion=0,busy=false,recovery=false;
 const invitation=new URL(location.href).searchParams.get('invite');
+const ownerSetup=new URL(location.href).searchParams.get('setup')==='1';
 function node(tag,text,className){const element=document.createElement(tag);if(text!==undefined)element.textContent=text;if(className)element.className=className;return element;}
 function notice(message,error=false){$('notice').textContent=message;$('notice').classList.toggle('error',error);$('notice').hidden=!message;}
 function panel(title){const p=node('section',undefined,'panel'),header=node('div',undefined,'panel-header');header.append(node('h2',title));p.append(header);return p;}
@@ -114,12 +115,12 @@ async function reload(preferred){
  if(version!==loadVersion||practice.id!==selected)return;report=nextReport;members=nextMembers;render();
 }
 async function loadUser(){user=await backend.user();if(!user){context=null;practice=null;report=null;members=[];render();return;}await reload();}
-$('loginForm').addEventListener('submit',event=>{event.preventDefault();run(async()=>{await backend.login($('email').value,$('password').value);$('password').value='';await loadUser();if(invitation){await backend.redeem(invitation);history.replaceState({},'',location.pathname);await reload();}});});
-$('signupForm').addEventListener('submit',event=>{event.preventDefault();run(async()=>{if(!invitation)throw Error('An invitation link is required.');const live=await backend.signup($('signupEmail').value,$('signupPassword').value,location.origin+location.pathname+'?invite='+encodeURIComponent(invitation));$('signupPassword').value='';if(live){await loadUser();await backend.redeem(invitation);await reload();}else notice('Check your email to verify your account, then return to your invitation link.');});});
+$('loginForm').addEventListener('submit',event=>{event.preventDefault();run(async()=>{await backend.login($('email').value,$('password').value);$('password').value='';await loadUser();if(ownerSetup){await backend.claimPlatformAdmin();history.replaceState({},'',location.pathname);await reload();}else if(invitation){await backend.redeem(invitation);history.replaceState({},'',location.pathname);await reload();}});});
+$('signupForm').addEventListener('submit',event=>{event.preventDefault();run(async()=>{if(!invitation&&!ownerSetup)throw Error('An invitation link is required.');const query=ownerSetup?'?setup=1':'?invite='+encodeURIComponent(invitation);const live=await backend.signup($('signupEmail').value,$('signupPassword').value,location.origin+location.pathname+query);$('signupPassword').value='';if(live){await loadUser();if(ownerSetup)await backend.claimPlatformAdmin();else await backend.redeem(invitation);await reload();}else notice('Check your email to verify your account, then return to this setup or invitation link.');});});
 $('forgotPassword').addEventListener('click',()=>run(async()=>{if(!$('email').value||!$('email').checkValidity())throw Error('Enter your email address first.');await backend.reset($('email').value,location.origin+location.pathname);notice('If this account exists, a password-reset email will be sent.');}));
 $('recoveryForm').addEventListener('submit',event=>{event.preventDefault();run(async()=>{await backend.password($('newPassword').value);$('newPassword').value='';recovery=false;$('recoveryForm').hidden=true;await loadUser();notice('Your password has been changed.');});});
 $('showSignup').addEventListener('click',()=>{$('loginForm').hidden=true;$('signupForm').hidden=false;$('showSignup').hidden=true;});
-$('returnLogin').addEventListener('click',()=>{$('loginForm').hidden=false;$('signupForm').hidden=true;$('showSignup').hidden=!invitation;});
+$('returnLogin').addEventListener('click',()=>{$('loginForm').hidden=false;$('signupForm').hidden=true;$('showSignup').hidden=!invitation&&!ownerSetup;});
 $('redeemForm').addEventListener('submit',event=>{event.preventDefault();run(async()=>{await backend.redeem($('inviteCode').value.trim());history.replaceState({},'',location.pathname);await reload();notice('Invitation accepted. Your practice administrator can now approve your access.');});});
 $('enterDemo').addEventListener('click',()=>run(async()=>{backend=new DemoBackend();user=await backend.user();view='home';notice('Demo mode: fictional practices and accounts. No real sign-in or data storage.');await reload();}));
 $('demoIdentity').addEventListener('change',()=>run(async()=>{backend.identity=$('demoIdentity').value;user=await backend.user();view='home';practice=null;await reload();}));
@@ -129,14 +130,16 @@ $('refresh').addEventListener('click',()=>run(()=>reload()));
 document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>{view=b.dataset.view;render();}));
 async function initialise(){
  let configured=false;try{configured=validateConfig(window.DARWIN_CONFIG);}catch(error){notice(error.message,true);}
- $('previewChoice').hidden=configured;$('loginForm').hidden=!configured;$('showSignup').hidden=!configured||!invitation;
+ $('previewChoice').hidden=configured;$('loginForm').hidden=!configured;$('showSignup').hidden=!configured||(!invitation&&!ownerSetup);
+ if(ownerSetup){$('authHeading').textContent='Administrator setup';$('authDescription').textContent='Use your designated administrator email to create your account or sign in.';$('showSignup').textContent='Create administrator account';$('signupForm').querySelector('button[type=submit]').textContent='Create administrator account';$('signupForm').querySelector('p').textContent='Use at least 12 characters. Verify your email to activate your designated platform administrator account.';}
  if(!configured){backend=null;render();return;}
  try{
   const {createClient}=await import('https://esm.sh/@supabase/supabase-js@2.49.8');
   const client=createClient(window.DARWIN_CONFIG.supabaseUrl,window.DARWIN_CONFIG.publishableKey,{auth:{flowType:'pkce',persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});backend=new SupabaseBackend(client);
   client.auth.onAuthStateChange((event)=>{if(event==='PASSWORD_RECOVERY'){recovery=true;$('loginForm').hidden=true;$('signupForm').hidden=true;$('recoveryForm').hidden=false;render();}if(event==='SIGNED_OUT'){++loadVersion;user=null;context=null;practice=null;report=null;members=[];render();}});
   await loadUser();
-  if(user&&invitation){await backend.redeem(invitation);history.replaceState({},'',location.pathname);await reload();}
+  if(user&&ownerSetup){await backend.claimPlatformAdmin();history.replaceState({},'',location.pathname);await reload();}
+  else if(user&&invitation){await backend.redeem(invitation);history.replaceState({},'',location.pathname);await reload();}
  }catch(error){notice('Account connection could not be completed: '+error.message,true);}
 }
 setInterval(()=>{if(user&&!busy&&!backend.demo&&!document.hidden)run(()=>reload());},60000);

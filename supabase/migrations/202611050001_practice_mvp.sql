@@ -1,4 +1,14 @@
 -- Isolated MVP backend. Apply only to a new test Supabase project.
+create schema iq_private;
+revoke all on schema iq_private from public,anon;
+grant usage on schema iq_private to authenticated;
+create table iq_private.platform_bootstrap (
+ singleton boolean primary key default true check(singleton),
+ email text not null, claimed_by uuid references auth.users(id)
+);
+alter table iq_private.platform_bootstrap enable row level security;
+revoke all on iq_private.platform_bootstrap from public,anon,authenticated;
+create index iq_bootstrap_claimed on iq_private.platform_bootstrap(claimed_by);
 create table public.iq_platform_admins (
  user_id uuid primary key references auth.users(id) on delete cascade
 );
@@ -48,50 +58,50 @@ create table public.iq_audit (
  actor uuid references auth.users(id), action text not null, occurred_at timestamptz not null default now()
 );
 
-create function public.iq_is_platform_admin() returns boolean
+create function iq_private.iq_is_platform_admin() returns boolean
 language sql stable security definer set search_path=''
-as $$select exists(select 1 from public.iq_platform_admins where user_id=auth.uid())$$;
+as $$select auth.uid() is not null and exists(select 1 from public.iq_platform_admins where user_id=auth.uid())$$;
 
-create function public.iq_can_access(p_practice uuid,p_manage boolean default false) returns boolean
+create function iq_private.iq_can_access(p_practice uuid,p_manage boolean default false) returns boolean
 language sql stable security definer set search_path=''
 as $$select auth.uid() is not null and exists(
  select 1 from public.iq_practices p where p.id=p_practice and p.active and (
- public.iq_is_platform_admin() or exists(select 1 from public.iq_memberships m
+ iq_private.iq_is_platform_admin() or exists(select 1 from public.iq_memberships m
  where m.practice_id=p.id and m.user_id=auth.uid() and m.status='approved'
  and (not p_manage or m.role='practice_admin'))))$$;
 
-create function public.iq_my_context() returns jsonb
+create function iq_private.iq_my_context() returns jsonb
 language sql stable security definer set search_path=''
-as $$select jsonb_build_object('platform_admin',public.iq_is_platform_admin(),
+as $$select jsonb_build_object('platform_admin',iq_private.iq_is_platform_admin(),
  'practices',coalesce((select jsonb_agg(jsonb_build_object('id',p.id,'name',p.name,
- 'tenant_name',p.tenant_name,'active',p.active,'role',case when public.iq_is_platform_admin() then 'platform_admin' else m.role end,
- 'status',case when public.iq_is_platform_admin() then 'approved' else m.status end) order by p.name)
+ 'tenant_name',p.tenant_name,'active',p.active,'role',case when iq_private.iq_is_platform_admin() then 'platform_admin' else m.role end,
+ 'status',case when iq_private.iq_is_platform_admin() then 'approved' else m.status end) order by p.name)
  from public.iq_practices p left join public.iq_memberships m on m.practice_id=p.id and m.user_id=auth.uid()
- where auth.uid() is not null and (public.iq_is_platform_admin() or m.user_id is not null)),'[]'::jsonb))$$;
+ where auth.uid() is not null and (iq_private.iq_is_platform_admin() or m.user_id is not null)),'[]'::jsonb))$$;
 
-create function public.iq_create_practice(p_name text,p_tenant_name text) returns uuid
+create function iq_private.iq_create_practice(p_name text,p_tenant_name text) returns uuid
 language plpgsql security definer set search_path='' as $$
 declare v_id uuid;
 begin
- if not public.iq_is_platform_admin() then raise exception 'Platform administrator required' using errcode='42501'; end if;
+ if not iq_private.iq_is_platform_admin() then raise exception 'Platform administrator required' using errcode='42501'; end if;
  insert into public.iq_practices(name,tenant_name) values(trim(p_name),lower(trim(p_tenant_name))) returning id into v_id;
  insert into public.iq_audit(practice_id,actor,action) values(v_id,auth.uid(),'practice_created');
  return v_id;
 end $$;
 
-create function public.iq_create_invite(p_practice uuid,p_email text,p_role text default 'viewer') returns jsonb
+create function iq_private.iq_create_invite(p_practice uuid,p_email text,p_role text default 'viewer') returns jsonb
 language plpgsql security definer set search_path='' as $$
 declare v_inv public.iq_invites;
 begin
- if not public.iq_can_access(p_practice,true) then raise exception 'Practice administrator required' using errcode='42501'; end if;
- if p_role='practice_admin' and not public.iq_is_platform_admin() then raise exception 'Only the platform administrator can appoint practice administrators' using errcode='42501'; end if;
+ if not iq_private.iq_can_access(p_practice,true) then raise exception 'Practice administrator required' using errcode='42501'; end if;
+ if p_role='practice_admin' and not iq_private.iq_is_platform_admin() then raise exception 'Only the platform administrator can appoint practice administrators' using errcode='42501'; end if;
  if p_email is null or p_email !~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$' then raise exception 'Enter a valid email address'; end if;
  insert into public.iq_invites(practice_id,email,role,created_by) values(p_practice,lower(trim(p_email)),p_role,auth.uid()) returning * into v_inv;
  insert into public.iq_audit(practice_id,actor,action) values(p_practice,auth.uid(),'invitation_created');
  return jsonb_build_object('token',v_inv.token,'expires_at',v_inv.expires_at);
 end $$;
 
-create function public.iq_redeem_invite(p_token uuid) returns jsonb
+create function iq_private.iq_redeem_invite(p_token uuid) returns jsonb
 language plpgsql security definer set search_path='' as $$
 declare v_inv public.iq_invites;v_email text;v_verified timestamptz;
 begin
@@ -106,23 +116,23 @@ begin
  insert into public.iq_memberships(practice_id,user_id,role,status) values(v_inv.practice_id,auth.uid(),v_inv.role,'pending') on conflict do nothing;
  update public.iq_invites set used_by=auth.uid() where id=v_inv.id;
  insert into public.iq_audit(practice_id,actor,action) values(v_inv.practice_id,auth.uid(),'invitation_accepted');
- return public.iq_my_context();
+ return iq_private.iq_my_context();
 end $$;
 
-create function public.iq_list_members(p_practice uuid) returns jsonb
+create function iq_private.iq_list_members(p_practice uuid) returns jsonb
 language plpgsql stable security definer set search_path='' as $$
 begin
- if not public.iq_can_access(p_practice,true) then raise exception 'Practice administrator required' using errcode='42501'; end if;
+ if not iq_private.iq_can_access(p_practice,true) then raise exception 'Practice administrator required' using errcode='42501'; end if;
  return coalesce((select jsonb_agg(jsonb_build_object('user_id',m.user_id,'email',u.email,'role',m.role,'status',m.status) order by u.email)
  from public.iq_memberships m join auth.users u on u.id=m.user_id where m.practice_id=p_practice),'[]'::jsonb);
 end $$;
 
-create function public.iq_set_member_status(p_practice uuid,p_user uuid,p_status text) returns void
+create function iq_private.iq_set_member_status(p_practice uuid,p_user uuid,p_status text) returns void
 language plpgsql security definer set search_path='' as $$
 begin
- if not public.iq_can_access(p_practice,true) then raise exception 'Practice administrator required' using errcode='42501'; end if;
+ if not iq_private.iq_can_access(p_practice,true) then raise exception 'Practice administrator required' using errcode='42501'; end if;
  if p_user=auth.uid() then raise exception 'You cannot change your own approval status'; end if;
- if not public.iq_is_platform_admin() and exists(select 1 from public.iq_memberships where practice_id=p_practice and user_id=p_user and role='practice_admin') then raise exception 'Platform administrator required for administrator changes' using errcode='42501'; end if;
+ if not iq_private.iq_is_platform_admin() and exists(select 1 from public.iq_memberships where practice_id=p_practice and user_id=p_user and role='practice_admin') then raise exception 'Platform administrator required for administrator changes' using errcode='42501'; end if;
  if p_status not in ('approved','suspended') then raise exception 'Invalid approval status'; end if;
  update public.iq_memberships set status=p_status where practice_id=p_practice and user_id=p_user;
  if not found then raise exception 'Member not found'; end if;
@@ -131,11 +141,11 @@ end $$;
 
 -- One transaction, with a per-practice lock: parallel imports cannot double count.
 -- Client CSVs are reduced to minute-level counts; the server owns the cutoff.
-create function public.iq_import_rh(p_practice uuid,p_tenant text,p_source text,p_rows jsonb) returns jsonb
+create function iq_private.iq_import_rh(p_practice uuid,p_tenant text,p_source text,p_rows jsonb) returns jsonb
 language plpgsql security definer set search_path='' as $$
 declare v_cutoff timestamp;v_added integer;v_skipped integer;v_first date;v_last date;v_latest timestamp;v_import uuid;
 begin
- if not public.iq_can_access(p_practice,true) then raise exception 'Practice administrator required' using errcode='42501'; end if;
+ if not iq_private.iq_can_access(p_practice,true) then raise exception 'Practice administrator required' using errcode='42501'; end if;
  if not exists(select 1 from public.iq_practices where id=p_practice and tenant_name=p_tenant) then raise exception 'CSV tenant does not match the selected practice'; end if;
  if p_rows is null or jsonb_typeof(p_rows)<>'array' or jsonb_array_length(p_rows)=0 or jsonb_array_length(p_rows)>100000 then raise exception 'Invalid import batch'; end if;
  if exists(select 1 from jsonb_array_elements(p_rows) r where
@@ -163,6 +173,30 @@ begin
  return jsonb_build_object('added',v_added,'skipped',v_skipped,'latest_request',v_latest,'import_id',v_import);
 end $$;
 
+create function iq_private.iq_claim_platform_admin() returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare v_email text;v_verified timestamptz;v_setup iq_private.platform_bootstrap;
+begin
+ if auth.uid() is null then raise exception 'Sign in first' using errcode='42501'; end if;
+ if iq_private.iq_is_platform_admin() then return iq_private.iq_my_context(); end if;
+ select lower(email),email_confirmed_at into v_email,v_verified from auth.users where id=auth.uid();
+ select * into v_setup from iq_private.platform_bootstrap where singleton for update;
+ if not found or v_verified is null or v_setup.email is distinct from v_email or v_setup.claimed_by is not null then
+  raise exception 'This verified email is not authorised for initial administrator setup' using errcode='42501';
+ end if;
+ insert into public.iq_platform_admins(user_id) values(auth.uid());
+ update iq_private.platform_bootstrap set claimed_by=auth.uid() where singleton;
+ insert into public.iq_audit(actor,action) values(auth.uid(),'platform_administrator_setup');
+ return iq_private.iq_my_context();
+end $$;
+
+create index iq_invites_practice on public.iq_invites(practice_id);
+create index iq_invites_creator on public.iq_invites(created_by);
+create index iq_invites_used_by on public.iq_invites(used_by);
+create index iq_imports_user on public.iq_rh_imports(imported_by);
+create index iq_audit_practice on public.iq_audit(practice_id);
+create index iq_audit_actor on public.iq_audit(actor);
+
 alter table public.iq_platform_admins enable row level security;
 alter table public.iq_practices enable row level security;
 alter table public.iq_memberships enable row level security;
@@ -171,15 +205,42 @@ alter table public.iq_rh_imports enable row level security;
 alter table public.iq_rh_state enable row level security;
 alter table public.iq_rh_daily enable row level security;
 alter table public.iq_audit enable row level security;
-create policy iq_admin_self on public.iq_platform_admins for select to authenticated using(user_id=auth.uid());
-create policy iq_practice_read on public.iq_practices for select to authenticated using(public.iq_can_access(id));
-create policy iq_membership_read on public.iq_memberships for select to authenticated using(user_id=auth.uid() or public.iq_can_access(practice_id,true));
-create policy iq_imports_read on public.iq_rh_imports for select to authenticated using(public.iq_can_access(practice_id));
-create policy iq_state_read on public.iq_rh_state for select to authenticated using(public.iq_can_access(practice_id));
-create policy iq_daily_read on public.iq_rh_daily for select to authenticated using(public.iq_can_access(practice_id));
-create policy iq_audit_read on public.iq_audit for select to authenticated using(public.iq_can_access(practice_id,true));
+create policy iq_admin_self on public.iq_platform_admins for select to authenticated using(user_id=(select auth.uid()));
+create policy iq_practice_read on public.iq_practices for select to authenticated using(iq_private.iq_can_access(id));
+create policy iq_membership_read on public.iq_memberships for select to authenticated using(user_id=(select auth.uid()) or iq_private.iq_can_access(practice_id,true));
+create policy iq_imports_read on public.iq_rh_imports for select to authenticated using(iq_private.iq_can_access(practice_id));
+create policy iq_state_read on public.iq_rh_state for select to authenticated using(iq_private.iq_can_access(practice_id));
+create policy iq_daily_read on public.iq_rh_daily for select to authenticated using(iq_private.iq_can_access(practice_id));
+create policy iq_audit_read on public.iq_audit for select to authenticated using(iq_private.iq_can_access(practice_id,true));
 -- No client can directly insert, update, or delete rows, including their own membership.
 revoke all on public.iq_platform_admins,public.iq_practices,public.iq_memberships,public.iq_invites,public.iq_rh_imports,public.iq_rh_state,public.iq_rh_daily,public.iq_audit from anon,authenticated;
 grant select on public.iq_platform_admins,public.iq_practices,public.iq_memberships,public.iq_rh_imports,public.iq_rh_state,public.iq_rh_daily,public.iq_audit to authenticated;
-revoke execute on function public.iq_is_platform_admin(),public.iq_can_access(uuid,boolean),public.iq_my_context(),public.iq_create_practice(text,text),public.iq_create_invite(uuid,text,text),public.iq_redeem_invite(uuid),public.iq_list_members(uuid),public.iq_set_member_status(uuid,uuid,text),public.iq_import_rh(uuid,text,text,jsonb) from public,anon;
-grant execute on function public.iq_is_platform_admin(),public.iq_can_access(uuid,boolean),public.iq_my_context(),public.iq_create_practice(text,text),public.iq_create_invite(uuid,text,text),public.iq_redeem_invite(uuid),public.iq_list_members(uuid),public.iq_set_member_status(uuid,uuid,text),public.iq_import_rh(uuid,text,text,jsonb) to authenticated;
+revoke execute on function iq_private.iq_is_platform_admin(),iq_private.iq_can_access(uuid,boolean),iq_private.iq_my_context(),iq_private.iq_create_practice(text,text),iq_private.iq_create_invite(uuid,text,text),iq_private.iq_redeem_invite(uuid),iq_private.iq_list_members(uuid),iq_private.iq_set_member_status(uuid,uuid,text),iq_private.iq_import_rh(uuid,text,text,jsonb) from public,anon;
+grant execute on function iq_private.iq_is_platform_admin(),iq_private.iq_can_access(uuid,boolean),iq_private.iq_my_context(),iq_private.iq_create_practice(text,text),iq_private.iq_create_invite(uuid,text,text),iq_private.iq_redeem_invite(uuid),iq_private.iq_list_members(uuid),iq_private.iq_set_member_status(uuid,uuid,text),iq_private.iq_import_rh(uuid,text,text,jsonb) to authenticated;
+
+revoke execute on all functions in schema iq_private from public,anon;
+grant execute on all functions in schema iq_private to authenticated;
+create function public.iq_my_context() returns jsonb language sql security invoker set search_path='' as $$select iq_private.iq_my_context()$$;
+revoke execute on function public.iq_my_context() from public,anon;
+grant execute on function public.iq_my_context() to authenticated;
+create function public.iq_create_practice(p_name text,p_tenant_name text) returns uuid language sql security invoker set search_path='' as $$select iq_private.iq_create_practice($1,$2)$$;
+revoke execute on function public.iq_create_practice(text,text) from public,anon;
+grant execute on function public.iq_create_practice(text,text) to authenticated;
+create function public.iq_create_invite(p_practice uuid,p_email text,p_role text default 'viewer') returns jsonb language sql security invoker set search_path='' as $$select iq_private.iq_create_invite($1,$2,$3)$$;
+revoke execute on function public.iq_create_invite(uuid,text,text) from public,anon;
+grant execute on function public.iq_create_invite(uuid,text,text) to authenticated;
+create function public.iq_redeem_invite(p_token uuid) returns jsonb language sql security invoker set search_path='' as $$select iq_private.iq_redeem_invite($1)$$;
+revoke execute on function public.iq_redeem_invite(uuid) from public,anon;
+grant execute on function public.iq_redeem_invite(uuid) to authenticated;
+create function public.iq_list_members(p_practice uuid) returns jsonb language sql security invoker set search_path='' as $$select iq_private.iq_list_members($1)$$;
+revoke execute on function public.iq_list_members(uuid) from public,anon;
+grant execute on function public.iq_list_members(uuid) to authenticated;
+create function public.iq_set_member_status(p_practice uuid,p_user uuid,p_status text) returns void language sql security invoker set search_path='' as $$select iq_private.iq_set_member_status($1,$2,$3)$$;
+revoke execute on function public.iq_set_member_status(uuid,uuid,text) from public,anon;
+grant execute on function public.iq_set_member_status(uuid,uuid,text) to authenticated;
+create function public.iq_import_rh(p_practice uuid,p_tenant text,p_source text,p_rows jsonb) returns jsonb language sql security invoker set search_path='' as $$select iq_private.iq_import_rh($1,$2,$3,$4)$$;
+revoke execute on function public.iq_import_rh(uuid,text,text,jsonb) from public,anon;
+grant execute on function public.iq_import_rh(uuid,text,text,jsonb) to authenticated;
+create function public.iq_claim_platform_admin() returns jsonb language sql security invoker set search_path='' as $$select iq_private.iq_claim_platform_admin()$$;
+revoke execute on function public.iq_claim_platform_admin() from public,anon;
+grant execute on function public.iq_claim_platform_admin() to authenticated;

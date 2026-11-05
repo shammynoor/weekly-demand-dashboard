@@ -54,5 +54,14 @@ try{
  await reject(db.query("update iq_memberships set status='approved' where user_id=$1",[ids.viewerA]),/permission denied/);
  await as('pending');assert.equal((await db.query('select * from iq_rh_state')).rows.length,0);
  await as(null,'anon');await reject(rpc('my_context'),/permission denied/);await reject(db.query('select * from iq_rh_daily'),/permission denied/);
+ await db.exec('reset role');
+ await db.query("insert into iq_private.platform_bootstrap(singleton,email) values(true,'pending@example.test')");
+ await db.query('update auth.users set email_confirmed_at=null where id=$1',[ids.pending]);
+ await as('pending');await reject(rpc('claim_platform_admin'),/not authorised/);
+ await as('outsider');await reject(rpc('claim_platform_admin'),/not authorised/);
+ await db.exec('reset role');await db.query('update auth.users set email_confirmed_at=now() where id=$1',[ids.pending]);
+ await as('pending');assert.equal((await rpc('claim_platform_admin')).platform_admin,true);assert.equal((await rpc('claim_platform_admin')).platform_admin,true);
+ await db.exec('reset role');await db.query('delete from iq_platform_admins where user_id=$1',[ids.pending]);
+ await as('pending');await reject(rpc('claim_platform_admin'),/not authorised/);
  console.log('PostgreSQL isolation tests passed: two practices, roles, approvals, revocation, invite replay, direct-table attacks, cutoff imports, and rollback.');
 }finally{await db.close();}
