@@ -1,0 +1,10 @@
+import fs from 'node:fs/promises';import path from 'node:path';import {fileURLToPath} from 'node:url';
+const here=path.dirname(fileURLToPath(import.meta.url));
+const destination=path.resolve(process.argv[2]||path.join(here,'dist'));
+if(destination===here||destination===path.dirname(here))throw Error('Choose a separate build directory.');
+await fs.mkdir(path.join(destination,'vendor'),{recursive:true});
+for(const name of ['styles.css','app.mjs','core.mjs','backend.mjs','demo.mjs','config.js'])await fs.copyFile(path.join(here,name),path.join(destination,name));
+const html=(await fs.readFile(path.join(here,'index.html'),'utf8')).replace('../direct-rh.js','direct-rh.js');await fs.writeFile(path.join(destination,'index.html'),html);
+await fs.copyFile(path.join(here,'vendor/papaparse.min.js'),path.join(destination,'vendor/papaparse.min.js'));
+await fs.copyFile(path.join(here,'../direct-rh.js'),path.join(destination,'direct-rh.js'));
+console.log('Built isolated prototype at '+destination);
