@@ -21,12 +21,15 @@ function updateShell(){
  $('demoBar').hidden=!backend.demo;$('accountEmail').textContent=user.email;
  $('accountRole').textContent=context?.platform_admin?'Platform administrator':practice?.role==='practice_admin'?'Practice administrator':'Practice user';
  $('practicesTab').hidden=!context?.platform_admin;$('usersTab').hidden=!canManage(practice);
- $('practiceHeading').textContent=practice?.name||'Your practice access';
+ const platformView=view==='practices'&&context?.platform_admin;
+ $('workspaceEyebrow').textContent=platformView?'PLATFORM ADMINISTRATION':'YOUR WORKSPACE';
+ $('practiceHeading').textContent=platformView?'Manage practices':practice?.name||'Your practice access';
+ $('practiceSelect').closest('label').hidden=!!platformView;
  $('practiceSelect').replaceChildren();
  for(const p of context?.practices||[]){const option=node('option',p.name+(p.status!=='approved'?' · '+p.status:''));option.value=p.id;$('practiceSelect').append(option);}
  if(practice)$('practiceSelect').value=practice.id;
  $('practiceSelect').disabled=!(context?.practices?.length);
- $('pendingPanel').hidden=!!currentApproved();
+ $('pendingPanel').hidden=!!platformView||!!currentApproved();
  $('redeemForm').hidden=backend.demo||['pending','suspended'].includes(practice?.status);
  $('pendingMessage').textContent=practice?.status==='suspended'?'Your practice access is suspended. Contact your practice administrator.':practice?.status==='pending'?'Your invitation has been accepted. Your practice administrator must approve access before you can view data.':'Accept an invitation from your practice administrator to join a workspace.';
  if(invitation)$('inviteCode').value=invitation;
@@ -40,8 +43,11 @@ function render(){
  $('analyticsHost').hidden=view!=='analytics'||!currentApproved()||!user||recovery;
  content.hidden=view==='analytics'&&currentApproved();
  if(view==='analytics'&&currentApproved()&&user&&!recovery){renderAnalytics();return;}
+ if(user&&!recovery&&view==='practices'&&context?.platform_admin){
+  renderPractices(content);
+  return;
+ }
  content.replaceChildren();if(!user||recovery)return;
- if(view==='practices'&&context?.platform_admin){renderPractices(content);return;}
  if(!currentApproved())return;
  if(view==='users'){renderUsers(content);return;}
  if(!report){content.append(node('p','Loading practice data…','empty'));return;}
@@ -130,9 +136,99 @@ function renderUsers(content){
  });});content.append(invite);
 }
 function renderPractices(content){
- const p=panel('Practices'),data=table(['Practice','CSV tenant','Status']);for(const item of context.practices)textRow(data.body,[item.name,item.tenant_name,item.active?'Active':'Inactive']);p.append(data.wrap);content.append(p);
- const create=panel('Create a practice'),form=node('form'),nameLabel=node('label','Practice name'),name=node('input'),tenantLabel=node('label','Rapid Health tenant name'),tenant=node('input');name.required=true;name.maxLength=120;tenant.required=true;tenant.pattern='[a-z0-9_-]{2,80}';tenant.placeholder='For example: darwin';nameLabel.append(name);tenantLabel.append(tenant);const submit=node('button','Create practice','primary');submit.type='submit';form.append(nameLabel,tenantLabel,submit);
- form.addEventListener('submit',event=>{event.preventDefault();run(async()=>{const id=await backend.createPractice(name.value,tenant.value);await reload(id);notice('Practice created. Select Users & approvals to invite its administrator.');});});create.append(form);content.append(create);
+ const practices=[...context.practices].sort((a,b)=>a.name.localeCompare(b.name,'en-GB'));
+ const revision=JSON.stringify([user.id,practices]);
+ // Keep the directory and in-progress form intact during background refreshes.
+ if(content.firstElementChild?.dataset.directoryRevision===revision)return;
+ const directory=node('div',undefined,'platform-directory');
+ directory.dataset.directoryRevision=revision;
+ const totals=node('dl',undefined,'directory-totals');
+ const active=practices.filter(item=>item.active).length;
+ for(const [label,count] of [['Total practices',practices.length],['Active',active],['Inactive',practices.length-active]]){
+  const metric=node('div');
+  metric.append(node('dt',label),node('dd',count.toLocaleString('en-GB')));
+  totals.append(metric);
+ }
+ const columns=node('div',undefined,'directory-columns');
+ const listPanel=panel('Practice directory');
+ const searchLabel=node('label','Find a practice');
+ const search=node('input');
+ search.type='search';
+ search.placeholder='Search by name or tenant';
+ searchLabel.append(search);
+ const matches=node('p',undefined,'subtle');
+ matches.setAttribute('role','status');
+ const list=node('ul',undefined,'directory-list');
+ const showMatches=()=>{
+  const query=search.value.trim().toLocaleLowerCase('en-GB');
+  const visible=practices.filter(item=>[item.name,item.tenant_name].some(value=>value.toLocaleLowerCase('en-GB').includes(query)));
+  matches.textContent=visible.length+' of '+practices.length+' practices';
+  list.replaceChildren();
+  if(!visible.length){
+   list.append(node('li',practices.length?'No practices match your search.':'Create your first practice to get started.','empty'));
+   return;
+  }
+  for(const item of visible){
+   const row=node('li',undefined,'directory-row');
+   const identity=node('div',undefined,'directory-identity');
+   identity.append(node('h3',item.name),node('span',item.tenant_name,'subtle'));
+   const actions=node('div',undefined,'actions');
+   if(item.active){
+    const dashboard=button('Open dashboard',()=>openPractice(item.id,'analytics'));
+    const users=button('Users & approvals',()=>openPractice(item.id,'users'));
+    dashboard.setAttribute('aria-label','Open dashboard for '+item.name);
+    users.setAttribute('aria-label','Users & approvals for '+item.name);
+    actions.append(dashboard,users);
+   }
+   row.append(identity,node('span',item.active?'Active':'Inactive',item.active?'badge approved':'badge'),actions);
+   list.append(row);
+  }
+ };
+ search.addEventListener('input',showMatches);
+ showMatches();
+ listPanel.append(searchLabel,matches,list);
+
+ const create=panel('Add a practice');
+ const form=node('form');
+ const nameLabel=node('label','Practice name'),name=node('input');
+ const tenantLabel=node('label','Rapid Health tenant name'),tenant=node('input');
+ name.required=true;
+ name.minLength=2;
+ name.maxLength=120;
+ tenant.required=true;
+ tenant.pattern='[a-zA-Z0-9_\\-]{2,80}';
+ tenant.placeholder='e.g. darwin';
+ tenant.autocapitalize='none';
+ tenant.spellcheck=false;
+ const help=node('p','Use the tenant name from the practice’s Rapid Health CSV.','subtle');
+ help.id='practiceTenantHelp';
+ tenant.setAttribute('aria-describedby',help.id);
+ nameLabel.append(name);
+ tenantLabel.append(tenant);
+ const submit=node('button','Create practice','primary');
+ submit.type='submit';
+ form.append(nameLabel,tenantLabel,help,submit);
+ form.addEventListener('submit',event=>{
+  event.preventDefault();
+  run(async()=>{
+   const id=await backend.createPractice(name.value.trim(),tenant.value.trim().toLowerCase());
+   form.reset();
+   await openPractice(id,'users');
+   notice('Practice created. You can now invite its administrator.');
+  });
+ });
+ create.append(node('p','Create a workspace, then invite the practice administrator.','subtle'),form);
+ columns.append(listPanel,create);
+ directory.append(totals,columns);
+ content.replaceChildren(directory);
+}
+async function openPractice(id,destination){
+ await reload(id);
+ if(practice?.id!==id||!currentApproved())throw Error('This practice is no longer available.');
+ view=destination;
+ render();
+ $('practiceHeading').tabIndex=-1;
+ $('practiceHeading').focus();
 }
 async function reload(preferred){
  const version=++loadVersion;report=null;members=[];render();
