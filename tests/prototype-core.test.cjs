@@ -20,7 +20,10 @@ test('browser configuration rejects server secrets and unencrypted backend conne
 });
 test('demo walkthrough isolates practices and supports approval and suspension without persistent storage',async()=>{
  const {DemoBackend}=await import('../prototype/demo.mjs');const demo=new DemoBackend();
- await demo.setStatus('darwin-demo','pending','approved');demo.identity='pending';assert.equal((await demo.context()).practices[0].status,'approved');
+ await assert.rejects(demo.report('darwin-demo'),/no access/);
+ assert.deepEqual((await demo.members('darwin-demo')).map(member=>member.role),['practice_admin']);
+ await assert.rejects(demo.setStatus('darwin-demo','pending','approved'),/cannot manage/);
+ demo.identity='admin';await demo.setStatus('darwin-demo','pending','approved');demo.identity='pending';assert.equal((await demo.context()).practices[0].status,'approved');
  assert.equal((await demo.report('darwin-demo')).state.record_count,1400);await assert.rejects(demo.report('riverside-demo'),/no access/);
  demo.identity='admin';await demo.setStatus('darwin-demo','pending','suspended');demo.identity='pending';await assert.rejects(demo.report('darwin-demo'),/no access/);
  demo.identity='viewer';await assert.rejects(demo.importRH('darwin-demo',{tenant:'darwin',rows:[]},'test.csv'),/no access/);

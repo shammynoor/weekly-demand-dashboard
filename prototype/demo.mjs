@@ -10,7 +10,7 @@ export class DemoBackend{
  }
  async user(){return this.people[this.identity];}
  async logout(){}
- async context(){return {platform_admin:this.identity==='platform',practices:this.practices.flatMap(p=>{const m=this.memberships.find(m=>m.practice_id===p.id&&m.user_id===this.identity);return this.identity==='platform'?[{...p,role:'platform_admin',status:'approved'}]:m?[{...p,role:m.role,status:m.status}]:[]})};}
+ async context(){return {platform_admin:this.identity==='platform',practices:this.practices.flatMap(p=>{const m=this.memberships.find(m=>m.practice_id===p.id&&m.user_id===this.identity);return this.identity==='platform'?[{...p,role:'platform_admin',status:null}]:m?[{...p,role:m.role,status:m.status}]:[]})};}
  async require(practice,manage=false){const p=(await this.context()).practices.find(p=>p.id===practice);if(!p||p.status!=='approved'||(manage&&!['practice_admin','platform_admin'].includes(p.role)))throw Error('This demo account has no access to that practice.');return p;}
  async analyticsSources(practice){await this.require(practice);this.analytics ||=new Map();return [...this.analytics.values()].filter(row=>row.practice_id===practice).map(({payload,...row})=>({...row}));}
  async analyticsPayload(practice,key){await this.require(practice);return this.analytics?.get(practice+key)?.payload;}
@@ -19,10 +19,26 @@ export class DemoBackend{
  async deleteAnalyticsSource(practice,key,revision){await this.require(practice,true);if(this.analytics?.get(practice+key)?.revision!==revision)throw Error('Report changed. Refresh first.');this.analytics.delete(practice+key);}
  async saveAnalyticsSettings(practice,settings,revision){await this.require(practice,true);this.sharedSettings ||=new Map();if((this.sharedSettings.get(practice)?.revision||0)!==revision)throw Error('Settings changed. Reload first.');this.sharedSettings.set(practice,{settings:structuredClone(settings),revision:revision+1});return revision+1;}
  async report(practice){await this.require(practice);return structuredClone(this.datasets.get(practice)||{state:null,daily:[],imports:[]});}
- async members(practice){await this.require(practice,true);return this.memberships.filter(m=>m.practice_id===practice).map(m=>({...m,email:this.people[m.user_id]?.email||'New member'}));}
- async setStatus(practice,user,status){await this.require(practice,true);if(user===this.identity)throw Error('You cannot change your own approval.');const m=this.memberships.find(m=>m.practice_id===practice&&m.user_id===user);if(!m)throw Error('Member not found.');if(this.identity!=='platform'&&m.role==='practice_admin')throw Error('Platform administrator required.');m.status=status;}
+ async members(practice){
+  const platform=this.identity==='platform';
+  if(!platform)await this.require(practice,true);
+  return this.memberships.filter(m=>m.practice_id===practice&&(!platform||m.role==='practice_admin')).map(m=>({...m,email:this.people[m.user_id]?.email||'New member'}));
+ }
+ async setStatus(practice,user,status){
+  const platform=this.identity==='platform';
+  if(!platform)await this.require(practice,true);
+  if(user===this.identity)throw Error('You cannot change your own approval.');
+  const member=this.memberships.find(m=>m.practice_id===practice&&m.user_id===user);
+  if(!member||member.role!==(platform?'practice_admin':'viewer'))throw Error('You cannot manage this membership.');
+  member.status=status;
+ }
  async createPractice(name,tenant){if(this.identity!=='platform')throw Error('Platform administrator required.');if(this.practices.some(p=>p.tenant_name===tenant))throw Error('Tenant already exists.');const id=crypto.randomUUID();this.practices.push({id,name,tenant_name:tenant,active:true});return id;}
- async invite(practice,email,role){await this.require(practice,true);if(role==='practice_admin'&&this.identity!=='platform')throw Error('Platform administrator required.');return {token:crypto.randomUUID(),expires_at:new Date(Date.now()+7*86400000).toISOString()};}
+ async invite(practice,email,role){
+  const platform=this.identity==='platform';
+  if(!platform)await this.require(practice,true);
+  if(role!==(platform?'practice_admin':'viewer')||!this.practices.some(p=>p.id===practice&&p.active))throw Error('You cannot invite this role to the practice.');
+  return {token:crypto.randomUUID(),expires_at:new Date(Date.now()+7*86400000).toISOString()};
+ }
  async importRH(practice,bundle,name){
   const p=await this.require(practice,true);if(p.tenant_name!==bundle.tenant)throw Error('CSV tenant does not match the selected practice.');
   const report=await this.report(practice),cutoff=report.state?.latest_request;let added=0,skipped=0,first,last,latest;

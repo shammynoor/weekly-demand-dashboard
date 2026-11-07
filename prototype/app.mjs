@@ -12,7 +12,7 @@ function notice(message,error=false){$('notice').textContent=message;$('notice')
 function panel(title){const p=node('section',undefined,'panel'),header=node('div',undefined,'panel-header');header.append(node('h2',title));p.append(header);return p;}
 function button(text,action,style='secondary'){const b=node('button',text,style);b.type='button';b.addEventListener('click',()=>run(action));return b;}
 async function run(action){if(busy)return;busy=true;document.querySelectorAll('button').forEach(b=>b.disabled=true);try{await action();}catch(error){notice(error.message||'The action could not be completed.',true);}finally{busy=false;document.querySelectorAll('button').forEach(b=>b.disabled=false);if(!backend){$('loginForm').hidden=true;$('forgotPassword').hidden=true;}}}
-function currentApproved(){return practice&&practice.active&&practice.status==='approved';}
+function currentApproved(){return !context?.platform_admin&&practice&&practice.active&&practice.status==='approved';}
 function table(headers){const wrap=node('div',undefined,'table-scroll'),t=node('table'),head=node('thead'),row=node('tr'),body=node('tbody');for(const header of headers){const th=node('th',header);th.scope='col';row.append(th);}head.append(row);t.append(head,body);wrap.append(t);return {wrap,t,body};}
 function textRow(body,values){const row=node('tr');values.forEach(v=>row.append(node('td',v)));body.append(row);return row;}
 function updateShell(){
@@ -20,8 +20,12 @@ function updateShell(){
  if(!user||recovery)return;
  $('demoBar').hidden=!backend.demo;$('accountEmail').textContent=user.email;
  $('accountRole').textContent=context?.platform_admin?'Platform administrator':practice?.role==='practice_admin'?'Practice administrator':'Practice user';
- $('practicesTab').hidden=!context?.platform_admin;$('usersTab').hidden=!canManage(practice);
- const platformView=view==='practices'&&context?.platform_admin;
+ const platformView=!!context?.platform_admin;
+ if(platformView)view='practices';
+ $('practicesTab').hidden=!platformView;
+ document.querySelectorAll('[data-view]:not([data-view="practices"])').forEach(tab=>{
+  tab.hidden=platformView||(tab.id==='usersTab'&&!canManage(practice));
+ });
  $('workspaceEyebrow').textContent=platformView?'PLATFORM ADMINISTRATION':'YOUR WORKSPACE';
  $('practiceHeading').textContent=platformView?'Manage practices':practice?.name||'Your practice access';
  $('practiceSelect').closest('label').hidden=!!platformView;
@@ -119,18 +123,19 @@ async function prepareUpload(file){
  if(!accepted)return;if(practice.id!==selected)throw Error('Practice changed. Select the file again.');
  const result=await backend.importRH(selected,bundle,file.name);await reload();notice('Import complete: '+result.added.toLocaleString('en-GB')+' requests added; '+result.skipped.toLocaleString('en-GB')+' earlier or overlapping requests ignored.');
 }
-function renderUsers(content){
- const p=panel('Users & approvals'),data=table(['User','Role','Access','Actions']);
- for(const member of members){const row=node('tr'),status=node('td'),actions=node('td'),badge=node('span',member.status,'badge '+member.status);status.append(badge);row.append(node('td',member.email),node('td',member.role==='practice_admin'?'Administrator':'Viewer'),status,actions);
+function renderUsers(content,{practiceId=practice?.id,people=members,refresh=reload,administratorsOnly=false}={}){
+ const heading=administratorsOnly?'Administrator approvals':'Users & approvals';
+ const p=panel(heading),data=table(['User','Role','Access','Actions']);
+ for(const member of people){const row=node('tr'),status=node('td'),actions=node('td'),badge=node('span',member.status,'badge '+member.status);status.append(badge);row.append(node('td',member.email),node('td',member.role==='practice_admin'?'Administrator':'Viewer'),status,actions);
   const allowed=member.user_id!==user.id&&(context.platform_admin||member.role!=='practice_admin');
-  if(allowed){const group=node('div',undefined,'actions');if(member.status!=='approved')group.append(button('Approve',async()=>{await backend.setStatus(practice.id,member.user_id,'approved');await reload();notice('Practice access approved.');}));if(member.status!=='suspended')group.append(button('Suspend',async()=>{await backend.setStatus(practice.id,member.user_id,'suspended');await reload();notice('Practice access suspended.');}));actions.append(group);}data.body.append(row);
+  if(allowed){const group=node('div',undefined,'actions');if(member.status!=='approved')group.append(button('Approve',async()=>{await backend.setStatus(practiceId,member.user_id,'approved');await refresh();notice('Practice access approved.');}));if(member.status!=='suspended')group.append(button('Suspend',async()=>{await backend.setStatus(practiceId,member.user_id,'suspended');await refresh();notice('Practice access suspended.');}));actions.append(group);}data.body.append(row);
  }
- p.append(members.length?data.wrap:node('p','No users have accepted an invitation yet.','subtle'));content.append(p);
- const invite=panel('Invite a user'),form=node('form'),emailLabel=node('label','Email address'),email=node('input');email.type='email';email.required=true;email.autocomplete='off';emailLabel.append(email);form.append(emailLabel);
- const roleLabel=node('label','Role'),role=node('select');for(const [value,text] of [['viewer','Practice viewer'],...(context.platform_admin?[['practice_admin','Practice administrator']]:[])]){const option=node('option',text);option.value=value;role.append(option);}roleLabel.append(role);form.append(roleLabel);
+ p.append(people.length?data.wrap:node('p',administratorsOnly?'No administrators have accepted an invitation yet.':'No users have accepted an invitation yet.','subtle'));content.append(p);
+ const invite=panel(administratorsOnly?'Invite a practice administrator':'Invite a user'),form=node('form'),emailLabel=node('label','Email address'),email=node('input');email.type='email';email.required=true;email.autocomplete='off';emailLabel.append(email);form.append(emailLabel);
+ const roleLabel=node('label','Role'),role=node('select');for(const [value,text] of (administratorsOnly?[['practice_admin','Practice administrator']]:[['viewer','Practice viewer']])){const option=node('option',text);option.value=value;role.append(option);}roleLabel.append(role);form.append(roleLabel);
  const submit=node('button',backend.demo?'Preview invitation':'Send invitation email','primary');submit.type='submit';form.append(submit);invite.append(node('p','We will email this person an invitation. After they verify their email and accept, approve their access above.','subtle'),form);
  const result=node('div',undefined,'invite-result');result.hidden=true;invite.append(result);
- form.addEventListener('submit',event=>{event.preventDefault();result.replaceChildren();result.hidden=true;run(async()=>{const response=await backend.invite(practice.id,email.value,role.value);result.hidden=false;
+ form.addEventListener('submit',event=>{event.preventDefault();result.replaceChildren();result.hidden=true;run(async()=>{const response=await backend.invite(practiceId,email.value,role.value);result.hidden=false;
   if(backend.demo){result.textContent='Demo invitation created for '+email.value+'. No email has been sent and this link does not create a real account.';return;}
   result.append(node('p','Invitation submitted for email delivery to '+response.email+'. Ask them to check their inbox and spam folder.'),node('p','Invitation expires '+formatDate(response.expires_at),'subtle'));
  });});content.append(invite);
@@ -174,11 +179,9 @@ function renderPractices(content){
    identity.append(node('h3',item.name),node('span',item.tenant_name,'subtle'));
    const actions=node('div',undefined,'actions');
    if(item.active){
-    const dashboard=button('Open dashboard',()=>openPractice(item.id,'analytics'));
-    const users=button('Users & approvals',()=>openPractice(item.id,'users'));
-    dashboard.setAttribute('aria-label','Open dashboard for '+item.name);
-    users.setAttribute('aria-label','Users & approvals for '+item.name);
-    actions.append(dashboard,users);
+    const administrators=button('Manage administrators',()=>managePracticeAdministrators(item.id));
+    administrators.setAttribute('aria-label','Manage administrators for '+item.name);
+    actions.append(administrators);
    }
    row.append(identity,node('span',item.active?'Active':'Inactive',item.active?'badge approved':'badge'),actions);
    list.append(row);
@@ -213,7 +216,8 @@ function renderPractices(content){
   run(async()=>{
    const id=await backend.createPractice(name.value.trim(),tenant.value.trim().toLowerCase());
    form.reset();
-   await openPractice(id,'users');
+   await reload();
+   await managePracticeAdministrators(id);
    notice('Practice created. You can now invite its administrator.');
   });
  });
@@ -222,17 +226,42 @@ function renderPractices(content){
  directory.append(totals,columns);
  content.replaceChildren(directory);
 }
-async function openPractice(id,destination){
- await reload(id);
- if(practice?.id!==id||!currentApproved())throw Error('This practice is no longer available.');
- view=destination;
- render();
- $('practiceHeading').tabIndex=-1;
- $('practiceHeading').focus();
+async function managePracticeAdministrators(id){
+ const target=context?.platform_admin&&context.practices.find(item=>item.id===id&&item.active);
+ const directory=$('content').firstElementChild;
+ if(!target||!directory)throw Error('This practice is no longer available.');
+ const dialog=node('dialog');
+ const heading=node('h2',target.name+' administrators');
+ heading.id='platformAdministratorsHeading';
+ dialog.setAttribute('aria-labelledby',heading.id);
+ const closeForm=node('form');
+ closeForm.method='dialog';
+ const close=node('button','Close','secondary');
+ closeForm.append(close);
+ const header=node('div',undefined,'panel-header');
+ header.append(heading,closeForm);
+ const body=node('div');
+ dialog.append(header,body);
+ const refresh=async()=>{
+  const people=await backend.members(id);
+  body.replaceChildren();
+  renderUsers(body,{practiceId:id,people,refresh,administratorsOnly:true});
+ };
+ await refresh();
+ if(!directory.isConnected||!context?.platform_admin)return;
+ directory.append(dialog);
+ dialog.addEventListener('close',()=>dialog.remove(),{once:true});
+ dialog.showModal();
 }
 async function reload(preferred){
  const version=++loadVersion;report=null;members=[];render();
  const next=await backend.context();if(version!==loadVersion)return;context=next;
+ if(next.platform_admin){
+  practice=null;
+  view='practices';
+  render();
+  return;
+ }
  const previous=preferred||practice?.id;practice=next.practices.find(p=>p.id===previous)||next.practices[0]||null;render();
  if(!currentApproved())return;
  const selected=practice.id;
